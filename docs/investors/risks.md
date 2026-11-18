@@ -100,8 +100,17 @@ means:
 - holders who redeem before a loss is posted are paid at the undiminished value, less any holdback
   then in force, and the loss falls on those who remain.
 
-Nothing in the contracts passes a lending pool loss to the AssurancePool or any other reserve
-([What stands behind it](./what-stands-behind.md#what-does-not-stand-behind-the-lending-pool)).
+**A loss reaches the pool last.** Clear Lending absorbs a credit loss in this order, each layer used
+up before the next takes any of it: the member's own collateral, where the credit was secured;
+Clear Lending's margin for the period; its loss reserve; draws on the AssurancePool's Credit
+Backstop, for charged-off principal only and up to its available coverage; Clear Lending's own
+capital; and only then the lending pool, through a loss charge. Bonds are not written down. This
+order is how Clear Lending applies a loss, and no contract enforces it: no contract moves money from
+the AssurancePool or any other reserve into the pool, and a loss charge needs only two valuation
+signers. The Credit Backstop is not a guarantee: it can run out, and nothing requires the co-op to
+refill it. Because the pool stands behind the whole credit book, it can bear a loss on credit it
+did not fund.
+See [What stands behind it](./what-stands-behind.md#what-stands-in-front-of-the-lending-pool).
 
 **Bondholders are owed a fixed amount, but what pays it is limited.** The vault's reserve covers the
 near term and part of the rest; the treasury's allowance can be lowered to zero; the AssurancePool

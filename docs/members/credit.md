@@ -38,8 +38,8 @@ on that purchase, and it comes back if the shop refunds the whole purchase. Not 
 
 ### What backs your line automatically
 
-**What you hold in Savings and in the lending pool on Earn backs your line without asking each
-time.** Each backing is signed by your own wallet in the background. A bond is different: it backs
+**What you hold in Savings and in the [lending pool on Earn](./earn.md#the-lending-pool) backs your
+line without asking each time.** Each backing is signed by your own wallet in the background. A bond is different: it backs
 your line only once you agree, because that agreement includes what happens to the bond at maturity.
 
 To stop it, turn off **Back my credit line with my Savings and Earn automatically** in **Settings →

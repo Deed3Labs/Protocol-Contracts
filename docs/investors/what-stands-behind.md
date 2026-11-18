@@ -65,9 +65,20 @@ interest left unpaid past its due date is added to the Deployed Balance
 While any withdrawal request waits in the queue, the pool deploys nothing more, so cash coming back
 goes to the queue first.
 
-## What does not stand behind the lending pool
+## What stands in front of the lending pool
 
-**Nothing in the contracts covers a loss on money the lending pool has deployed.**
+**A loss reaches the lending pool last.** Clear Lending absorbs a credit loss in this order, each
+layer used up before the next takes any of it:
+
+1. the member's own collateral, where the credit was secured;
+2. Clear Lending's margin for the period;
+3. Clear Lending's loss reserve;
+4. draws on the Credit Backstop, for charged-off principal only, up to its available coverage;
+5. Clear Lending's own capital;
+6. the lending pool, through a loss charge.
+
+This order is how Clear Lending applies a loss. No contract enforces it, and none moves reserve
+money into the pool:
 
 - The AssurancePool does not lend to, or reimburse, the lending pool.
 - The Credit Backstop pays Clear Lending's charged-off principal to Clear Lending's own loss-reserve

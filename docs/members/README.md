@@ -7,7 +7,8 @@ if you're new.
 |---|---|
 | [Getting started](./getting-started.md) | Signing in, joining the co-op, verifying your identity, app lock and Face ID, losing your phone number |
 | [Adding and moving money](./adding-and-moving-money.md) | Spendable and Ready to allocate, adding money, moving between cash and savings, taking money out to a bank, auto-save |
-| [Savings and equity credits](./savings-and-equity-credits.md) | What is yours to withdraw and what only goes toward a home; how credits are matched, earned and vested; bonds and the lending pool on Earn, and how they back your credit line |
+| [Savings and equity credits](./savings-and-equity-credits.md) | What is yours to withdraw and what only goes toward a home; how credits are matched, earned and vested |
+| [Earn](./earn.md) | Who can use Earn, the lending pool and bonds, taking money out, how Earn backs your credit line, and where a loss falls |
 | [Credit](./credit.md) | Your credit line, its tiers and what backs it, your cycle, repaying and auto-clear, missed cycles and default, your term limit and paying over time |
 | [Sending money](./sending-money.md) | Sending to members and non-members, claiming a send link, requesting money |
 | [Paying at Clear shops](./paying-at-shops.md) | Scanning a shop's code, your Clear code, approving a charge, paying on a shop's website |
@@ -33,5 +34,5 @@ is in [Protocol](../protocol/README.md).
 | Notifications | [Notifications](./clear-deed-and-membership.md#notifications) |
 | Linked accounts | [Linked accounts](./clear-deed-and-membership.md#linked-accounts) |
 | Trusted devices and login history | [Trusted devices, login history and recovery contacts](./clear-deed-and-membership.md#trusted-devices-login-history-and-recovery-contacts) |
-| The lending pool on Earn | [The lending pool on Earn](./savings-and-equity-credits.md#the-lending-pool-on-earn) |
+| The lending pool on Earn | [The lending pool](./earn.md#the-lending-pool) |
 | Reserve reports and the reserve's figures | [The reserve's figures and reports](./assurance-and-disputes.md#the-reserves-figures-and-reports) |

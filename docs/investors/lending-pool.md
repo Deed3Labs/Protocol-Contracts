@@ -158,8 +158,19 @@ are still paid to their owners.
   Lending.
 
 A recovery, posted the same way, adds back to the Deployed Balance up to the charges not yet
-restored. Nothing in the contracts passes a loss to the AssurancePool or any other reserve
-([Risks](./risks.md#credit-losses)).
+restored.
+
+**A loss reaches the pool last.** Clear Lending absorbs a credit loss in this order, each layer used
+up before the next takes any of it: the member's own collateral, where the credit was secured;
+Clear Lending's margin for the period; its loss reserve; draws on the AssurancePool's Credit
+Backstop, for charged-off principal only and up to its available coverage; Clear Lending's own
+capital; and only then the lending pool, through a loss charge. Bonds are not written down. This
+order is how Clear Lending applies a loss, and no contract enforces it: no contract moves money from
+the AssurancePool or any other reserve into the pool, and a loss charge needs only two valuation
+signers. The Credit Backstop is not a guarantee: it can run out, and nothing requires the co-op to
+refill it. Because the pool stands behind the whole credit book, it can bear a loss on credit it
+did not fund.
+See [Risks](./risks.md#credit-losses).
 
 ## Suspensions and holds
 

@@ -28,12 +28,12 @@ described under [Protocol](../protocol/README.md).
 | **Deed track** | The part of the protocol for real-world assets: T-Deeds, validators, subdivision and fractions |
 | **Default** | When a member has fallen far enough behind that the debt is treated as unpaid. Only what was past due can then be collected from what backs it |
 | **Deployer key** | The wallet that put the contracts on the chain. It holds every role until they are handed over |
-| **Earn** | Where members buy bonds or put money in the lending pool. Both can back your credit line |
+| **Earn** | Where qualifying members hold bonds or put money in the lending pool. Both can back your credit line. See [Earn](../members/earn.md) |
 | **Equity credits** | A count of progress toward your Clear Deed, earned by saving and by paying on time. Never withdrawable or redeemable for cash. Kept by Clear's server, not on the chain |
 | **ESA, Equity Savings Account** | Your savings account. USDC in, CLRUSD out, one for one |
 | **`ESADepositVault`** | The contract that holds the USDC behind CLRUSD |
 | **Float** | Dollars held with the card provider to pay card swipes at shops outside the network. Clear Lending funds the part on credit |
-| **LendingPool** | The lending pool on Earn. Members and other contributors put money in, and it lends only to Clear Lending, which funds members' credit with it. Nothing covers a loss |
+| **LendingPool** | The lending pool on Earn. Members and other contributors put money in, and it lends only to Clear Lending, which funds members' credit with it. A loss reaches it last, after Clear Lending's own layers, and nothing guarantees it |
 | **Lost debt** | Debt written off after a default. Clear Lending bears it, and can draw on the Credit Backstop for it |
 | **Member Assurance** | The part of the reserve that pays members' Assurance grants |
 | **Membership** | Your savings account, as in a credit union: what you save is your share in the co-op, with one vote per member. The bylaws set the formal rules |
