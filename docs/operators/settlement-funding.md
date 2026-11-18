@@ -12,7 +12,7 @@ The ESA vault never funds anything. The ESA reserve is held in trust, 1:1, and i
 - **CL Operating** (`0xfAFf1081F77bF528bA21eea590f251a755bCdf65` on Base Sepolia) is Clear Lending's Safe, the Yield Pool's registered deployment account. Settlement lane Deployments land there.
 - **The SettlementForwarder** is CL Operating's AllowanceModule delegate. It has one function, `forward(amount)`. Only the desk wallet may call it, and it sends USDC from CL Operating to one off-ramp address, which only CL Operating's owners can change, within the allowance.
 - **The off-ramp** is a deposit address bound to the CSA: a Bridge liquidation address whose destination is the CSA as an external account. Every deposit is paid out to the CSA by the address's rail. If a payout fails, Bridge returns the USDC to the address's `return_address`, CL Operating.
-- **The desk wallet** is a Coinbase CDP server wallet, `settlement-desk-base-sepolia` (`SETTLEMENT_DESK_WALLET`). It is the lane's registered funder and the forwarder's only caller, and nothing else.
+- **The desk wallet** is a Coinbase CDP server wallet, `settlement-desk-base-sepolia` (`0x8b8b8643bA33E96E3716F26c631556164C2139eB`, `SETTLEMENT_DESK_WALLET`). It is the lane's registered funder and the forwarder's only caller, and nothing else.
 
 At each run the desk covers what the CSA needs, in this order:
 
@@ -100,7 +100,7 @@ These are configuration, never code. Fill them in, then turn the desk on in dry 
 - [ ] The CSA minimum or reserve the bank requires (`SETTLEMENT_CSA_MINIMUM_USDC`): the buffer's floor.
 - [ ] The off-ramp provider, rail and real latency. With Bridge: register the CSA as Clear Lending's external account, create the liquidation address (below), set `SETTLEMENT_OFFRAMP=bridge`, `SETTLEMENT_BRIDGE_CUSTOMER_ID`, `SETTLEMENT_BRIDGE_LIQUIDATION_ADDRESS_ID`, `SETTLEMENT_OFFRAMP_ADDRESS`, `SETTLEMENT_OFFRAMP_RAIL`, `SETTLEMENT_OFFRAMP_LATENCY_MINUTES`.
 - [ ] The lane's cap and period, and the Settlement Headroom (the `SL-` steps).
-- [ ] The desk wallet: create the CDP account `settlement-desk-base-sepolia`, give it a little ETH for gas, set `SETTLEMENT_DESK_WALLET`.
+- [x] The desk wallet: create the CDP account `settlement-desk-base-sepolia` (done 2026-11-18: `0x8b8b8643bA33E96E3716F26c631556164C2139eB`), give it a little ETH for gas, set `SETTLEMENT_DESK_WALLET`.
 
 The Bridge liquidation address, created once by a person (the desk never creates or changes it): `POST /v0/customers/{Clear Lending's customer id}/liquidation_addresses` with an `Idempotency-Key` and the body from `liquidationAddressRequest` in `services/settlementFunding/offRampBridge.ts`:
 
