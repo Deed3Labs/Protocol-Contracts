@@ -52,18 +52,19 @@ way to withdraw them or turn them into cash. The rules for earning them are in
 ## Buying at a partner shop
 
 **A purchase paid over time at a partner shop is three entries on the ledger that add up to zero.**
-Nobody lends anything at the moment you buy. Say a shop has agreed to a 3% discount and you pay for
-$100 over time:
+Nobody lends anything at the moment you buy. Say a shop has the standard 2.5% discount and you pay
+for $100 over time:
 
 | | On the ledger |
 |---|---|
 | You | **−100** — you owe $100 |
-| The shop | **+97** — the co-op owes the shop $97 |
-| Clear Lending | **+3** — the discount: its fee for funding the plan |
+| The shop | **+97.50** — the co-op owes the shop $97.50 |
+| Clear Lending | **+2.50** — the discount: its fee for funding the plan |
 
 No dollars move at that moment. The shop's positive balance is the record of what the co-op owes it,
 kept on the chain where the shop can see it. The shop gives up the discount; you never pay it. It is
-capped at $50.00 a plan, or $75.00 on a plan over $2,500.00.
+2.5% unless the shop agreed other terms, capped at $50.00 a plan, or $75.00 on a plan over
+$2,500.00.
 
 ## Paying the shop
 

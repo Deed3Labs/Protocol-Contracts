@@ -45,7 +45,7 @@ described under [Protocol](../protocol/README.md).
 | **PayoutPool** | The contract that pays shops in dollars |
 | **Relayer** | A Clear wallet that submits a transaction you signed and pays its network fee |
 | **Reserve** | The co-op's money held against losses and for members' protections, in the AssurancePool: the Credit Backstop and Member Assurance |
-| **Shop discount** | The share of a purchase paid over time that the shop has agreed to give up. It goes to Clear Lending as its fee for funding the plan, capped at $50.00 a plan ($75.00 over $2,500.00). The member never pays it |
+| **Shop discount** | The share of a purchase paid over time that the shop has agreed to give up, 2.5% unless its terms say otherwise. It goes to Clear Lending as its fee for funding the plan, capped at $50.00 a plan ($75.00 over $2,500.00). The member never pays it |
 | **Split plan** | Paying a purchase back in 1, 2, 4, 6 or 12 instalments, against its own limit |
 | **Standard** | The membership plan every member is on. Free. Its equity-credit multiplier grows with your on-time record |
 | **T-Deed** | The on-chain token for a property, issued by `DeedNFT` |
