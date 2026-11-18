@@ -23,6 +23,7 @@ described under [Protocol](../protocol/README.md).
 | **Credit Backstop** | The part of the reserve that covers credit Clear Lending has written off as lost. It has a floor: a share of the credit it covers |
 | **Credit ledger, `ClearCredit`** | The on-chain record of what each member owes and what each shop is owed |
 | **Credit line** | Credit you can draw on with the Clear Visa card or at partner shops. Its size depends on what backs it. Offered state by state |
+| **Credit swipe fee** | 30¢ on a card purchase that draws on your credit line, from any tier. None when your cash covers the purchase. Not charged yet. See [Credit](../members/credit.md#your-credit-line) |
 | **Cure notice** | A notice, recorded on the chain by two people, that a credit line has missed two cycles in a row. Without one, the line cannot default |
 | **Deed track** | The part of the protocol for real-world assets: T-Deeds, validators, subdivision and fractions |
 | **Default** | When a member has fallen far enough behind that the debt is treated as unpaid. Only what was past due can then be collected from what backs it |
