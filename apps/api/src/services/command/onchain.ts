@@ -2,7 +2,7 @@ import chain from '@clear/command-types/src/chain/base-sepolia.json';
 import FINGERPRINTS from '@clear/command-types/src/chain/code.json';
 import { createHash } from 'node:crypto';
 import { DAY } from '@clear/command-types';
-import { erc20Abi, getAddress, hexToString, keccak256, parseAbi, toHex, type Abi, type Address } from 'viem';
+import { erc20Abi, getAddress, hexToString, isAddress, keccak256, parseAbi, toHex, type Abi, type Address } from 'viem';
 import type { Queryable } from '../../db/db.js';
 import { publicFirst } from './indexer.js';
 
@@ -90,6 +90,32 @@ async function names(db: Queryable): Promise<Map<string, string>> {
 
 const big = (v: unknown) => BigInt(String(v ?? 0));
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+/** An annual WAD rate in basis points (5e16, 5%, is 500), and a WAD as a fraction. */
+const wadBps = (wad: unknown) => Number(big(wad)) / 1e14;
+const wadFraction = (wad: unknown) => Number(big(wad)) / 1e18;
+
+/**
+ * Reads that may each fail on their own: one request, and only if that fails, each call by itself, a
+ * failed one null. For figures Money can show without (a view a contract may not have yet).
+ */
+export async function readEach(reader: ChainReader, calls: ChainCall[]): Promise<unknown[]> {
+  if (!calls.length) return [];
+  try {
+    return await reader.read(calls);
+  } catch {
+    return Promise.all(calls.map((c) => reader.read([c]).then((r) => r[0] ?? null, () => null)));
+  }
+}
+
+/** An address a view returned, or null for none (the zero address, or a read that failed). */
+const addressOr = (v: unknown): string | null => (typeof v === 'string' && isAddress(v) && v.toLowerCase() !== ZERO ? getAddress(v) : null);
+
+/** `pendingRate()`: null while none is waiting (effectiveAt 0), else the model as fractions and when it applies, in ms. */
+function pendingOf(v: unknown): YieldPoolLive['pending'] {
+  if (!Array.isArray(v) || big(v[4]) === 0n) return null;
+  const [r0, s1, k, s2, effectiveAt, lowers] = v;
+  return { r0: wadFraction(r0), s1: wadFraction(s1), k: wadFraction(k), s2: wadFraction(s2), effectiveAt: Number(big(effectiveAt)) * 1000, lowers: lowers === true || lowers === 'true' };
+}
 
 // ── The yield pool ──────────────────────────────────────────────────────────
 
@@ -100,17 +126,34 @@ export interface YieldEntry {
   amount: number;
 }
 export interface YieldPoolLive {
-  /** What the contract says now, in dollars, and its rates per cycle in basis points. */
+  /** What the contract says now, in dollars. */
   assets: number;
   supply: number;
   lent: number;
   cash: number;
   queued: number;
   principal: number;
+  /** Utilization now (`utilizationBps()`), in basis points. */
   utilBps: number;
-  borrowBps: number;
-  supplyBps: number;
-  curve: { base: number; s1: number; s2: number; kink: number };
+  /** The Funding Rate now (`fundingRate()`), annual, in basis points. */
+  fundingBps: number;
+  /** The deployed rate model (`rateModel()`), annual, as fractions (0.02 is 2%); k is the kink's utilization. */
+  curve: { r0: number; s1: number; k: number; s2: number };
+  /**
+   * The Funding Rate at a utilization (`fundingRateAt(u)`), annual basis points, keyed by the utilization
+   * in basis points: 5000, 8000, 9000, 10000, now (`utilBps`) and after the next Deployment
+   * (`utilAfterBps`). Null when the contract couldn't be asked.
+   */
+  rateAt: Record<number, number> | null;
+  /** Utilization once the PayoutPool's gap is deployed: (lent + min(payoutShort, cash)) ÷ assets, in basis points. */
+  utilAfterBps: number;
+  /** A rate-model change waiting out its notice (`pendingRate()`): null when none is (or it couldn't be read). */
+  pending: { r0: number; s1: number; k: number; s2: number; effectiveAt: number; lowers: boolean } | null;
+  /** Pool Interest accrued and unpaid (`accruedInterest()`), and the Deployed Balance (`deployedBalance()`), in dollars. */
+  accrued: number | null;
+  deployed: number | null;
+  /** Where Deployments go (`deploymentAccount()`): Clear Lending's account. */
+  deploymentAccount: string | null;
   cycleDays: number;
   /** What the PayoutPool owes it for shop payouts it covered. */
   toPayouts: number;
@@ -169,8 +212,8 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
   }
 
   const who = [...holders.keys()];
-  // Phase 2f: the Funding Rate (annual, WAD) and its model replace the per-cycle rate getters; they are
-  // turned into basis points per 30-day cycle here so Money's figures keep their units.
+  // The Funding Rate (annual, WAD) and its model: since E2b the LendingPool's YieldPoolLedger accrues it
+  // on what Clear Lending has deployed. Sent annual, in basis points and fractions; never worked out here.
   const [totalAssets, totalSupply, totalBorrowed, availableCash, queuedAssets, util, fundingRate, model, decimals, cycle, toPayouts, payoutShort, ...per] = await reader.read([
     ...['totalAssets', 'totalSupply', 'totalBorrowed', 'availableCash', 'queuedAssets', 'utilizationBps', 'fundingRate', 'rateModel', 'decimals'].map((fn) => ({ contract: 'LendingPool', fn })),
     { contract: 'RevolvingIssuer', fn: 'cycleLength' },
@@ -183,11 +226,18 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
   ]);
   const unit = 10 ** Number(decimals);
   const usd = (v: bigint) => Math.round((Number(v) / unit) * 100) / 100;
-  // an annual WAD rate, in basis points per 30-day cycle
-  const perCycleBps = (wad: unknown) => Math.round((Number(big(wad)) / 1e18) * 10_000 * (30 / 365));
   const [r0, s1, k, s2] = (Array.isArray(model) ? model : [0n, 0n, 0n, 0n]).map((v) => big(v));
-  const borrowBps = perCycleBps(fundingRate);
-  const supplyBps = Math.round((borrowBps * Number(util)) / 10_000);
+  // utilization after the next Deployment, the PayoutPool's gap lent out of the cash (as Money's utilAfter)
+  const gap = big(payoutShort) < big(availableCash) ? big(payoutShort) : big(availableCash);
+  const utilAfterBps = big(totalAssets) === 0n ? 0 : Math.round((Number(big(totalBorrowed) + gap) / Number(big(totalAssets))) * 10_000);
+  const points = [...new Set([5000, 8000, 9000, 10_000, Number(util), utilAfterBps])];
+  const [rates, [accrued, deployed, account, pending]] = await Promise.all([
+    reader
+      .read(points.map((u) => ({ contract: 'LendingPool', fn: 'fundingRateAt', args: [BigInt(u) * 10n ** 14n] })))
+      .then((r) => Object.fromEntries(points.map((u, i) => [u, wadBps(r[i])])) as Record<number, number>)
+      .catch(() => null),
+    readEach(reader, ['accruedInterest', 'deployedBalance', 'deploymentAccount', 'pendingRate'].map((fn) => ({ contract: 'LendingPool', fn }))),
+  ]);
   const worth = (shares: bigint) => (big(totalSupply) === 0n ? 0n : (shares * big(totalAssets)) / big(totalSupply));
 
   const firstDeposit = new Map<string, number>();
@@ -222,9 +272,14 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
     queued: usd(big(queuedAssets)),
     principal: usd(principal),
     utilBps: Number(util),
-    borrowBps,
-    supplyBps,
-    curve: { base: perCycleBps(r0), s1: perCycleBps(s1), s2: perCycleBps(s2), kink: Number(k) / 1e18 },
+    fundingBps: wadBps(fundingRate),
+    curve: { r0: wadFraction(r0), s1: wadFraction(s1), k: wadFraction(k), s2: wadFraction(s2) },
+    rateAt: rates,
+    utilAfterBps,
+    pending: pendingOf(pending),
+    accrued: accrued == null ? null : usd(big(accrued)),
+    deployed: deployed == null ? null : usd(big(deployed)),
+    deploymentAccount: addressOr(account),
     // a cycle is the credit line's: 30 days until the issuer has a tier to say otherwise
     cycleDays: Number(cycle) ? Number(cycle) / 86_400 : 30,
     toPayouts: usd(big(toPayouts)),
@@ -425,6 +480,8 @@ export const ASSURANCE_POOL_VIEWS = parseAbi([
   'function drawCount() view returns (uint256)',
   'function drawAt(uint256 drawId) view returns ((uint64 periodId, uint8 status, address approver, uint128 requested, uint128 approved, bytes32 evidenceHash))',
   'function paused() view returns (bool)',
+  'function coverageCap() view returns (uint256)',
+  'function lossReserveAddress() view returns (address)',
 ]);
 
 const DRAW_STATUS = ['None', 'Requested', 'Approved', 'Released', 'Closed'] as const;
@@ -499,6 +556,50 @@ export async function assurancePoolLive(reader: ChainReader, address?: string): 
     approvedUnpaid: usd(approved),
     draws,
     paused: paused === true || paused === 'true',
+  };
+}
+
+export interface MoneyAccountsLive {
+  /** The AssurancePool's coverage cap (`coverageCap()`): the most coverage it gives, whatever the backstop holds. */
+  cap: number | null;
+  /** The CL Loss Reserve (`lossReserveAddress()`, where released draws go) and the USDC it holds. */
+  lossReserve: string | null;
+  lr: number | null;
+  /** The USDC in CL Operating (the payout top-up Safe). Null when none is configured. */
+  clOp: number | null;
+  /** What the PayoutPool's claims due within the keeper's standing horizon add up to (`dueWithin(30 days)`). */
+  due30: number | null;
+}
+
+/**
+ * Money's account figures beyond the pools (brief update 2, section 5), each read on its own so one
+ * that fails is null and the rest still show: the AssurancePool's coverage cap and the CL Loss Reserve
+ * it pays draws to, CL Operating's USDC, and the payout claims due within 30 days, read as the payout
+ * funding keeper reads its standing balance (`dueWithin(standingDays, maxClaims)`). USDC is the
+ * protocol's reserve token, the LendingPool's asset.
+ */
+export async function moneyAccountsLive(
+  reader: ChainReader,
+  o: { assurancePool?: string | null; clOperating?: string | null; horizonSeconds: number; maxClaims: number },
+): Promise<MoneyAccountsLive> {
+  const ap = (fn: string): ChainCall => ({ contract: 'AssurancePool', address: o.assurancePool!, abi: ASSURANCE_POOL_VIEWS, fn });
+  const [usdcAddress, due, cap, lossReserve] = await readEach(reader, [
+    { contract: 'LendingPool', fn: 'asset' },
+    { contract: 'PayoutPool', fn: 'dueWithin', args: [BigInt(o.horizonSeconds), BigInt(o.maxClaims)] },
+    ...(o.assurancePool ? [ap('coverageCap'), ap('lossReserveAddress')] : []),
+  ]);
+  const usdc = addressOr(usdcAddress);
+  const lr = addressOr(lossReserve);
+  const clOp = o.clOperating && isAddress(o.clOperating) ? getAddress(o.clOperating) : null;
+  const balance = (who: string | null): ChainCall[] => (usdc && who ? [{ contract: 'ERC20', address: usdc, fn: 'balanceOf', args: [who] }] : []);
+  const [decimals, ...held] = usdc ? await readEach(reader, [{ contract: 'ERC20', address: usdc, fn: 'decimals' }, ...balance(lr), ...balance(clOp)]) : [null];
+  const usd = (v: unknown) => (v == null || decimals == null ? null : Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100);
+  return {
+    cap: usd(cap),
+    lossReserve: lr,
+    lr: lr ? usd(held[0]) : null,
+    clOp: clOp ? usd(held[lr ? 1 : 0]) : null,
+    due30: usd(Array.isArray(due) ? due[1] : null),
   };
 }
 

@@ -143,9 +143,9 @@ export interface CreditLive {
 
 /**
  * What members pay in carry, per cycle, in basis points: each revolving tier's rate and what's drawn in it, the open term
- * plans' (or the last plan's, with none open), and the average over everything outstanding. The yield pool lends to the
- * PayoutPool, which shares carry out by the float each lender funded, so a dollar it has lent earns this average; the
- * LendingPool's own rate curve is never charged.
+ * plans' (or the last plan's, with none open), and the average over everything outstanding: what members pay, which
+ * Money's "Where member payments go" shows. It is not the yield pool's rate: since E2b the LendingPool is the Yield Pool,
+ * and its YieldPoolLedger charges Clear Lending the Funding Rate on what it has deployed (read in onchain.ts).
  */
 export interface CarryRates {
   cycleDays: number;
