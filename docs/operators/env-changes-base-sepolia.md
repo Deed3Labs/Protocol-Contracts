@@ -66,3 +66,31 @@ them. Each address matches its record in `deployments/base-sepolia/`.
   `ASSURANCE_FEE_PAYER_ENABLED` (not set): the fee payer is switched on at day 7.
 
 No Vercel variable changed: none names a retired address.
+
+## Keepers in dry run (2026-11-18, after #905)
+
+Railway, project Clear App, environment dev, service Protocol-Contracts. Set with
+`--skip-deploys`, then one redeploy (deployment `c8945a69`, 02:03 UTC, from `ffdfa8c0`).
+
+### Set
+
+| Variable | Value |
+|---|---|
+| `CREDIT_DEFAULT_KEEPER_ENABLED` | `1` |
+| `CREDIT_DEFAULT_KEEPER_DRY_RUN` | `1` |
+| `POOL_ENFORCE_KEEPER_ENABLED` | `1` |
+| `POOL_ENFORCE_KEEPER_DRY_RUN` | `1` |
+| `BOND_PLEDGE_KEEPER_ENABLED` | `1` |
+| `BOND_PLEDGE_KEEPER_DRY_RUN` | `1` |
+| `QUEUE_FILL_KEEPER_ENABLED` | `1` |
+| `QUEUE_FILL_KEEPER_DRY_RUN` | `1` |
+
+The startup lines after the redeploy:
+
+- `[cycle-keeper]`: hourly, with `syncCreditPeriod` on and `triggerDefault` in dry run.
+- `[pledge-keepers]`: hourly, with pool shares and bonds in dry run.
+- `[queue-fill]`: every 15 minutes, in dry run.
+
+The chain keepers pay gas from the card settler `0x1b535BBE4bC5f1a4152DfBD1D1215d9435EaD4f3`, which held 0.085 Sepolia ETH.
+
+Remove each `_DRY_RUN` once its reports look right.
