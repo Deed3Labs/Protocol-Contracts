@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { ethers } from 'ethers';
-import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeKeeperRefusal, describeLiquidatorRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
+import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeKeeperRefusal, describeOnboardingRefusal, isMissingRoleRevert, describeLiquidatorRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
 
 const redemption = readFileSync(new URL('../merchant/payoutRedemption.ts', import.meta.url), 'utf8');
 const SHOP = '0x00000000000000000000000000000000000000b2';
@@ -145,6 +145,37 @@ describe('Phase 2b: the Liquidator’s errors decode, and match the Solidity (en
     const held = decodeChainError({ data: data('LiquidatorOnHold', [SHOP, 2, 1_900_000_000n]) });
     expect(describeLiquidatorRefusal(held)).toContain('death');
     expect(describeLiquidatorRefusal(decodeChainError({ data: data('LiquidatorSameSigner', [SHOP]) }))).toContain('different HOLD_ROLE signer');
+  });
+});
+
+describe('credit onboarding: the state attestation and the state gate', () => {
+  test('NetworkRegistry’s errors match the Solidity', () => {
+    let solidity: string;
+    try {
+      solidity = readFileSync(new URL('../../../../../contracts/peripherals/NetworkRegistry.sol', import.meta.url), 'utf8');
+    } catch {
+      return;
+    }
+    for (const name of ['NetworkRegistryInvalidAddress', 'NetworkRegistryInvalidStateCode']) {
+      const fragment = CHAIN_ERROR_FRAGMENTS.find((f) => f.startsWith(`error ${name}(`));
+      expect(solidity).toContain(`${fragment};`);
+    }
+  });
+
+  test('the role missing (an OpenZeppelin 4 revert string) and the state gate are refusals; the sentences never name a state', () => {
+    const role = ethers.id('STATE_ATTESTER_ROLE');
+    const missing = ethers.id('Error(string)').slice(0, 10) +
+      ethers.AbiCoder.defaultAbiCoder().encode(['string'], [`AccessControl: account ${SHOP} is missing role ${role}`]).slice(2);
+    const decodedMissing = decodeChainError({ data: missing });
+    expect(isMissingRoleRevert(decodedMissing)).toBe(true);
+    expect(describeOnboardingRefusal(decodedMissing)).toContain('STATE_ATTESTER_ROLE');
+    const none = describeOnboardingRefusal(decodeChainError({ data: data('RevolvingIssuerStateNotEnabled', [SHOP, ethers.ZeroHash]) }));
+    const ny = describeOnboardingRefusal(decodeChainError({ data: data('RevolvingIssuerStateNotEnabled', [SHOP, ethers.encodeBytes32String('NY')]) }));
+    expect(none).toContain('No state is attested');
+    expect(ny).toContain('not enabled');
+    expect(ny).not.toContain('NY');
+    expect(describeOnboardingRefusal(decodeChainError({ data: data('NetworkRegistryInvalidStateCode', []) }))).toBeNull();
+    expect(describeOnboardingRefusal(decodeChainError({ data: data('CreditIssuerMissingRole', [ethers.ZeroHash, SHOP]) }))).toBeNull();
   });
 });
 
