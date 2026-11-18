@@ -87,6 +87,7 @@ apps/pay/public/js/
 
 # The Base Sepolia fork rehearsal's scratch records (docs/audit/SEPOLIA-REHEARSAL.md): never committed
 deployments/base-sepolia-fork/
-# The signing plan and its Safe batches (scripts/signing_plan.ts): regenerated from the chain after each stage.
-deployments/*/signing-plan.json
+# The signing plan's Safe batches (scripts/signing_plan.ts): regenerated from the chain after each stage. The plan
+# itself, deployments/*/signing-plan.json, is committed after each plan run: Command Center's Build → Signing reads
+# it from the repo (public addresses and call data only).
 deployments/*/safe-batches/signing-*.json

@@ -316,7 +316,7 @@ function makeAdmin() {
       }
     };
     const WAITING = AL ? AL.WAITING : [/* what, from, proposed by, waiting on, hours, usual hours, rule */
-    ['PayoutPool top-up · $1,116.89', 'Money', 'K', 'DR', 20, 4.2, 'money'], ['AssurancePool v1.3', 'Build', 'DR', 'K', 30, 7.8, 'chain'], ['Refund · order #1079 · $98.00', 'Shop', 'K', 'DR', 3, 1.6, 'refund'], ['Shop buys over $500.00', 'Settings', 'K', 'DR', 5, 6.5, 'settings']];
+    ['Yield Pool Deployment · $1,116.89', 'Money', 'K', 'DR', 20, 4.2, 'money'], ['AssurancePool v1.3', 'Build', 'DR', 'K', 30, 7.8, 'chain'], ['Refund · order #1079 · $98.00', 'Shop', 'K', 'DR', 3, 1.6, 'refund'], ['Shop buys over $500.00', 'Settings', 'K', 'DR', 5, 6.5, 'settings']];
 
     /* ── settings ───────────────────────────────────────────────────────────────────────────────────────────────────── */
     /* kind: money | num | pct | hours | days | choice | on | lock. lock: set somewhere else (a vote, the bylaws, the law) */
@@ -324,7 +324,7 @@ function makeAdmin() {
       id: 'money',
       sec: 'money',
       t: 'Second person on money moves',
-      d: 'Every move out of a co-op account, any amount',
+      d: 'Every move out of a co-op account, any amount · scheduled payouts pay themselves',
       kind: 'lock',
       v: 'Always',
       why: 'Set by the two-person rule policy v1.2',
@@ -360,28 +360,30 @@ function makeAdmin() {
     }, {
       id: 'safe',
       sec: 'chain',
-      t: 'Ops Safe signatures',
-      d: 'Upgrades, caps and shop terms',
+      t: 'Signatures on a contract change',
+      d: 'Upgrades, settings and role grants, in the contract’s Safe',
       kind: 'lock',
-      v: '2 of 3',
-      why: 'Changed by a board vote, then in the Ops Safe',
+      v: 'Two signers',
+      why: 'Set in each contract: one proposes, a different one approves',
       where: 'governance/proposals',
       used: ['build']
     }, {
       id: 'wait',
       sec: 'chain',
       t: 'Wait before a change goes live',
-      d: 'After the last signature',
-      kind: 'hours',
-      v: 24,
+      d: 'Every timelock: Deed, Credit, Assurance, Vault and Earn',
+      kind: 'lock',
+      v: '7 days',
+      why: 'Each timelock refuses a delay under 7 days, and has no admin to shorten it',
+      where: 'build/contracts',
       used: ['build']
     }, {
       id: 'cap',
       sec: 'chain',
-      t: 'Starting cap for a new shop',
-      d: 'What a partner can extend before a raise',
+      t: 'Starting approval cap for a new shop',
+      d: 'Level 1, per charge · Levels 2 and 3 ($1,000, $1,500) follow MR-02’s targets',
       kind: 'money',
-      v: 100,
+      v: 500,
       used: ['merchants', 'build']
     }, {
       id: 'batch',
@@ -453,6 +455,147 @@ function makeAdmin() {
       kind: 'days',
       v: 7,
       used: ['governance', 'community']
+    }, /* protocol rules: governed on-chain, from deploy/config (every figure pending counsel) */
+    {
+      id: 'p-line',
+      sec: 'proto',
+      t: 'Unsecured credit line, at most',
+      d: 'Clear Credit · above it the line must be savings-backed',
+      kind: 'lock',
+      v: '$2,499',
+      why: 'Credit timelock · a change waits 7 days · pending counsel',
+      where: 'build/contracts',
+      used: ['money', 'build']
+    }, {
+      id: 'p-rate',
+      sec: 'proto',
+      t: 'List rates, a month',
+      d: 'Income 1.50% · Boost 2.50% · Partner terms 2.00% · Clear Cash 2.50%',
+      kind: 'lock',
+      v: 'Capped at 36.5% a year',
+      why: 'RateSchedule · credit timelock, 7 days',
+      where: 'build/contracts',
+      used: ['money', 'build']
+    }, {
+      id: 'p-cure',
+      sec: 'proto',
+      t: 'Cure window',
+      d: 'Before a missed payment counts as a default',
+      kind: 'lock',
+      v: '15 days',
+      why: 'Credit terms · credit timelock, 7 days',
+      where: 'build/contracts',
+      used: ['money']
+    }, {
+      id: 'p-card',
+      sec: 'proto',
+      t: 'Card spend a day, per member',
+      d: 'Spend Card drawing on the line',
+      kind: 'lock',
+      v: '$500',
+      why: 'Credit terms · credit timelock, 7 days',
+      where: 'build/contracts',
+      used: ['money']
+    }, {
+      id: 'p-fee',
+      sec: 'proto',
+      t: 'Largest fee',
+      d: '$75 on amounts from $2,500',
+      kind: 'lock',
+      v: '$50',
+      why: 'Credit terms · credit timelock, 7 days',
+      where: 'build/contracts',
+      used: ['money']
+    }, {
+      id: 'p-offer',
+      sec: 'proto',
+      t: 'Earn offering cap',
+      d: 'Bonds and Yield Pool subscriptions together, by price paid',
+      kind: 'lock',
+      v: '$1,000,000',
+      why: 'IV-03 · EarnControls · Earn timelock, 7 days',
+      where: 'governance/legal',
+      used: ['money']
+    }, {
+      id: 'p-hold',
+      sec: 'proto',
+      t: 'Most one household may hold',
+      d: 'Of the greater of Pool Assets and $1,000,000',
+      kind: 'lock',
+      v: '10%',
+      why: 'EarnControls · Earn timelock, 7 days',
+      where: 'build/contracts',
+      used: ['money']
+    }, {
+      id: 'p-lad',
+      sec: 'proto',
+      t: 'Bond Ladder',
+      d: '12, 24 and 36 months at 4.75%, 5.00% and 5.25% · illustration only',
+      kind: 'lock',
+      v: 'Set by the Lending Board',
+      why: 'Two Ladder signers, with 48 hours’ notice',
+      where: 'money/pools',
+      used: ['money']
+    }, {
+      id: 'p-floor',
+      sec: 'proto',
+      t: 'Assurance floor',
+      d: 'Coverage cap for backstop draws · re-posted every month',
+      kind: 'lock',
+      v: '$10,000 on testnet',
+      why: 'Two Assurance signers post it · no timelock',
+      where: 'money/pools',
+      used: ['money']
+    }, {
+      id: 'p-xfer',
+      sec: 'proto',
+      t: 'Wait before money leaves an Assurance compartment',
+      d: 'Transfers between or out of compartments',
+      kind: 'lock',
+      v: '14 days',
+      why: 'Fixed in the AssurancePool',
+      where: 'money/pools',
+      used: ['money']
+    }, {
+      id: 'p-res',
+      sec: 'proto',
+      t: 'BondVault keeps back at least',
+      d: 'Of what it owes, and every bond due within 90 days',
+      kind: 'lock',
+      v: '30%',
+      why: 'Fixed, and can only be raised',
+      where: 'money/pools',
+      used: ['money']
+    }, {
+      id: 'p-topup',
+      sec: 'proto',
+      t: 'Automatic payout top-ups, at most',
+      d: 'CL Operating to the PayoutPool, only when 14 days is short · decision 51',
+      kind: 'lock',
+      v: '$5,000 a week',
+      why: 'AllowanceModule on CL Operating · only its owners change it',
+      where: 'money/pools',
+      used: ['money', 'build']
+    }, {
+      id: 'p-cef',
+      sec: 'proto',
+      t: 'Credit Enhancement Fee',
+      d: 'Clear Lending pays it monthly on average daily Available Coverage, actual/365',
+      kind: 'lock',
+      v: '8% a year',
+      why: 'IV-03 8.3 · the API’s fee payer reads it',
+      where: 'money/pools',
+      used: ['money']
+    }, {
+      id: 'p-ix',
+      sec: 'proto',
+      t: 'Card interchange into the AssurancePool',
+      d: 'The co-op treasury’s share, deposited monthly',
+      kind: 'lock',
+      v: '25%',
+      why: 'Co-op policy · the Clear Treasury Safe’s owners sign',
+      where: 'money/pools',
+      used: ['money']
     }, /* security */
     {
       id: 'passkey',
@@ -545,7 +688,8 @@ function makeAdmin() {
     const SETO = AL ? AL.SETO : Object.fromEntries(SETS.map(s => [s.id, s]));
     const SEC_T = {
       money: ['Money', 'Second person and spending'],
-      chain: ['On-chain', 'The Ops Safe and the wait'],
+      chain: ['On-chain', 'Safes, timelocks and the wait'],
+      proto: ['Protocol rules', 'Figures the contracts enforce · all pending counsel'],
       members: ['Members', 'Invites and lists'],
       shop: ['Shop', 'Costing, stock and pickups'],
       gov: ['Governance', 'Votes and discussion'],
@@ -567,7 +711,7 @@ function makeAdmin() {
       need: 'DR'
     }];
     const SET_HIST = AL ? AL.SET_HIST : [/* id, when, setting, from, to, by, approved by */
-    ['C-06', H(10, 9, 15, 0), 'cap', '$75.00', '$100.00', 'DR', 'K'], ['C-05', H(10, 2, 10, 30), 'margin', '55%', '60%', 'K', 'DR'], ['C-04', H(9, 28, 9, 0), 'hold', '10 days', '14 days', 'K', 'DR'], ['C-03', H(9, 14, 11, 0), 'session', '24 hours', '12 hours', 'DR', 'K'], ['C-02', H(9, 1, 12, 0), 'batch', '20 people', '25 people', 'K', 'DR']];
+    ['C-06', H(10, 9, 15, 0), 'buffer', '2 weeks', '1 week', 'DR', 'K'], ['C-05', H(10, 2, 10, 30), 'margin', '55%', '60%', 'K', 'DR'], ['C-04', H(9, 28, 9, 0), 'hold', '10 days', '14 days', 'K', 'DR'], ['C-03', H(9, 14, 11, 0), 'session', '24 hours', '12 hours', 'DR', 'K'], ['C-02', H(9, 1, 12, 0), 'batch', '20 people', '25 people', 'K', 'DR']];
     const ALERTS = AL ? [] : [/* alert, when, who hears it */['Something is waiting on you', 'As soon as it’s yours to approve', []], ['A connection falls behind', 'Over an hour behind', ['K', 'DR']], ['A device goes offline', 'A Clear Point stops reporting', ['ML', 'K']], ['A reveal without a reason', 'Within the hour', ['K']], ['A sign-in from a new device', 'Until someone confirms it', ['K', 'DR']]];
 
     /* connections: status ok | behind | off; hourly health for the last 24 hours (1 ok, 0.5 slow, 0 down) */
@@ -620,8 +764,8 @@ function makeAdmin() {
       hrs: [...Array(9).fill(1), 0.5, ...Array(14).fill(1)]
     }, {
       id: 'safe',
-      n: 'Ops Safe',
-      what: '2 of 3 signers',
+      n: 'Clear Treasury Safe',
+      what: 'Ops, board and Clear Financial Safe on testnet',
       st: 'ok',
       note: '2 changes waiting to be signed',
       last: H(10, 21, 10, 0),
@@ -693,9 +837,9 @@ function makeAdmin() {
 
     /* organization */
     const ENT = AL ? AL.ENT : [/* id, name, kind, status, tax id last 4, state filed */
-    ['coop', 'Clear Co-op', 'Wyoming LLC · co-op', 'formed', '4417'], ['fin', 'Clear Financial Co.', 'Wyoming LLC', 'formed', '8820'], ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', ''], ['hold', 'Clear Capital Holdings', 'Wyoming C-corp', 'formed', '3051'], ['labs', 'ClearLabs Inc.', 'Wyoming C-corp', 'formed', '6602'], ['mgr', 'Manager LLC', 'Wyoming LLC', 'forming', ''], ['fdn', 'Clear Foundation', 'Wyoming foundation', 'forming', '']];
+    ['coop', 'Clear Collective LLC', 'Wyoming LLC · member-owned', 'formed', '4417'], ['fin', 'Clear Financial Co.', 'Wyoming LLC', 'formed', '8820'], ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', ''], ['hold', 'Clear Capital Holdings', 'Wyoming C-corp', 'formed', '3051'], ['labs', 'ClearLabs Inc.', 'Wyoming C-corp', 'formed', '6602'], ['mgr', 'Clear Capital Management LLC', 'Wyoming LLC', 'forming', ''], ['fdn', 'Deed Protocol Foundation SF', 'Wyoming statutory foundation', 'forming', '']];
     const ENTO = AL ? AL.ENTO : Object.fromEntries(ENT.map(e => [e[0], e]));
-    const PROFILE = [['Name', 'Clear Co-op'], ['Website', 'useclear.org'], ['Help email', 'help@useclear.org'], ['Time zone', 'Pacific · Los Angeles'], ['Fiscal year', 'January to December'], ['Currency', 'US dollars']];
+    const PROFILE = [['Name', 'Clear Collective LLC'], ['Website', 'useclear.org'], ['Help email', 'help@useclear.org'], ['Time zone', 'Pacific · Los Angeles'], ['Fiscal year', 'January to December'], ['Currency', 'US dollars']];
 
     /* ── records: documents ─────────────────────────────────────────────────────────────────────────────────────────── */
     const DT = {
@@ -758,7 +902,7 @@ function makeAdmin() {
     const LOG = AL ? AL.LOG : LOG_D;
     const WHO = AL ? AL.WHO : [['K', 'Kai'], ['DR', 'Dana Ruiz'], ['ML', 'Marcus Lee'], ['SY', 'System']];
     const LOG0 = [/* id, time, who, area, action, detail, from, result, approver */
-    ['n0', H2(10, 21, 13, 40), 'DR', 'money', 'Proposed paying the Q3 sales tax', '$351.58 from operating cash to CDTFA, due 31 Oct.', 'Laptop · Riverside', 'waiting', 'Needs a second person'], ['a2', H2(10, 21, 13, 10), 'K', 'money', 'Drafted the PayoutPool top-up', '$1,116.89 from operating cash, due 30 Oct.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['s1', H2(10, 21, 11, 20), 'K', 'shop', 'Proposed a refund on order #1079', '$98.00 · Hoodie, wrong size. Needs a second person.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['a3', H2(10, 21, 10, 0), 'SY', 'chain', 'RevolvingIssuer v1.3 went live', 'After the 24-hour wait. Signed by Dana Ruiz and Kai.', 'Ops Safe', 'done', ''], ['c7', H2(10, 21, 9, 10), 'K', 'team', 'Proposed raising shop buys to $500.00', 'Setting C-07 · from $250.00. Blank orders for the holiday run are mostly $300 to $900.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['a4', H2(10, 21, 9, 12), 'ML', 'field', 'Replaced poster P-012 at Uptown Barber', 'Photo attached. Next swap 20 Dec.', 'iPhone · Redlands', 'done', ''], ['a5', H2(10, 21, 8, 40), 'SY', 'alert', 'Orange St. Point went offline', 'Counter device stopped reporting.', 'Device', 'alert', ''], ['a6', H2(10, 20, 22, 41), 'SY', 'system', 'Plaid re-sync started', '7 of 12 bank links refreshed so far.', 'Plaid', 'running', ''], ['a7', H2(10, 20, 18, 0), 'DR', 'chain', 'Signed “Raise Rosa’s cap to $150.00”', 'First of two signatures. Waiting on you.', 'Laptop · Riverside', 'signed', 'Marcus Lee proposed'], ['a8', H2(10, 20, 16, 0), 'ML', 'field', 'Drafted “Add Inland Cycle Works”', 'Waits on the merchant agreement.', 'iPhone · Redlands', 'waiting', ''], ['s2', H2(10, 20, 11, 0), 'K', 'shop', 'Put Graphic Tee · Two Ten Overpass on the shelf', 'Photos, price and stock checked.', 'Mac · Redlands', 'done', ''], ['a9', H2(10, 20, 10, 0), 'K', 'chain', 'Signed RevolvingIssuer v1.3', 'Second of two signatures.', 'Mac · Redlands', 'approved', 'Dana Ruiz proposed'], ['a10', H2(10, 20, 9, 0), 'DR', 'chain', 'Signed AssurancePool v1.3', 'First of two. Waiting on you.', 'Laptop · Riverside', 'signed', ''], ['t2', H2(10, 19, 10, 5), 'DR', 'team', 'Approved inviting Priya Shah to Field', 'Kai proposed. The invite expires 26 Oct.', 'Laptop · Riverside', 'approved', 'Kai proposed'], ['a11', H2(10, 19, 12, 0), 'DR', 'field', 'Approved “Add Uptown Barber”', 'Second signature on Marcus Lee’s change.', 'Laptop · Riverside', 'approved', 'Marcus Lee proposed'], ['a12', H2(10, 19, 9, 30), 'ML', 'system', 'Signed in from a new device', 'iPhone. Confirmed by Kai at 09:41.', 'iPhone · Redlands', 'confirmed', ''], ['a13', H2(10, 18, 15, 0), 'K', 'gov', 'Sent the Inland Cycle Works agreement', 'Out for signature in the e-signature tool.', 'Mac · Redlands', 'done', ''], ['a14', H2(10, 18, 11, 0), 'DR', 'members', 'Approved invite batch 12', '25 people, oldest first. Kai proposed.', 'Laptop · Riverside', 'approved', 'Kai proposed'], ['a15', H2(10, 15, 9, 0), 'K', 'gov', 'Opened the member vote on v2.2', '188 members can vote until 29 Oct.', 'Mac · Redlands', 'done', ''], ['a16', H2(10, 14, 18, 0), 'DR', 'money', 'Approved issuing BB-0006', '$5,000.00 face value. Kai proposed.', 'Laptop · Riverside', 'approved', 'Kai proposed']];
+    ['n0', H2(10, 21, 13, 40), 'DR', 'money', 'Proposed paying the Q3 sales tax', '$351.58 from operating cash to CDTFA, due 31 Oct.', 'Laptop · Riverside', 'waiting', 'Needs a second person'], ['a2', H2(10, 21, 13, 10), 'K', 'money', 'Drafted a Yield Pool Deployment', '$1,116.89 to Clear Lending, for the 2 Nov Funding Deadline.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['s1', H2(10, 21, 11, 20), 'K', 'shop', 'Proposed a refund on order #1079', '$98.00 · Hoodie, wrong size. Needs a second person.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['a3', H2(10, 21, 10, 0), 'SY', 'chain', 'RevolvingIssuer v1.3 went live', 'After the 7-day wait. Signed by Dana Ruiz and Kai.', 'Ops Safe', 'done', ''], ['c7', H2(10, 21, 9, 10), 'K', 'team', 'Proposed raising shop buys to $500.00', 'Setting C-07 · from $250.00. Blank orders for the holiday run are mostly $300 to $900.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['a4', H2(10, 21, 9, 12), 'ML', 'field', 'Replaced poster P-012 at Uptown Barber', 'Photo attached. Next swap 20 Dec.', 'iPhone · Redlands', 'done', ''], ['a5', H2(10, 21, 8, 40), 'SY', 'alert', 'Orange St. Point went offline', 'Counter device stopped reporting.', 'Device', 'alert', ''], ['a6', H2(10, 20, 22, 41), 'SY', 'system', 'Plaid re-sync started', '7 of 12 bank links refreshed so far.', 'Plaid', 'running', ''], ['a7', H2(10, 20, 18, 0), 'DR', 'chain', 'Signed “Raise Rosa’s approval cap to $1,000.00”', 'First of two signatures. Waiting on you.', 'Laptop · Riverside', 'signed', 'Marcus Lee proposed'], ['a8', H2(10, 20, 16, 0), 'ML', 'field', 'Drafted “Add Inland Cycle Works”', 'Waits on the merchant agreement.', 'iPhone · Redlands', 'waiting', ''], ['s2', H2(10, 20, 11, 0), 'K', 'shop', 'Put Graphic Tee · Two Ten Overpass on the shelf', 'Photos, price and stock checked.', 'Mac · Redlands', 'done', ''], ['a9', H2(10, 20, 10, 0), 'K', 'chain', 'Signed RevolvingIssuer v1.3', 'Second of two signatures.', 'Mac · Redlands', 'approved', 'Dana Ruiz proposed'], ['a10', H2(10, 20, 9, 0), 'DR', 'chain', 'Signed AssurancePool v1.3', 'First of two. Waiting on you.', 'Laptop · Riverside', 'signed', ''], ['t2', H2(10, 19, 10, 5), 'DR', 'team', 'Approved inviting Priya Shah to Field', 'Kai proposed. The invite expires 26 Oct.', 'Laptop · Riverside', 'approved', 'Kai proposed'], ['a11', H2(10, 19, 12, 0), 'DR', 'field', 'Approved “Add Uptown Barber”', 'Second signature on Marcus Lee’s change.', 'Laptop · Riverside', 'approved', 'Marcus Lee proposed'], ['a12', H2(10, 19, 9, 30), 'ML', 'system', 'Signed in from a new device', 'iPhone. Confirmed by Kai at 09:41.', 'iPhone · Redlands', 'confirmed', ''], ['a13', H2(10, 18, 15, 0), 'K', 'gov', 'Sent the Inland Cycle Works agreement', 'Out for signature in the e-signature tool.', 'Mac · Redlands', 'done', ''], ['a14', H2(10, 18, 11, 0), 'DR', 'members', 'Approved invite batch 12', '25 people, oldest first. Kai proposed.', 'Laptop · Riverside', 'approved', 'Kai proposed'], ['a15', H2(10, 15, 9, 0), 'K', 'gov', 'Opened the member vote on v2.2', '188 members can vote until 29 Oct.', 'Mac · Redlands', 'done', ''], ['a16', H2(10, 14, 18, 0), 'DR', 'money', 'Approved issuing BB-0006', '$5,000.00 face value. Kai proposed.', 'Laptop · Riverside', 'approved', 'Kai proposed']];
     if (!AL) LOG0.forEach(x => {
       if (!LOG.some(y => y[0] === x[0])) LOG.push(x);
     });
@@ -903,7 +1047,7 @@ function makeAdmin() {
         money: 'Every amount',
         shopbuy: `Over ${money(s.v)}`,
         refund: `Over ${money(s.v)}`,
-        safe: AL ? AL.SAFE ? `${AL.SAFE.threshold} of ${AL.SAFE.owners} in the Ops Safe` : 'In the Ops Safe' : '2 of 3 in the Ops Safe',
+        safe: AL ? AL.SAFE ? `${AL.SAFE.threshold} of ${AL.SAFE.owners} in the Ops Safe` : 'In the Ops Safe' : 'Two signers in the contract’s Safe',
         batch: `Every batch of ${s.v}`,
         exports: 'Every list'
       }[r.set] || fmtV(s);
@@ -954,7 +1098,7 @@ function makeAdmin() {
           lock = SETS.filter(s => s.kind === 'lock').length,
           last = SET_HIST[0];
         brief = <>Every change here needs a second person and lands in Records.{p ? <>{" "}<a data-aopen={`s:${p.set}`}>{p.label || `Changing ${SETO[p.set].t.toLowerCase()} to ${fmtV(SETO[p.set], p.to)}`}</a>{" is waiting on "}{p.need === A.me ? 'you' : pName(p.need)}.</> : ''}</>;
-        strip = <>{sc('data-atab="rules"', 'Settings', SETS.length, `${lock} set elsewhere`, segs(SETS, s => s.kind === 'lock' ? 'var(--line)' : 'var(--fg)'), 'Locked ones follow a vote, the bylaws or the law')}{sc('data-atab="rules"', 'Waiting', PEND.length, PEND.length === 1 ? 'change' : 'changes', segs(PEND, () => 'var(--underway)', 4), PEND.length ? `On ${PEND.map(x => x.need === A.me ? 'you' : pName(x.need)).join(', ')}` : 'Nothing waiting')}{sc('data-atab="connections"', 'Connections', `${ok} of ${CONN.length}`, 'healthy', segs(CONN, c => c.st === 'behind' ? 'var(--underway)' : c.st === 'off' && !c.idle ? 'var(--absent)' : c.idle ? 'var(--line)' : 'var(--fg)'), CONN.filter(c => c.st === 'behind').map(c => `${c.n} is ${c.note.split(' · ')[0]}`).join(', ') || 'All synced')}{sc('data-atab="rules"', 'Last change', fmtD(last[1]), last[0], segs(SET_HIST, (_, i) => `color-mix(in srgb,var(--fg) ${90 - i * 14}%,transparent)`, 6), `${SETO[last[2]].t} · ${last[3]} → ${last[4]}`)}</>;
+        strip = <>{sc('data-atab="rules"', 'Settings', SETS.length, `${lock} set elsewhere`, segs(SETS, s => s.kind === 'lock' ? 'var(--line)' : 'var(--fg)'), 'Locked ones are set by a vote or the law')}{sc('data-atab="rules"', 'Waiting', PEND.length, PEND.length === 1 ? 'change' : 'changes', segs(PEND, () => 'var(--underway)', 4), PEND.length ? `On ${PEND.map(x => x.need === A.me ? 'you' : pName(x.need)).join(', ')}` : 'Nothing waiting')}{sc('data-atab="connections"', 'Connections', `${ok} of ${CONN.length}`, 'healthy', segs(CONN, c => c.st === 'behind' ? 'var(--underway)' : c.st === 'off' && !c.idle ? 'var(--absent)' : c.idle ? 'var(--line)' : 'var(--fg)'), CONN.filter(c => c.st === 'behind').map(c => `${c.n} is ${c.note.split(' · ')[0]}`).join(', ') || 'All synced')}{sc('data-atab="rules"', 'Last change', fmtD(last[1]), last[0], segs(SET_HIST, (_, i) => `color-mix(in srgb,var(--fg) ${90 - i * 14}%,transparent)`, 6), `${SETO[last[2]].t} · ${last[3]} → ${last[4]}`)}</>;
       }
       if (P === 'records' && AL) {
         // live: the log, the papers on file and the reveals, counted from their rows
@@ -1081,7 +1225,7 @@ function makeAdmin() {
           const s = SETO[p.set];
           return <button key={__k} className="gt-cr ad-pend" data-aopen={`s:${s.id}`}>{leaf(p.at)}<span className="gt-ck"><b>{s.t}</b><span>{fmtV(s, p.from)}{" → "}{fmtV(s, p.to)}{" · "}{pName(p.by)}{" proposed"}</span></span><span className="gt-st" style={css("--c:var(--underway)")}>{"Waiting on "}{onWho(p.need)}</span></button>;
         })}{SET_HIST.map(([id, t, k, a, b, by, ok], __k) => <button key={__k} className="gt-cr" data-aopen={`s:${k}`}>{leaf(t)}<span className="gt-ck"><b>{SETO[k].t}</b><span>{a}{" → "}{b}{" · "}{by ? pName(by).split(' ')[0] : 'Someone'}{" and "}{ok ? pName(ok).split(' ')[0] : 'someone else'}</span></span><span className="mono ad-id">{id}</span></button>)}{rest()}</div>, <><span>Every change is in the audit log</span><button data-ago="records/log">Audit log →</button></>);
-      return <>{band(<>{setCell('money', 's6')}{setCell('shop', 's6')}</>, 1)}{band(<>{setCell('chain', 's4')}{setCell('members', 's4')}{setCell('gov', 's4')}</>)}{band(hist)}</>;
+      return <>{band(<>{setCell('money', 's6')}{setCell('shop', 's6')}</>, 1)}{band(<>{setCell('chain', 's4')}{setCell('members', 's4')}{setCell('gov', 's4')}</>)}{band(setCell('proto', 's12', <><span>Changed only by the Safe, timelock or signers named on each. Every figure is pending counsel</span><button data-ago="build/contracts">Contracts →</button></>))}{band(hist)}</>;
     }
     function setSecurity() {
       const devs = PEOPLE.flatMap(p => p.dev.map((d, i) => ({

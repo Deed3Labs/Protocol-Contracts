@@ -10,6 +10,7 @@ import { sendMail } from './mail.js';
 import { liveMemberSource } from './memberSource.js';
 import { readDeploys } from './deploys.js';
 import { liveLegal } from './legal.js';
+import { liveSigning } from './signing.js';
 
 /**
  * The Command Center's router with the real pieces: the shared Postgres (migrations run at start-up
@@ -67,6 +68,7 @@ export function liveCommandRouter() {
     chain: liveChainReader(),
     deploys: readDeploys,
     legal: liveLegal(),
+    signing: liveSigning(),
     adminEmails: () => (process.env.COMMAND_ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).filter(Boolean),
     appUrl: () => process.env.COMMAND_APP_URL || 'https://command.useclear.org',
     limits: {

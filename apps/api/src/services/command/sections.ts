@@ -23,6 +23,9 @@ import { costHistory, costingPayload, lowMaterials, noCosting, orderCosts, produ
 import { shopModelPayload } from './shopModel.js';
 import { shopPins } from './geocode.js';
 import type { Deploys } from './deploys.js';
+import { autoJobs, type AutoJobsDeps } from './autoJobs.js';
+import { auxRows, retiredRows, timelocksOf } from './inventoryCards.js';
+import type { Signing } from './signing.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -57,6 +60,10 @@ export interface ReadOptions {
   charges?: Pick<Queryable, 'query'>;
   /** Where each app runs (deploys.ts), for Build live: none unless given. */
   deploys?: () => Promise<Deploys>;
+  /** Build's automatic jobs: their env and records (autoJobs.ts), process.env and the jobs' own unless given. */
+  jobs?: AutoJobsDeps;
+  /** Build → Signing: the committed signing plan, or the newest plan run's log (signing.ts); none unless given. */
+  signing?: () => Promise<Signing>;
 }
 
 const chainOf = (o: ReadOptions, source: string) => {
@@ -1750,7 +1757,7 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
   const CTR = ctr.map((c) => {
     const n = onChain(c.name);
     const [version, address] = n ? [releases!.get(n)?.at(-1)?.version ?? 'v1.0', shortAddress(deployed!.get(n)!.address)] : [c.version, c.address];
-    return [c.id, c.name, version, c.layer, c.status, address, c.purpose, Number(c.map_x), Number(c.map_y), c.band];
+    return [c.id, c.name, version, c.layer, c.status, address, c.purpose, Number(c.map_x), Number(c.map_y), c.band, c.controller ?? ''];
   });
   const CTR_NOTE = Object.fromEntries(ctr.filter((c) => c.note).map((c) => [c.id, c.note]));
   const { rows: links } = await db.query<any>('SELECT * FROM command.contract_links ORDER BY position');
@@ -1786,12 +1793,25 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
   const DEPLOYED = deployed ? ctr.filter((c) => onChain(c.name)).map((c) => c.id) : null;
   // live, where each app runs: Vercel's deploys and the API's Railway environments (deploys.ts)
   const RUNNING = provider === 'live' && o.deploys ? await o.deploys().catch(() => null) : null;
+  // live, the deployed records off the map, by name (brief update 2): the timelocks the map is headed with, the
+  // Timelocks and helpers card, and Retired with its count of earlier copies; seeded, the client keeps the reference's
+  const INVENTORY = deployed ? { TIMELOCKS: timelocksOf(deployed), CTR_AUX: auxRows(deployed), ...retiredRows(deployed) } : null;
+  // live, Security's automatic jobs, each from what it recorded and its switch (autoJobs.ts)
+  const AUTO = provider === 'live' ? await autoJobs(db, o.jobs) : null;
+  // live, Signing: the plan exactly as committed (its steps untouched, so the browser can check stepsSha256), else
+  // the newest plan run's statuses. The repo is public and the plan holds public addresses and call data only, so
+  // every level that sees Build gets it. A read that fails says why rather than failing the section.
+  const SIGNING: Signing | null =
+    provider === 'live' && o.signing ? await o.signing().catch((e) => ({ source: 'none' as const, plan: null, readAt: o.now.getTime(), problem: (e as Error)?.message ?? String(e) })) : null;
   return {
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
     // Command's own records, whatever the provider: incidents, findings, audits (migration 0066)
     ...(await buildRecords(db, o)),
     ...(DEPLOYED ? { DEPLOYED } : {}),
     ...(RUNNING ? { RUNNING } : {}),
+    ...(INVENTORY ?? {}),
+    ...(AUTO ? { AUTO } : {}),
+    ...(SIGNING ? { SIGNING } : {}),
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),

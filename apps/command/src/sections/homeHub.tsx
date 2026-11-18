@@ -197,12 +197,18 @@ function brief(M) {
   const cap = (x) => (x.T ? x.T : typeof x.t === 'string' ? x.t[0].toUpperCase() + x.t.slice(1) : x.t);
   return (
     <>
-      {n.map((x, i) => (
-        <Fragment key={i}>
-          {i === 0 ? cap(x) : x.t}
-          {i < n.length - 2 ? ', ' : i === n.length - 2 ? ', and ' : ''}
-        </Fragment>
-      ))}
+      {n.map((x, i) => {
+        const t = i === 0 ? cap(x) : x.t,
+          last = i === n.length - 1;
+        // a note that ends on a link keeps its comma with it, so no line starts with a comma (the reference's withComma)
+        const ends = t && typeof t === 'object' && t.type === 'button';
+        return (
+          <Fragment key={i}>
+            {last ? t : ends ? <span className="h-nw">{t},</span> : <>{t},</>}
+            {last ? '' : i === n.length - 2 ? ' and ' : ' '}
+          </Fragment>
+        );
+      })}
       {'. '}
       <span className="q">{S.waiting.length ? 'Everything else is moving.' : 'Nothing else needs you.'}</span>
     </>
@@ -664,7 +670,7 @@ function liveMoney() {
     key: top ? `Biggest mover: ${lc(top[1])}, ${signed(wk(top))} this week` : 'Nothing moved this week',
   };
 }
-/** The contracts by layer, deeds apart: live, pending in the Ops Safe, waiting on you, not deployed (Build's map). */
+/** The map's contracts by group ("37 of 41"): live, pending in the Ops Safe, waiting on you, not deployed (Build's map). */
 function liveBuild() {
   if (!loaded('build')) return null;
   const B = buildLive();
@@ -672,12 +678,13 @@ function liveBuild() {
   const pend = {};
   for (const c of B.CHANGES) if (c.st === 'safe' && c.contract && !c.block) pend[c.contract] = c.need === B.me ? 'w' : (pend[c.contract] ?? 'c');
   const cls = (c) => (c[4] !== 'live' ? 'x' : (pend[c[0]] ?? ''));
-  const LAY = ['Access', 'Issue', 'Tokens', 'Pools', 'Capital'];
-  const groups = [...LAY.map((n, i) => [n, B.CTR.filter((c) => c[9] !== 'd' && c[3] === i).map(cls)]), ['Deeds', B.CTR.filter((c) => c[9] === 'd').map(cls)]];
+  // as Build's map draws them (brief update 2): its controls and rules, the credit layers, the deeds; off the map isn't counted
+  const LAY = ['Access', 'Issue', 'Tokens', 'Pools', 'Earn'];
+  const groups = [['Rules', B.CTR.filter((c) => c[9] === 'p').map(cls)], ...LAY.map((n, i) => [n, B.CTR.filter((c) => c[9] === 'c' && c[3] === i).map(cls)]), ['Deeds', B.CTR.filter((c) => c[9] === 'd').map(cls)]].filter((g) => g[1].length);
   const flight = B.CHANGES.filter((c) => c.contract && c.st !== 'shipped').length;
   return {
     f: B.deployed,
-    of: B.CTR.length,
+    of: B.onMap,
     s: `live${B.chain.network ? ` on ${B.chain.network}` : ''} · ${flight ? `${flight} ${flight === 1 ? 'change' : 'changes'} in flight` : 'nothing in flight'}`,
     groups,
   };
