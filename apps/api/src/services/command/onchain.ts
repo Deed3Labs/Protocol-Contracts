@@ -564,9 +564,15 @@ export interface MoneyAccountsLive {
   cap: number | null;
   /** The CL Loss Reserve (`lossReserveAddress()`, where released draws go) and the USDC it holds. */
   lossReserve: string | null;
+  /** Where the CL Loss Reserve's address came from: the pool, or the rollout's own until the pool has one. */
+  lossReserveFrom: 'pool' | 'config' | null;
   lr: number | null;
   /** The USDC in CL Operating (the payout top-up Safe). Null when none is configured. */
   clOp: number | null;
+  clOperating: string | null;
+  /** Clear Lending's CL Fees wallet (the Assurance fee payer's) and the USDC in it. Null when none is configured. */
+  clFeesWallet: string | null;
+  clFees: number | null;
   /** What the PayoutPool's claims due within the keeper's standing horizon add up to (`dueWithin(30 days)`). */
   due30: number | null;
 }
@@ -580,7 +586,7 @@ export interface MoneyAccountsLive {
  */
 export async function moneyAccountsLive(
   reader: ChainReader,
-  o: { assurancePool?: string | null; clOperating?: string | null; horizonSeconds: number; maxClaims: number },
+  o: { assurancePool?: string | null; clOperating?: string | null; lossReserve?: string | null; clFees?: string | null; horizonSeconds: number; maxClaims: number },
 ): Promise<MoneyAccountsLive> {
   const ap = (fn: string): ChainCall => ({ contract: 'AssurancePool', address: o.assurancePool!, abi: ASSURANCE_POOL_VIEWS, fn });
   const [usdcAddress, due, cap, lossReserve] = await readEach(reader, [
@@ -589,19 +595,33 @@ export async function moneyAccountsLive(
     ...(o.assurancePool ? [ap('coverageCap'), ap('lossReserveAddress')] : []),
   ]);
   const usdc = addressOr(usdcAddress);
-  const lr = addressOr(lossReserve);
-  const clOp = o.clOperating && isAddress(o.clOperating) ? getAddress(o.clOperating) : null;
-  const balance = (who: string | null): ChainCall[] => (usdc && who ? [{ contract: 'ERC20', address: usdc, fn: 'balanceOf', args: [who] }] : []);
-  const [decimals, ...held] = usdc ? await readEach(reader, [{ contract: 'ERC20', address: usdc, fn: 'decimals' }, ...balance(lr), ...balance(clOp)]) : [null];
+  const given = (a?: string | null) => (a && isAddress(a) && BigInt(a) !== 0n ? getAddress(a) : null);
+  // the pool names its Loss Reserve once the Assurance stage's batch has run; until then, the rollout's own
+  const fromPool = addressOr(lossReserve);
+  const lr = fromPool ?? given(o.lossReserve);
+  const clOp = given(o.clOperating);
+  const fees = given(o.clFees);
+  const who = [lr, clOp, fees];
+  const balance = (a: string | null): ChainCall[] => (usdc && a ? [{ contract: 'ERC20', address: usdc, fn: 'balanceOf', args: [a] }] : []);
+  const [decimals, ...held] = usdc ? await readEach(reader, [{ contract: 'ERC20', address: usdc, fn: 'decimals' }, ...who.flatMap(balance)]) : [null];
   const usd = (v: unknown) => (v == null || decimals == null ? null : Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100);
+  // each address read, in order, skipping the ones not set
+  const of = (a: string | null) => (a && usdc ? usd(held[who.filter(Boolean).indexOf(a)]) : null);
   return {
     cap: usd(cap),
     lossReserve: lr,
-    lr: lr ? usd(held[0]) : null,
-    clOp: clOp ? usd(held[lr ? 1 : 0]) : null,
+    lossReserveFrom: fromPool ? 'pool' : lr ? 'config' : null,
+    lr: of(lr),
+    clOp: of(clOp),
+    clOperating: clOp,
+    clFeesWallet: fees,
+    clFees: of(fees),
     due30: usd(Array.isArray(due) ? due[1] : null),
   };
 }
+
+/** The CL Loss Reserve on Base Sepolia (docs/audit/SEPOLIA-OWNER-CHECKLIST.md; ASSURANCE_LOSS_RESERVE in the rollout's env). */
+export const CL_LOSS_RESERVE_BASE_SEPOLIA = '0xb42561F3FE68B6719628C0eAC398eA097DD56bAa';
 
 /** OffersIssuer's address, lower-cased, once it's deployed and in the chain record; null before. */
 export const offersAddress = (): string | null => C.OffersIssuer?.address?.toLowerCase() ?? null;

@@ -5,11 +5,12 @@ import { getAddress, stringToHex } from 'viem';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
 import { syncInventory } from './indexer.js';
-import { ASSURANCE_POOL_VIEWS, assurancePoolLive, bondsLive, coopLive, deployedName, moneyAccountsLive, offersAddress, offersLive, readEach, type ChainCall, type ChainReader } from './onchain.js';
+import { ASSURANCE_POOL_VIEWS, CL_LOSS_RESERVE_BASE_SEPOLIA, assurancePoolLive, bondsLive, coopLive, deployedName, moneyAccountsLive, offersAddress, offersLive, readEach, type ChainCall, type ChainReader } from './onchain.js';
 import { CL_OPERATING_BASE_SEPOLIA } from '../payoutFunding/topUp.js';
 import contractsFx from '@clear/command-types/src/fixtures/contracts.json';
 import { contractsSection, moneySection } from './sections.js';
 import { seedCommand } from './seed.js';
+import { structureCommand } from './structure.js';
 import { TOTALS } from './levels.js';
 
 /*
@@ -61,6 +62,8 @@ const rateAt = (u: bigint) => {
 // Clear Lending's deployment account, and the CL Loss Reserve the AssurancePool pays draws to
 const CL_DEPLOY = getAddress('0x00000000000000000000000000000000000000d1');
 const LOSS_RESERVE = getAddress('0x00000000000000000000000000000000000000e1');
+// the Assurance fee payer's CL Fees wallet on Base Sepolia (assuranceFees/config.ts)
+const CL_FEES = getAddress('0xB9ed7ea800c3a32a8F2cf7d2aB50AE2d4831cDFd');
 // the savings reserve: CLRUSD in issue, and the USDC the vault holds (50 cents short)
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 
@@ -137,7 +140,8 @@ const reader: ChainReader = {
         expect(c.address).toBe(USDC);
         if (c.fn === 'decimals') return 6n;
         // the savings vault's USDC, the Ops Safe's, the CL Loss Reserve's and CL Operating's
-        const usdcOf: Record<string, number> = { [getAddress(C.ESADepositVault.address)]: reserve.vault, [SAFE]: 20, [LOSS_RESERVE]: 33.5, [getAddress(CL_OPERATING_BASE_SEPOLIA)]: 410 };
+        // (and, for when the pool names none, the rollout's CL Loss Reserve; and the CL Fees wallet)
+        const usdcOf: Record<string, number> = { [getAddress(C.ESADepositVault.address)]: reserve.vault, [SAFE]: 20, [LOSS_RESERVE]: 33.5, [getAddress(CL_OPERATING_BASE_SEPOLIA)]: 410, [getAddress(CL_LOSS_RESERVE_BASE_SEPOLIA)]: 7.75, [CL_FEES]: 2.5 };
         expect(Object.keys(usdcOf)).toContain(c.args![0] as string);
         return BigInt(usdc(usdcOf[c.args![0] as string]));
       }
@@ -542,11 +546,18 @@ describe('Money’s accounts beyond the pools, live (brief update 2)', () => {
   test('the AssurancePool’s compartments, cap, cover and unpaid draws; the CL Loss Reserve, CL Operating, the Treasury Safe and what’s due in 30 days', async () => {
     const was = process.env.COMMAND_SAFE_ADDRESS;
     process.env.COMMAND_SAFE_ADDRESS = SAFE;
+    // as on every start: the structure adds the accounts the seed's list doesn't have (Member cash, Clear Lending's)
+    await structureCommand(db);
     try {
       const m: any = await moneySection(db, read());
-      expect(m.M).toMatchObject({ apBack: 125.03, apMem: 0, cap: 500, cover: 105.03, drawn: 12.5, lr: 33.5, clOp: 410, due30: 80.25, treasury: 20 });
+      expect(m.M).toMatchObject({ apBack: 125.03, apMem: 0, cap: 500, cover: 105.03, drawn: 12.5, lr: 33.5, clOp: 410, clFees: 2.5, due30: 80.25, treasury: 20 });
       // not wired yet: Lithic's member cash, the Credit Settlement Account, and the book's monthly Spread and residual
       expect([m.M.memberCash, m.M.clSettle, m.M.spread, m.M.resid]).toEqual([null, null, null, null]);
+      // Where it sits: Clear Lending's accounts in their own group, from the chain; Lithic's two null (not read), never $0
+      const acct = (id: string) => m.ACCTS.find((a: any[]) => a[0] === id);
+      expect(['clop', 'cllr', 'clfee'].map((id) => [acct(id)[3], acct(id)[5]])).toEqual([['cl', 410], ['cl', 33.5], ['cl', 2.5]]);
+      expect([acct('cash')[5], acct('clset')[5], acct('clset')[3]]).toEqual([null, null, 'cl']);
+      expect(m.CL).toEqual({ clop: getAddress(CL_OPERATING_BASE_SEPOLIA), cllr: LOSS_RESERVE, cllrFrom: 'pool', clfee: CL_FEES });
     } finally {
       if (was == null) delete process.env.COMMAND_SAFE_ADDRESS;
       else process.env.COMMAND_SAFE_ADDRESS = was;
@@ -562,7 +573,18 @@ describe('Money’s accounts beyond the pools, live (brief update 2)', () => {
     const a = await moneyAccountsLive(r, { clOperating: other, horizonSeconds: 30 * 86_400, maxClaims: 200 });
     expect(seen).toEqual([other]);
     // no AssurancePool to ask: its figures are null, not zero
-    expect(a).toEqual({ cap: null, lossReserve: null, lr: null, clOp: 7, due30: null });
+    expect(a).toEqual({ cap: null, lossReserve: null, lossReserveFrom: null, lr: null, clOp: 7, clOperating: other, clFeesWallet: null, clFees: null, due30: null });
+  });
+
+  test('the CL Loss Reserve is the pool’s once it names one; until then the rollout’s', async () => {
+    const pool = getAddress('0x00000000000000000000000000000000000000a9');
+    const given = getAddress('0x00000000000000000000000000000000000000e7');
+    const r = (named: string): ChainReader => ({
+      read: async (calls) => calls.map((c) => (c.fn === 'decimals' ? 6n : c.fn === 'asset' ? USDC : c.fn === 'lossReserveAddress' ? named : c.fn === 'balanceOf' ? BigInt(usdc(c.args![0] === given ? 4 : 9)) : 0n)),
+    });
+    const o = { assurancePool: pool, lossReserve: given, horizonSeconds: 30 * 86_400, maxClaims: 200 };
+    expect(await moneyAccountsLive(r('0x0000000000000000000000000000000000000000'), o)).toMatchObject({ lossReserve: given, lossReserveFrom: 'config', lr: 4 });
+    expect(await moneyAccountsLive(r(LOSS_RESERVE), o)).toMatchObject({ lossReserve: LOSS_RESERVE, lossReserveFrom: 'pool', lr: 9 });
   });
 
   test('each read that fails is null; the rest still show', async () => {
@@ -585,7 +607,9 @@ describe('Money’s accounts beyond the pools, live (brief update 2)', () => {
   test('with the AssurancePool unreadable, its figures are null', async () => {
     const broken: ChainReader = { read: async (calls) => (calls.some((c) => c.contract === 'AssurancePool') ? Promise.reject(new Error('execution reverted')) : reader.read(calls)) };
     const m: any = await moneySection(db, { ...read(), chain: broken });
-    expect([m.M.apBack, m.M.apMem, m.M.cap, m.M.cover, m.M.drawn, m.M.lr]).toEqual([null, null, null, null, null, null]);
+    expect([m.M.apBack, m.M.apMem, m.M.cap, m.M.cover, m.M.drawn]).toEqual([null, null, null, null, null]);
+    // the CL Loss Reserve is still read: the rollout's, while the pool can't say
+    expect([m.M.lr, m.CL.cllrFrom]).toEqual([7.75, 'config']);
     expect(m.M.due30).toBe(80.25);
   });
 

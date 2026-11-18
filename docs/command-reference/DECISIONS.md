@@ -758,6 +758,14 @@ prototype in this folder). The page sheets are copied from it; the sections carr
   Treasury Safe is the co-op's Ops Safe. Member cash (Lithic), the Credit Settlement Account and the book's
   monthly Spread and residual aren't wired yet: they're null, and the cells say so rather than show a
   sample.
+- **Where it sits has Clear Lending's accounts, and Member cash** (18 Nov, Kai: they were missing). The structure
+  adds Member cash and Clear Lending's four (CL Operating, the Credit Settlement Account, the CL Loss Reserve, the CL
+  Fees wallet) in their own group, `cl` (migration 0083). CL Operating, the Loss Reserve and the Fees wallet are the
+  chain's USDC. The Loss Reserve is the AssurancePool's `lossReserveAddress()` once the Assurance batch has run (day
+  7); until then the rollout's (`ASSURANCE_LOSS_RESERVE`, Base Sepolia's by default), and its panel says which. The
+  Fees wallet is the Assurance fee payer's. Member cash and the Credit Settlement Account are Lithic's, not wired:
+  live they say "Not connected yet" and a dash, never $0. The Clear Treasury Safe isn't a row: it is the Ops Safe,
+  whose USDC is already the co-op's balance, and a row would count it twice.
 - **The loss ladder is live only once every layer is read.** Its first rungs are the Spread and the
   residual capital, which aren't read yet, so live it says it isn't real yet, and the compact ladder on
   the gate falls back to the assurance cell. The demo is the reference's.

@@ -212,3 +212,8 @@ td.c-id{font-family:var(--f-mono);font-size:12px;color:var(--fg-70);white-space:
 .naf-a{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:6px;font-size:12px}
 .naf-a a{color:inherit}
 .nl-r > span .naf-w,.naf-w{color:var(--underway);font-size:12.5px}
+
+/* Money › Where it sits: an account nothing reads yet (Member cash and the Credit Settlement Account, until Lithic is
+   wired) says so in the Source column, with a hollow dot, and shows a dash, never a $0 nobody read */
+.nh-src.none{color:var(--fg-50)}
+.nh-src.none i{background:transparent;box-shadow:inset 0 0 0 1px var(--fg-50)}

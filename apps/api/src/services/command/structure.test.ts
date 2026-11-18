@@ -18,7 +18,7 @@ beforeAll(async () => {
 describe('the structure', () => {
   test('writes the contracts, entities, boards and who decides, once', async () => {
     const first = await structureCommand(db);
-    expect(first).toEqual(['43 contracts', '7 accounts', '10 entities', '3 boards']);
+    expect(first).toEqual(['43 contracts', '12 accounts', '10 entities', '3 boards']);
     // a second start leaves it alone
     expect(await structureCommand(db)).toEqual([]);
   });
@@ -168,8 +168,8 @@ describe('Money with only the structure', () => {
           ),
       };
       const m: any = await moneySection(db, { level: TOTALS, reveal: false, now: new Date(), chain });
-      // by group: BondVault is the co-op's, after its operating cash and balance
-      expect(m.ACCTS.map((a: any[]) => a[0])).toEqual(['sav', 'yld', 'pay', 'ap', 'ops', 'coop', 'bond']);
+      // by group: BondVault is the co-op's, after its operating cash and balance; Clear Lending's four last, apart
+      expect(m.ACCTS.map((a: any[]) => a[0])).toEqual(['sav', 'yld', 'cash', 'pay', 'ap', 'ops', 'coop', 'bond', 'clop', 'clset', 'cllr', 'clfee']);
       // BondVault holds the bond buyers' money, read from the chain; the rest have nothing yet
       expect(m.ACCTS.map((a: any[]) => [a[0], a[5]]).filter(([, v]: any[]) => v)).toEqual([['bond', 290.38]]);
       // the co-op's to use, owed back at maturity: what it keeps back, and what the Safe may take

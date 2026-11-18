@@ -5,9 +5,10 @@ import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, 
 import type { Db, Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, moneyAccountsLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { CL_LOSS_RESERVE_BASE_SEPOLIA, assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, moneyAccountsLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { payoutKeeperConfigFromEnv } from '../payoutFunding/fundingStatus.js';
 import { CL_OPERATING_BASE_SEPOLIA } from '../payoutFunding/topUp.js';
+import { assuranceFeeConfig } from '../assuranceFees/config.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
 import { settlementFundingLive, settlementFundingSeed } from './settlementFunding.js';
@@ -1276,7 +1277,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
 
   const { rows: accts } = await db.query<{ id: string; name: string; purpose: string; owner_group: string; source: string; swatch: string }>(
     // by group, as the page brackets them (an account added later, BondVault, joins its group), then in order
-    `SELECT * FROM command.accounts ORDER BY CASE owner_group WHEN 'members' THEN 0 WHEN 'set' THEN 1 ELSE 2 END, position`,
+    `SELECT * FROM command.accounts ORDER BY CASE owner_group WHEN 'members' THEN 0 WHEN 'set' THEN 1 WHEN 'coop' THEN 2 ELSE 3 END, position`,
   );
   const { rows: snaps } = await db.query<{ account_id: string; balance_cents: string }>('SELECT account_id, balance_cents FROM command.account_snapshots ORDER BY as_of');
   const weeks = (id: string) => snaps.filter((s) => s.account_id === id).map((s) => Number(s.balance_cents) / 100);
@@ -1386,11 +1387,18 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   // (Lithic), the Credit Settlement Account and the credit book's monthly Spread and residual aren't wired yet: null.
   // Seeded, none is sent: the demo's balances are the prototype's.
   const MX: Record<string, number | null> = {};
+  // Clear Lending's accounts on chain, by address: Where it sits draws them, and each one's panel names it
+  let CL: { clop: string | null; cllr: string | null; cllrFrom: 'pool' | 'config' | null; clfee: string | null } | null = null;
   if (provider === 'live') {
     const keeper = payoutKeeperConfigFromEnv(process.env);
     // CL Operating: the Safe the payout top-ups draw from, as the top-up job resolves it
     const clOperating = (process.env.PAYOUT_TOPUP_SAFE || '').trim() || (payoutChainId() === 84532 ? CL_OPERATING_BASE_SEPOLIA : '');
-    const acc = await moneyAccountsLive(chainOf(o, 'money'), { assurancePool: assurancePoolV2, clOperating, horizonSeconds: keeper.standingDays * 86_400, maxClaims: keeper.maxClaims }).catch(() => null);
+    // the CL Loss Reserve: the pool's own once its Assurance batch has run, until then the rollout's (ASSURANCE_LOSS_RESERVE);
+    // the CL Fees wallet: the Assurance fee payer's
+    const lossReserve = (process.env.ASSURANCE_LOSS_RESERVE || '').trim() || (payoutChainId() === 84532 ? CL_LOSS_RESERVE_BASE_SEPOLIA : '');
+    const clFees = assuranceFeeConfig().clFees;
+    const acc = await moneyAccountsLive(chainOf(o, 'money'), { assurancePool: assurancePoolV2, clOperating, lossReserve, clFees, horizonSeconds: keeper.standingDays * 86_400, maxClaims: keeper.maxClaims }).catch(() => null);
+    if (acc) CL = { clop: acc.clOperating, cllr: acc.lossReserve, cllrFrom: acc.lossReserveFrom, clfee: acc.clFeesWallet };
     Object.assign(MX, {
       // the Credit Backstop and Member Assurance compartments, the coverage cap, what's covered now and approved draws not yet paid
       apBack: assurance ? assurance.backstop : null,
@@ -1401,6 +1409,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       // the CL Loss Reserve's USDC (where released draws go), CL Operating's, and payout claims due within 30 days
       lr: acc?.lr ?? null,
       clOp: acc?.clOp ?? null,
+      clFees: acc?.clFees ?? null,
       due30: acc?.due30 ?? null,
       // the Clear Treasury Safe: the co-op's Ops Safe, whose USDC is the co-op's balance
       treasury: coop ? coop.usdc : null,
@@ -1414,16 +1423,22 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const vault = provider === 'live' ? await bondVaultLive(chainOf(o, 'money')) : null;
   if (vault) M.vault = vault.held;
   const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault ? { bond: vault.held } : {}), ...(coop ? { coop: coop.balance } : {}), ...(payouts ? { pay: payouts.held } : {}) };
+  // live, Clear Lending's accounts are the chain's; Member cash and the Credit Settlement Account (Lithic) aren't read
+  // yet, so live their balance is null (the page says so) rather than a $0 nobody read
+  const UNREAD = new Set(['cash', 'clset']);
+  if (provider === 'live') for (const [id, k] of [['clop', 'clOp'], ['cllr', 'lr'], ['clfee', 'clFees']] as const) if (MX[k] != null) live[id] = MX[k]!;
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
-    const now = live[a.id] ?? w.at(-1) ?? 0;
+    const unread = provider === 'live' && (UNREAD.has(a.id) || (['clop', 'cllr', 'clfee'].includes(a.id) && live[a.id] == null));
+    const now: number | null = unread ? null : (live[a.id] ?? w.at(-1) ?? 0);
     const series =
       a.id === 'ap' ? AP_BAL
       : a.id === 'yld' && chainPool ? chainPool.cashWeeks
       : a.id === 'sav' && reserve ? [...reserve.weeks.slice(0, -1), now]
       : a.id === 'ops' && bank ? bank.weeks
       : a.id === 'coop' && coop ? coop.weeks
-      : [...w.slice(0, -1), now];
+      : unread ? []
+      : [...w.slice(0, -1), now as number];
     // the USDC behind savings is in the vault, not at Bridge: Bridge is how it arrives
     // the co-op's balance is the Ops Safe's USDC (its ClearCredit is a claim still to be cashed, from the PayoutPool or the AssurancePool's excess, shown apart)
     const [purpose, source] =
@@ -1442,6 +1457,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const counts = await memberCounts(db, o);
   return {
     M: { ...M, ...MX }, Y, Y_DEP,
+    // Clear Lending's accounts' addresses, live; null seeded or when they can't be read
+    CL,
     // where the co-op's balance is held, whether that's the Ops Safe, and in what
     COOP,
     // the $10 offers' line: what the co-op owes for them, apart from its balance
