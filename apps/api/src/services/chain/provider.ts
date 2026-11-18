@@ -31,9 +31,20 @@ const MULTICALL = new ethers.Interface([
   'function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)',
 ]);
 
+/*
+ * The public Base Sepolia node's limit, as it actually phrases it: code -32007, "25/second request
+ * limit reached". None of the words the check below looked for -- not "rate limit", not "too many" --
+ * so it was taken for an answer, never re-sent to the backup, and surfaced through ethers as "could
+ * not coalesce error". The Earn page's event scans (eth_getLogs, which cannot ride in a multicall)
+ * were where it showed: a pool cost basis and a redeemed-gains figure lost to a limit that the
+ * backup is there for.
+ */
+const RATE_LIMIT_CODES = new Set([-32007, 429]);
+
 /** An RPC's way of saying "not now", as opposed to an answer. */
-export function isRateLimited(message: string | undefined): boolean {
-  return /rate limit|too many requests|429|exceeded.*capacity|throttl/i.test(message ?? '');
+export function isRateLimited(message: string | undefined, code?: unknown): boolean {
+  if (typeof code === 'number' && RATE_LIMIT_CODES.has(code)) return true;
+  return /rate limit|too many requests|429|exceeded.*capacity|throttl|request limit reached|"code":\s*-32007\b/i.test(message ?? '');
 }
 
 /**
@@ -150,7 +161,7 @@ class ClearRpcProvider extends ethers.JsonRpcProvider {
     if (!this.backup) return results;
     const limited = new Set(
       results
-        .filter((r) => isRateLimited((r as unknown as ethers.JsonRpcError).error?.message))
+        .filter((r) => isRateLimited(rpcError(r)?.message, rpcError(r)?.code))
         .map((r) => r.id),
     );
     if (limited.size === 0) return results;
@@ -160,6 +171,9 @@ class ClearRpcProvider extends ethers.JsonRpcProvider {
     return results.map((r) => byId.get(r.id) ?? r);
   }
 }
+
+/** The error a batch entry carries in place of a result, if it carries one. */
+const rpcError = (r: ethers.JsonRpcResult) => (r as unknown as Partial<ethers.JsonRpcError>).error;
 
 /** Calls sent to the backup, and reads that rode in a multicall, since start -- logged by the sweep. */
 let overflowCalls = 0;
