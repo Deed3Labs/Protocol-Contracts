@@ -1,112 +1,93 @@
 # What stands behind it
 
 The contracts pay from fixed sources in a fixed order. Contributed money is at stake in two places:
-a bond coming due, and a merchant's payout that the lending pool may be asked to fund. The detail is
-in [The reserve](../protocol/reserve.md) and
-[Settlement and the float](../protocol/settlement.md).
+the lending pool's money deployed to Clear Lending, and a bond coming due. The detail is in
+[Settlement and the float](../protocol/settlement.md#lendingpool), [Bonds](../protocol/bonds.md) and
+[The reserve](../protocol/reserve.md).
 
-| | Bonds at maturity | Merchant payout claims |
+| | Bonds at maturity | Lending pool deployments |
 |---|---|---|
-| First | Bond vault holdings | The payout pool's own cash |
-| Then | Treasury allowance to the vault | Lending pool's available cash |
-| Then | AssurancePool excess, then buffer | Bond vault's deployable excess |
-| Then | | Treasury allowance to the payout pool |
-| Last | | AssurancePool excess, then buffer |
-| Never | AssurancePool primary reserve | AssurancePool primary reserve |
+| First | Bond vault holdings | Returns from Clear Lending: interest, then principal |
+| Then | Treasury allowance to the vault | |
+| If still short | Paid what there is; the rest recorded as owed and paid as money arrives | A loss charge lowers the value of every share |
+| Under an Enforcement Notice | The Collateral Agent's distribution rounds | |
+| Never | The AssurancePool | The AssurancePool |
 
-## The AssurancePool's three tiers
+## The AssurancePool
 
-**The AssurancePool is the co-op's reserve against member defaults. It holds its money in three
-tiers, and the primary tier is never lent.** Each tier is an amount in USDC
-([The reserve → Three tiers](../protocol/reserve.md#three-tiers)).
+**The AssurancePool is the co-op's reserve. It holds USDC in separate compartments, lends nothing,
+and no lending pool, bond or payout contract holds its address.** Nothing on the Earn side can draw
+on it ([The reserve](../protocol/reserve.md)).
 
-| Tier | What it pays for | Lent to the bond vault or payout pool |
+| Compartment | What it pays | How money leaves |
 |---|---|---|
-| Primary | Debt written off after a member defaults, once the buffer is empty | Never |
-| Buffer | Written-off debt, before the primary tier | Only while the reserve ratio is at target, and only after the excess |
-| Excess | Withdrawals by an approved address | First |
+| Credit Backstop | Principal Clear Lending has charged off | A draw: Clear Lending requests it, a co-op signer approves it, a different signer releases it, only to Clear Lending's loss-reserve address |
+| Member Assurance | Member Assurance grants | Two signers release each grant, only to the co-op's Assurance disbursement address |
 
-The reserve ratio, RTD (reserve to debt), is the primary reserve divided by what it stands behind:
-the part of members' credit that collateral does not cover, plus the bond gap (below). The buffer is
-lent only while that ratio is at or above its target, so it is lent only while the primary reserve
-is at target. The primary reserve is never lent.
-
-The excess is not held for contributors. An address on the AssurancePool's withdrawal list can
-withdraw it. The list is empty when the pool is deployed, and no deployment step adds anyone. Who
-can add to it is in [Governance](../governance/README.md).
+A draw is released only within the available coverage: the Credit Backstop's balance less draws
+approved and not yet paid, capped at a coverage cap two signers post each month. The Credit
+Backstop keeps a floor tied to the credit it covers, and money moves between compartments only by a
+proposal one signer makes and a different signer carries out, after at least 14 days unless it moves
+into the Credit Backstop.
 
 ## Bonds at maturity
 
-**A bond is paid from the bond vault, then the treasury's allowance, then the AssurancePool.** When
-a holder redeems a matured bond, the vault pays from:
+**A bond is paid from the bond vault, then the treasury's allowance.** When a matured bond is
+settled, the vault pays from:
 
-1. **Its own holdings** of USDC.
-2. **The treasury**, up to the lesser of the allowance the co-op's Safe has given the vault and what
-   the Safe holds. This is a contribution, not a loan. It comes back to the Safe as deployable
-   excess.
-3. **The AssurancePool**: excess first, then buffer while the reserve ratio is at target. The vault
-   records what it borrows.
+1. **Its own holdings** of USDC. The Redemption Reserve keeps back every bond due within 90 days
+   that will not roll, and a glide schedule across the rest, never less than 30% of what is
+   outstanding ([BurnerBonds → Where the proceeds go](./burner-bonds.md#where-the-proceeds-go)).
+2. **The treasury**, up to the lesser of the allowance it has given the vault and what it holds. This
+   is a contribution, not a loan.
 
-If the three together fall short, the redemption fails and nothing moves.
+If the two together fall short, the bond is paid what there is and the rest is recorded as owed.
+What is owed is kept back ahead of anything else, and anyone can trigger its payment as money
+arrives. While any of it is owed, no bond can be bought back.
 
-What the vault owes the AssurancePool is repaid from money above the redemption reserve, before the
-Safe can withdraw anything. Anyone can trigger that repayment.
+**Bond money is kept apart.** The vault's USDC is the bonds' collateral, held for bondholders
+under the Collateral Agent. The vault has no path to or from the AssurancePool, and it lends
+nothing: not to the payout pool, not to the lending pool. Above the reserve, money leaves only to
+Clear Lending's registered multisig, through the Collateral Agent.
 
-**The bond gap counts in the reserve ratio.** The bond gap is the face value due within the reserve
-window that neither the vault's holdings nor the treasury's allowance can pay. It is added to what
-the AssurancePool stands behind, so a gap lowers the ratio and raises the reserve the target calls
-for.
+**Under an Enforcement Notice**, the Collateral Agent pays bondholders in rounds, in proportion to
+each bond's amount due at the time of the notice, and every other payment out of the vault stops
+([BurnerBonds → The Collateral Agent](./burner-bonds.md#the-collateral-agent)).
 
-**Bond money is kept apart from the credit book.** Proceeds sit in the vault, not the AssurancePool.
-The AssurancePool has no way to pull money from the vault; the vault only borrows from it and repays
-it. The vault lends to the payout pool only from its deployable excess, never from the redemption
-reserve.
+## Lending pool deployments
 
-## Merchant payout claims
+**Money the lending pool deploys comes back only as Returns from Clear Lending.** Members' credit
+repayments go to Clear Lending, apart from what the payout pool is owed; Clear Lending pays the pool
+interest at the Funding Rate and returns what was deployed. Interest is billed each month, and
+interest left unpaid past its due date is added to the Deployed Balance
+([The lending pool → How holders are paid](./lending-pool.md#how-holders-are-paid)).
 
-**When a merchant's payout has come due and the payout pool cannot pay it, the payout pool borrows
-for it.** Payouts are paid strictly in order. Once the next unpaid payout's window has run out,
-anyone can trigger the borrowing. It draws the shortfall from each source in turn, each only for
-what the one before could not cover:
-
-1. **The lending pool**, up to its available cash.
-2. **The bond vault**, from its deployable excess only.
-3. **The treasury**, up to the allowance the co-op's Safe has given the payout pool. This is
-   capital, not a loan: the treasury takes the position it pays for.
-4. **The AssurancePool**: excess, then buffer while the reserve ratio is at target, never primary.
-
-The lending pool comes first. Its depositors' cash is the first money lent to pay a merchant.
-
-### Repayment order
-
-**A member's repayment repays the payout pool's lenders before it settles anything else.** From the
-part of each repayment that goes to the payout pool, it:
-
-1. repays what was **lent**: the lending pool, then the bond vault, then the AssurancePool, each up
-   to what it is owed;
-2. pays **carry** from what is left, up to the carry set aside for its lenders, split among the three
-   in proportion to what each was owed before step 1.
-
-The lending pool is repaid first. Carry is shared in proportion, not in order. How it reaches the
-lending pool's depositors is in [The lending pool](./lending-pool.md#how-depositors-are-paid).
+While any withdrawal request waits in the queue, the pool deploys nothing more, so cash coming back
+goes to the queue first.
 
 ## What does not stand behind the lending pool
 
-**Nothing in the contracts covers a loss on money the lending pool has lent.**
+**Nothing in the contracts covers a loss on money the lending pool has deployed.**
 
-- The AssurancePool lends to the payout pool and the bond vault. It does not lend to, or reimburse,
-  the lending pool.
-- If a loss larger than the whole pool were written down, the pool would report the uncovered part
-  in a public event. Nothing acts on it.
-- The AssurancePool's primary reserve pays for written-off debt to whoever retires that debt on the
-  credit ledger. Nothing routes that payment to the lending pool.
+- The AssurancePool does not lend to, or reimburse, the lending pool.
+- The Credit Backstop pays Clear Lending's charged-off principal to Clear Lending's own loss-reserve
+  address. No contract passes that payment on to the lending pool.
+- A loss is passed to holders by a loss charge, posted by two valuation signers. It lowers the value
+  of every share outstanding, queued shares included, after any holdbacks have absorbed their part.
 
 See [Risks](./risks.md#credit-losses).
 
+## Merchant payouts
+
+**Contributed money no longer pays merchants.** The lending pool does not lend to the payout pool,
+and the bond vault lends nothing. When a merchant's payout comes due and the payout pool cannot pay
+it from its own cash, it draws on the treasury's allowance to the payout pool, which is capital, not
+a loan.
+
 ## The treasury's allowances are discretionary
 
-Both treasury steps read the allowance the co-op's Safe has given each contract at the moment of the
-draw. The Safe's owners set those allowances themselves, and can lower them to zero. A zero allowance
-means that step contributes nothing and the next source is asked. Who can sign for the Safe can be
-read on the chain: see
+Both treasury steps read the allowance the treasury has given each contract at the moment of the
+draw. The treasury's owners set those allowances themselves, and can lower them to zero. A zero
+allowance means that step contributes nothing. Who can sign for each Safe can be read on the chain:
+see
 [On-chain authority → Who holds each role today](../governance/on-chain-authority.md#who-holds-each-role-today).

@@ -22,8 +22,9 @@ in [Savings and equity credits](./savings-and-equity-credits.md#equity-credits).
 
 ## The assurance reserve
 
-The protections are paid from the assurance reserve, the co-op's shared safety fund. **Your savings
-are never used to cover someone else's claim.**
+The protections are paid from the assurance reserve: **Member Assurance**, one of the two
+compartments of the co-op's reserve, which pays members' grants and nothing else. Each grant takes two
+people at the co-op to pay. **Your savings are never used to cover someone else's claim.**
 
 ### The reserve's figures and reports
 
@@ -31,10 +32,11 @@ Not available yet.
 
 ### What anyone can read on chain
 
-The co-op's reserve against members' credit is the AssurancePool, and anyone can read it on
-chain: its balances, and its reserve ratio against its target. How to read it is in
+The co-op's reserve is the AssurancePool, and anyone can read it on chain: the balance of each
+compartment, Member Assurance and the Credit Backstop, and where the Credit Backstop stands against
+its floor. How to read it is in
 [Investors → What anyone can read](../investors/on-chain-data.md#the-assurancepool), and what it
-holds and pays for is in [Protocol → The reserve](../protocol/reserve.md). The target, and who sets
+holds and pays for is in [Protocol → The reserve](../protocol/reserve.md). The floor, and who sets
 it, is in [Governance → Parameters](../governance/parameters.md#the-reserve).
 
 ## Making a claim

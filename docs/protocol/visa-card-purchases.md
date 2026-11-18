@@ -115,7 +115,7 @@ payment call for it. What the code records:
   ([`reconcileService.ts`](../../apps/api/src/services/reconciliation/reconcileService.ts),
   [Reconciliation](../developers/integrations/lithic.md#3-reconciliation)).
 - **Clear Lending funds the credit part.** Nothing is borrowed from the `LendingPool` per purchase
-  ([section 4](#4-borrowing-from-the-lendingpool)).
+  ([section 4](#4-funding-from-the-lendingpool)).
 
 ## 3. Settlement on chain
 
@@ -163,14 +163,17 @@ part as a pending hold. The function reference is in
 [RevolvingIssuer — the tiered line](./credit.md#revolvingissuer--the-tiered-line) and
 [Card settlement](./settlement.md#card-settlement).
 
-## 4. Borrowing from the LendingPool
+## 4. Funding from the LendingPool
 
 Nothing borrows from it. Since Phase 2f (decision 17) the `LendingPool` is the Yield Pool and lends
 only to Clear Lending, as recorded two-person Deployments. `borrow` reverts and `borrowableToday` is
 zero, and deploy 27 revoked the card settler's old `BORROWER_ROLE`. Clear Lending funds card
 settlement from what it deploys, and its treasury pays the pool back as Returns (`returnFunds`).
-The API sends no pool transaction for a card purchase or a repayment. The pool itself is described
-in [LendingPool](./settlement.md#lendingpool).
+The API sends no pool transaction for a card purchase or a repayment. Settlement Funding moves cash
+for whole settlements, not single purchases: the funding desk deploys through the pool's settlement
+lane before each settlement cut-off and the SettlementForwarder sends it on to the card settlement
+account ([Automatic Settlement Funding](../operators/settlement-funding.md)). The pool itself is
+described in [LendingPool](./settlement.md#lendingpool).
 
 ## 5. Repayment and carry
 
@@ -209,7 +212,7 @@ sends the money next is in [Repayment comes back](./settlement.md#repayment-come
 ledger's routing in [Repayment](./credit.md#repayment).
 
 **Nothing is repaid to the pool.** These routes emit `TierRepaid`, and no tier is funded by the
-`LendingPool` any more ([section 4](#4-borrowing-from-the-lendingpool)), so the API sends no pool
+`LendingPool` any more ([section 4](#4-funding-from-the-lendingpool)), so the API sends no pool
 transaction after a repayment.
 
 ## 6. Reversals and refunds
@@ -241,7 +244,7 @@ event itself and again in the sweep:
 - **Credit part lower** (a refund on the same transaction): `reverseCardSpend(ref, difference)`. It
   reverts above what the ref has left, materialises carry, clears the tiers dearest first, and takes
   the claim back from `cardSettlementAccount` with `reversePurchase`. Nothing is repaid to the
-  pool ([section 4](#4-borrowing-from-the-lendingpool)).
+  pool ([section 4](#4-funding-from-the-lendingpool)).
 - **Credit part higher**: the contract settles a ref once, so the purchase is marked
   `needs_review` with the difference in the error.
 

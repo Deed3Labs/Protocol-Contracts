@@ -10,7 +10,8 @@ together:
 | Where you see it | **Credit** on Home | **Term plans** on Home |
 
 Both open once your identity is verified. See
-[Getting started](./getting-started.md#verifying-your-identity).
+[Getting started](./getting-started.md#verifying-your-identity). Credit is offered state by state, so
+your line also needs your state of residence on record, in a state where Clear offers credit.
 
 ## Your credit line
 
@@ -31,6 +32,15 @@ Each tier except Savings carries a charge per cycle, called **carry**. The Credi
 each tier's rate beside its name, and so does **Spends from** on the Card page. **Limit breakdown**
 shows what backs each tier.
 
+### What backs your line automatically
+
+**What you hold in Savings and in the lending pool on Earn backs your line without asking each
+time.** Each backing is signed by your own wallet in the background. A bond is different: it backs
+your line only once you agree, because that agreement includes what happens to the bond at maturity.
+
+To stop it, turn off **Back my credit line with my Savings and Earn automatically** in **Settings →
+Advanced → Permissions**. Turning it off stops new backing only.
+
 ### Spending order
 
 You never pick which tier pays. **Your card spends your cash first, then your credit, cheapest tier
@@ -40,7 +50,8 @@ When you repay, it works the other way round: **the most expensive tier clears f
 
 ### Your cycle
 
-Your line runs in cycles. The cycle card on Home tells you where you stand:
+Your line runs in monthly cycles. Each ends on the same day of the month, at 11:59:59 pm Pacific
+time. The cycle card on Home tells you where you stand:
 
 | What it says | What it means |
 |---|---|
@@ -50,7 +61,12 @@ Your line runs in cycles. The cycle card on Home tells you where you stand:
 | To clear this cycle | You're carrying unsecured credit that your expected deposit won't cover. This is the one state that asks you to act |
 
 What has to be cleared each cycle is the unsecured part — what you've drawn on Income and Boost —
-plus any carry left over from a plan you've closed. Draws on Savings and Assets don't need clearing.
+plus any carry left over from a plan you've closed.
+
+Draws on Savings and Assets never make you miss a cycle. They have a small minimum each cycle: the
+carry on your asset-backed draws and, when you carry no unsecured credit, 1% of what you've drawn on
+Savings and Assets (at least $1). If the minimum goes unpaid, only new draws on Savings and Assets
+pause, until it is paid.
 
 ### Repaying
 
@@ -60,21 +76,41 @@ rest spills into your Spendable balance.
 
 ### Automatic repayment
 
-In **Settings → Advanced → Permissions**, **Repay from USDC deposits** turns on automatic repayment.
-When a USDC deposit arrives, what you owe is repaid from it first, most expensive tier first, and
-the rest is yours. A card purchase that is still pending isn't debt yet; it's repaid once it
-settles. Turning the switch off clears anything set aside and the money is simply yours again.
+**Auto-clear from deposits**, in **Settings → Advanced → Permissions**, clears what you owe from
+money that arrives in Spendable, such as a paycheck sent to your account and routing numbers, before
+the rest is yours to spend. It's turned on when you join, unless you decline, and you can turn it
+off or back on at any time.
+
+- **What it clears** is your choice: income-backed credit and Boost only, which is where it starts,
+  or everything, most expensive tier first.
+- **USDC deposits are never touched.** USDC in Ready to allocate, and your savings, are never taken
+  automatically. When you owe something, the same page offers to clear it now from your cash, with
+  one tap.
+- **Federal benefit payments are left alone** unless you choose otherwise.
+- A card purchase that is still pending isn't debt yet; it's cleared once it settles.
 
 ### If a cycle ends and you still owe
 
-Clear renews your cycle automatically when you owe nothing. If a cycle ends while you're still
-carrying a balance, you enter a grace period:
+A cycle that ends with its unsecured part unpaid is a **missed cycle**. Nothing is taken from your
+savings or anything else you hold for a missed cycle.
 
-- **During grace**, you can't draw new credit. Clearing what you owe brings your line back, and the
-  next cycle starts.
-- **If grace runs out with a balance still owed**, your line is in default. Your tiers are set to
-  zero and the debt is written off on the co-op's books, and savings or bonds that were backing what
-  you drew can be taken to settle it.
+- **One missed cycle** halves your income-backed and Boost limit, until you finish a cycle at zero.
+- **Two missed cycles in a row** pause your line: no new credit until the second amount is paid.
+  Clear may then send a **cure notice**, which two people record on the chain.
+- **Default** comes only if that amount is still unpaid when the grace period ends: 15 days after the
+  second due date, and at least 10 days after the notice. Without a notice there is no default, and
+  paying the amount cancels the notice.
+
+When a line defaults, only what was past due can be collected from what backs it: pledged bonds
+first, paid out early, then pool shares, which are redeemed through the pool's queue and never
+seized. Savings are used only for what you drew against Savings. Anything beyond what you owe comes
+back to you. If the default stands, Clear can also close the line, which two people record on the
+chain; the whole balance is then due, and the savings held for your Savings tier can be applied to
+it.
+
+**Paused time never counts against you.** While the savings vault or your account is paused, no
+cycle is judged missed and no default can be declared, and due dates and grace periods move back by
+the time the pause lasted.
 
 ## Your term limit and paying over time
 
@@ -105,8 +141,8 @@ Open a plan from **Term plans** on Home. Each plan shows what you owe today, you
 what's still owed. You can pay from Ready to allocate or from savings that aren't backing credit.
 Paying early always costs less.
 
-With automatic repayment on, your installments are collected from USDC deposits as they fall due —
-never ahead of schedule.
+With auto-clear on, installments are cleared from money arriving in Spendable as they fall due —
+never ahead of schedule. USDC in Ready to allocate is never taken.
 
 ### Changing a split
 
@@ -123,6 +159,8 @@ If you miss an installment, the plan's sheet shows what's behind and the date to
 - what you owe on your plans is written off and your open plans close
 - term plans are paused and your term limit goes to zero
 - your card, savings and membership are not affected
+
+Time while the savings vault or your account is paused doesn't count toward a plan falling behind.
 
 To bring term plans back, pay back what was written off: **Term plans → Limit** shows what's left
 and a **Pay it back** button. Once it is fully repaid the pause lifts, and a new term limit is set

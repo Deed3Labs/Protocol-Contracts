@@ -272,52 +272,64 @@ only the surplus is redeemable.
 Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 
 <details>
-<summary><b>Base Sepolia</b> — the working network (36 contracts)</summary>
+<summary><b>Base Sepolia</b> — the working network (48 contracts)</summary>
 
+
+Each contract's page in the [contract reference](docs/protocol/contracts/README.md) lists its functions and who can call them.
 
 | Contract | Address |
 |---|---|
-| ClearCredit | `0x1d9f1ECDc70b31256aFA75A73F991cfAa8bC928C` |
-| RevolvingIssuer | `0x7f15E45aB5eAF0307200274211a90FcbD6716070` |
-| TermIssuer | `0xe467d87756FDF9645D751485CDB72A1E14683721` |
-| CollateralRegistry | `0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf` |
-| LimitCalculator | `0xbA9880F46128027D39F7694e3cfdf077D716c0a7` |
-| LendingPool | `0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23` |
-| Liquidator | `0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593` |
-| MerchantRegistry | `0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5` |
-| PayoutPool | `0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66` |
-| OffersIssuer | `0x150EA8497700E127a3dFe44a98a618bcC7D8841c` |
-| NetworkRegistry | `0x0a9FE081622d41069DF22898D969F13e65783D7f` |
-| MembershipRegistry | `0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8` |
-| AccessManager | `0x19aBfD8aC2015743238a85F849873870fEDcf207` |
-| AssurancePool | `0xf5E40414410672636Ab1691ae19D2Aa1c1705840` |
-| AssuranceOracle | `0x2E5241bE8d35a0034aF5C6538ABd683655c2Fe38` |
-| TokenRegistry | `0x4B13b49167941d128DB56008AdfDac805f868a86` |
-| ClearUSD | `0x56195066D4ada8D371254061047f76FA2BBd0Ae3` |
-| ClearUSDUpgradeable | `0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1` |
-| CLRUSDTokenPool | `0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1` |
-| ESADepositVault | `0x836401Ed3e2bF7CAb5e2721188E74B834511413b` |
-| SavingsIntentFactory | `0xee289AF20ddf5654E688ABDEa45D0d741528C8Bc` |
-| ClaimEscrow | `0x24DAE7b66dC31657265260B5d9092280B57Bc37D` |
-| BurnerBondFactory | `0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA` |
-| BurnerBond | `0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556` |
+| [AccessManager](docs/protocol/contracts/AccessManager.md) | `0x23aF9715761156C24C2de3666587753168f28DBe` |
+| [AssuranceOracle](docs/protocol/contracts/AssuranceOracle.md) | `0x2E5241bE8d35a0034aF5C6538ABd683655c2Fe38` |
+| [AssurancePool](docs/protocol/contracts/AssurancePool.md) | `0xf5E40414410672636Ab1691ae19D2Aa1c1705840` |
+| [AssuranceTimelock](docs/protocol/contracts/AssuranceTimelock.md) | `0xE77F3C4B94Fa25A021f3Ef8d0E5D06F4Ea057C6b` |
+| [BondValuer](docs/protocol/contracts/BondValuer.md) | `0x7f63e01B1BBd79509138D825B5Ef4b186E9502C8` |
+| [BondVault](docs/protocol/contracts/BondVault.md) | `0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855` |
+| [BurnerBond](docs/protocol/contracts/BurnerBond.md) | `0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A` |
 | BurnerBondDeposit | `0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c` |
-| BondVault | `0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855` |
-| BondValuer | `0x5cf830BE04a0E42246334b90870B87ccd898c31e` |
-| DeedNFT | `0x1a4e89225015200f70e5a06f766399a3de6e21E6` |
-| Validator | `0x18C53C0D046f98322954f971c21125E4443c79b9` |
-| ValidatorRegistry | `0x979E6cC741A8481f96739A996D06EcFb9BA2bc91` |
-| FundManager | `0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e` |
-| MetadataRenderer | `0x849e13500658a789311923b86b0eB60a87C870E5` |
-| Subdivide | `0x3c947D71cb1698dFd4D7551b87E17306865C923F` |
-| Fractionalize | `0xeC464847C664Cc208478adbe377f7Db19e199823` |
-| FractionTokenFactory | `0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc` |
-| Create2Deployer | `0x2BFba336A1B5E79E4717CA00677C65DDCa63cB06` |
+| [BurnerBondFactory](docs/protocol/contracts/BurnerBondFactory.md) | `0xf36dE3553509BAafB835bC37c97f529Adf42a96a` |
+| [CLRUSDTokenPool](docs/protocol/contracts/CLRUSDTokenPool.md) | `0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1` |
+| [ClaimEscrow](docs/protocol/contracts/ClaimEscrow.md) | `0x24DAE7b66dC31657265260B5d9092280B57Bc37D` |
+| [ClearCredit](docs/protocol/contracts/ClearCredit.md) | `0x5923e02EdFb6724a08A28B79C902b40c748082Bc` |
+| [ClearUSD](docs/protocol/contracts/ClearUSD.md) | `0x56195066D4ada8D371254061047f76FA2BBd0Ae3` |
+| [ClearUSDUpgradeable](docs/protocol/contracts/ClearUSDUpgradeable.md) | `0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1` |
+| [CollateralAgent](docs/protocol/contracts/CollateralAgent.md) | `0x48840620F9F4780e7d5986F6365A4acdD7D82825` |
+| [CollateralRegistry](docs/protocol/contracts/CollateralRegistry.md) | `0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A` |
+| [Create2Deployer](docs/protocol/contracts/Create2Deployer.md) | `0x2BFba336A1B5E79E4717CA00677C65DDCa63cB06` |
+| [CreditTimelock](docs/protocol/contracts/CreditTimelock.md) | `0x39411C23825844c4B14ad964a661d1Cb8238d330` |
+| [DeedNFT](docs/protocol/contracts/DeedNFT.md) | `0x1a4e89225015200f70e5a06f766399a3de6e21E6` |
+| [ESADepositVault](docs/protocol/contracts/ESADepositVault.md) | `0x836401Ed3e2bF7CAb5e2721188E74B834511413b` |
+| [EarnControls](docs/protocol/contracts/EarnControls.md) | `0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97` |
+| [EarnTimelock](docs/protocol/contracts/EarnTimelock.md) | `0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911` |
+| [FractionTokenFactory](docs/protocol/contracts/FractionTokenFactory.md) | `0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc` |
+| [Fractionalize](docs/protocol/contracts/Fractionalize.md) | `0xeC464847C664Cc208478adbe377f7Db19e199823` |
+| [FundManager](docs/protocol/contracts/FundManager.md) | `0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e` |
+| [HolderDirections](docs/protocol/contracts/HolderDirections.md) | `0x8ec35b88CCb59576957917a4F4B937b491815Cda` |
+| [LendingPool](docs/protocol/contracts/LendingPool.md) | `0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23` |
+| [LendingPoolSettlementLane](docs/protocol/contracts/LendingPoolSettlementLane.md) | `0xeccfDDCac073a657CFB94D3Ff9f22997e7EcBAbD` |
+| [LimitCalculator](docs/protocol/contracts/LimitCalculator.md) | `0x6C0859EcD05C6BB604c91B9De1CAf04724744a20` |
+| [Liquidator](docs/protocol/contracts/Liquidator.md) | `0x621784117C037b3D20AF54e04589818e919e33f3` |
+| [MembershipRegistry](docs/protocol/contracts/MembershipRegistry.md) | `0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8` |
+| [MerchantRegistry](docs/protocol/contracts/MerchantRegistry.md) | `0x8f4C6f9472359BF749c12C840c4269341a423c1b` |
+| [MetadataRenderer](docs/protocol/contracts/MetadataRenderer.md) | `0x849e13500658a789311923b86b0eB60a87C870E5` |
+| [NetworkRegistry](docs/protocol/contracts/NetworkRegistry.md) | `0xee10a0d79a718cd13c49b68ce6ccCda398781164` |
+| [OffersIssuer](docs/protocol/contracts/OffersIssuer.md) | `0x52EDD619B18D537B4c880d6Ff0925891ea05Edb1` |
+| [PauseClock](docs/protocol/contracts/PauseClock.md) | `0x794Acc0c1BD0effaa7B413F60C5B56F60A229959` |
+| [PayoutPool](docs/protocol/contracts/PayoutPool.md) | `0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861` |
+| [PoolShareEnforcer](docs/protocol/contracts/PoolShareEnforcer.md) | `0xEB6f2c654d078Df56D78946767d5A43307eb4fa1` |
+| [RateSchedule](docs/protocol/contracts/RateSchedule.md) | `0xdb73Ae35D0A22A4CA6bc03F263CF006D16a28b97` |
+| [RevolvingIssuer](docs/protocol/contracts/RevolvingIssuer.md) | `0xBec598bee24cF2973d42eA85e6028621180fE2F0` |
+| [SavingsIntentFactory](docs/protocol/contracts/SavingsIntentFactory.md) | `0xF8074182d9ec61970bBC9E4aaE182B42dF7Bb74B` |
+| [SettlementForwarder](docs/protocol/contracts/SettlementForwarder.md) | `0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c` |
+| [Subdivide](docs/protocol/contracts/Subdivide.md) | `0x3c947D71cb1698dFd4D7551b87E17306865C923F` |
+| [TermIssuer](docs/protocol/contracts/TermIssuer.md) | `0x1b1695353f14E889906237D9b9C386eD0393da57` |
+| [TokenRegistry](docs/protocol/contracts/TokenRegistry.md) | `0x4B13b49167941d128DB56008AdfDac805f868a86` |
+| [Validator](docs/protocol/contracts/Validator.md) | `0x18C53C0D046f98322954f971c21125E4443c79b9` |
+| [ValidatorRegistry](docs/protocol/contracts/ValidatorRegistry.md) | `0x979E6cC741A8481f96739A996D06EcFb9BA2bc91` |
+| [VaultTimelock](docs/protocol/contracts/VaultTimelock.md) | `0xb49c85E8E7eFB4401aaAb2745C9198a239071994` |
 
-`ESADepositVaultLegacy` and `RevolvingIssuerV1` are retained for reference; superseded. The bond factory
-and its USDC collection were replaced on 2026-11-03; the old ones are recorded as `BurnerBondFactoryLegacy`,
-`BurnerBondLegacy`, `BurnerBondDepositLegacy` and `BondValuerLegacy`. The legacy collection no longer
-sells, and its bonds still redeem from the same `BondVault`.
+23 older records (names ending in `PreAudit`, `Pre2d`, `Pre2f`, `Legacy` or `V1`) are kept in `deployments/base-sepolia/` for history. They are retired and replaced by the contracts above.
+`AssurancePool` and `AssuranceOracle` are the retired Phase 1 reserve; the live reserve is `AssurancePoolV2`. `LendingPoolSettlementLane` is a prepared `LendingPool` implementation that the proxy does not run yet.
 
 </details>
 

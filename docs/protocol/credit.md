@@ -17,11 +17,11 @@ write to the same ledger through the same `NetworkRegistry`. Deployed addresses 
 | `OffersIssuer.sol` | A capped line the co-op draws to give new members a one-time offer |
 | `CollateralRegistry.sol` | Pledges per member, exposure per member, the CLRUSD lock |
 | `LimitCalculator.sol` | Collateral value × haircut, or an attested figure, written onto the revolving tiers |
-| `Liquidator.sol` | Seizes pledged CLRUSD or pool shares and settles the tier they backed; answers and applies a pledged bond's own payments |
-| `AccessManager.sol` | Admin, operator and member roles |
-| `MembershipRegistry.sol`, `NetworkRegistry.sol` | Membership records `AccessManager.isMember` reads; issuer → (ledger, pool, oracle) and member → issuers |
+| `Liquidator.sol` | Seizes pledged CLRUSD and settles the savings tier; applies pool-share proceeds, a pledged bond's own payments and its share of a Collateral Agent distribution to the tiers they back |
+| `AccessManager.sol` | Admin, operator and member roles, and the scoped credit roles (`CREDIT_LINES_ROLE`, `CREDIT_LIMITS_ROLE`, `CREDIT_SETTINGS_ROLE`) |
+| `MembershipRegistry.sol`, `NetworkRegistry.sol` | Membership records `AccessManager.isMember` reads; issuer → ledger, member → issuers, and the money-path list |
 | `CreditPool.sol` | Legacy: credits deposited for reserve token at `discountRate`, serviced from a queue. No deploy script or spec uses it |
-| `CarryIndex.sol`, `ExposureMath.sol` | Lazy carry accrual (one index per tier, one per plan); what the AssurancePool would pay on a position |
+| `CarryIndex.sol`, `ExposureMath.sol` | Lazy carry accrual (one index per tier, one per plan); the share of a position no collateral covers |
 
 ---
 
@@ -55,8 +55,9 @@ arithmetic is in [Refunds and repayments](./refund-repayment-plan.md).
 `onlyCreditIssuer` admits a caller only when `networkRegistry.isIssuerOf(caller, address(this))`.
 A transfer requires the sender to be a member, an operator or the payout pool (`senderIsMember`),
 then asks every issuer either party is enrolled with (`_validateAcrossIssuers`); one refusal reverts
-with `StableCreditTransactionInvalid`. `_systemTransfer` — opening a line, a write-off, an undirected
-repayment — notifies issuers through `syncCreditPositions` and cannot be refused.
+with `StableCreditTransactionInvalid`. `_systemTransfer` — opening a line, an undirected repayment
+— and `_writeOffTransfer` — a write-off — notify issuers through `syncCreditPositions` and cannot be
+refused.
 
 **The ceiling is a sum.** `issuerCreditLimit[issuer][member]` is each issuer's part, set by
 `createCreditLine` (which enrols the member and grants the MEMBER role if needed) and
@@ -67,10 +68,18 @@ repayment — notifies issuers through `syncCreditPositions` and cannot be refus
 
 `repayCreditBalance(member, amount)` (anyone, in reserve token) and credits sent to a member who
 owes are undirected: the waterfall below attributes them. `repayCreditBalanceFor(payer, member,
-amount)` is issuer-only and directed: the calling issuer records it and no other is told. Reserve
-token goes through `_routeRepayment`: the payout pool takes up to `totalSupply() −
-payoutPool.held()`, the AssurancePool (`depositRepayment`) the rest, or all of it when no payout pool
-is set. See [`settlement.md`](./settlement.md) and [`reserve.md`](./reserve.md).
+amount)` is issuer-only and directed: the calling issuer records it and no other is told.
+
+**Reserve token goes to the payout pool, then to Clear Lending.** `_routeRepayment` offers the
+payout pool what `_payoutPoolNeeds()` returns: its payables (`totalSupply() +
+payoutPool.refundsOwed()`) less what members' repayments have already funded
+(`payoutPool.memberFunded()`), floored at zero, through `payoutPool.receiveRepayment`. The rest
+goes to `lenderOperating`, Clear Lending's operating address (`setLenderOperating`, admin), and all
+of it does when no payout pool is set; a remainder with no operating address named reverts
+(`StableCreditNoLenderOperating`). Each leg emits `RepaymentRouted`. The ledger holds no
+AssurancePool address and calls none (section 13): Clear Lending pays the co-op's Credit Backstop
+itself, through the pool's `deposit`. See [`settlement.md`](./settlement.md) and
+[`reserve.md`](./reserve.md).
 
 **An undirected repayment clears the dearest position first, across issuers.**
 `_settleRepayment` asks each issuer for `nextRepaymentRate(member)`, takes the highest, and offers
@@ -94,8 +103,11 @@ counsel on what "most expensive" means for a capped position.
 
 **Lost debt.** The ledger's own address has a credit line of `type(uint128).max − 1`.
 `writeOffCreditLine` transfers from it to the member, burning their debt and leaving the credits
-they spent in circulation. `lostDebtOutstanding` rises only there and falls only in `burnLostDebt`,
-where a holder gives up credits for `AssurancePool.reimburse`, capped at `lostDebt()`.
+they spent in circulation. `lostDebtOutstanding` (read as `lostDebt()`) rises only there and nothing
+lowers it. Lost debt is not redeemable: `burnLostDebt` always reverts with
+`StableCreditLostDebtNotRedeemable` (section 13, decision 3). A write-off is Clear Lending's
+charge-off, which it may recover through its own draw on the AssurancePool's Credit Backstop
+compartment ([`reserve.md`](./reserve.md)); no credit path calls the AssurancePool.
 
 ---
 
@@ -103,8 +115,8 @@ where a holder gives up credits for `AssurancePool.reimburse`, capped at `lostDe
 
 ### CreditIssuer — the base
 
-A credit period (`issuedAt`, `expiration`, `graceLength`, `paused`) is set by the `onlyOperator`
-`initializeCreditLine` or `updateCreditPeriod`.
+A credit period (`issuedAt`, `expiration`, `graceLength`, `paused`) is set by
+`initializeCreditLine` or `updateCreditPeriod` (`CREDIT_LINES_ROLE`).
 
 | State | Test | Effect on a transfer |
 |---|---|---|
@@ -128,7 +140,7 @@ enforces.
 on a different cycle length; `setTierRate` keeps the order both ways and checkpoints the index.
 `setTierActive(false)` stops new draws only. `openLine` sets a capacity per tier, opens the ledger
 line at their sum and starts a period of one cycle when `periodLength` is 0. `setTierCapacity`
-(`onlyOperator`) reverts below what is drawn and writes the new total to the ledger.
+(`CREDIT_LIMITS_ROLE`) reverts below what is drawn and writes the new total to the ledger.
 
 **Draw cheapest first, repay dearest first.** On a transfer, `_syncCreditPositions` materialises
 both parties' carry, then `_draw`s the sender's shortfall into active tiers in order, each up to
@@ -285,8 +297,10 @@ first by what each costs now after the caps, the same order as the ledger's band
 
 ### TermIssuer — plans
 
-**A plan is a purchase with its own rate, clock and schedule.** `openPlan` (`onlyOperator`)
-reverts unless `installments` is 1, 2, 4, 6 or 12 (`isOfferedSplit`), the member is neither
+**A plan is a purchase with its own rate, clock and schedule.** `openPlan(terms, signature)` is
+submitted by a `CREDIT_LINES_ROLE` holder with the member's EIP-712 signature over the
+`PlanTerms` they were shown (audit H-4). It reverts unless `installments` is 1, 2, 4, 6 or 12
+(`isOfferedSplit`; 13 for a large loan), the member is neither
 suspended nor behind on any plan, and `totalPrincipalOf(member) + purchase <= termLimitOf[member]`.
 It initialises the plan's own `CarryIndex`, fixes its schedule, and calls `originatePurchase(member,
 purchase, merchant, payout, _feeRecipient(), purchase − payout)`.
@@ -299,7 +313,8 @@ scheduleTotal` once every installment is due. `arrearsOf` is that figure less `p
 
 `setSplit(planId, installments)` re-spreads what is outstanding from now. Arrears are not spread:
 they go into `scheduleFloor` and are due at once. A member's own re-split reverts while behind, after
-`MAX_SPLIT_CHANGES` (3), or within one `installmentLength` of the last; an operator's does not.
+`MAX_SPLIT_CHANGES` (3), or within one `installmentLength` of the last; a `CREDIT_LINES_ROLE`
+holder's does not.
 
 | Payment | Caller | Notes |
 |---|---|---|
@@ -315,7 +330,7 @@ yet covered; `defaultableAt` adds `DEFAULT_AFTER_INSTALLMENTS` (2) installment l
 anyone may call `declareDefault(member)` — see [Default](#default). A plan the member has secured
 under MB-05 (`securePlanWithSignature`) is left out of that rule and follows 12.14 instead.
 
-**Refunds.** `closePlanForRefund(planId, amount, merchant, payout)` (`onlyOperator`) reverses up to
+**Refunds.** `closePlanForRefund(planId, amount, merchant, payout)` (`CREDIT_LINES_ROLE`) reverses up to
 the principal still owed and pays back, in cash, up to what was repaid and not already refunded
 (`refundedOf`). Carry materialised in the call is withheld from the cash, up to the cash. The plan
 closes once what is outstanding is no more than that carry.
@@ -352,7 +367,7 @@ reads each plan's monthly figure.
 
 | | Revolving | Term |
 |---|---|---|
-| Ceiling | Sum of `tierCapacity`, written by `setTierCapacity` / `LimitCalculator.pushCapacities` | `termLimitOf[member]`, written by `setTermLimit` (`onlyOperator`) |
+| Ceiling | Sum of `tierCapacity`, written by `setTierCapacity` / `LimitCalculator.pushCapacities` | `termLimitOf[member]`, written by `setTermLimit` (`CREDIT_LIMITS_ROLE`) |
 | Underwritten on | Pledged collateral, or an attestation (`LimitCalculator.attest`) | An operator-entered figure; nothing on-chain reads collateral for it |
 | Drawn by | A ledger transfer or `settleCardSpend` | `openPlan` only |
 
@@ -372,7 +387,7 @@ resizes this contract's ledger line: `cap()` is its `creditLimitOf`, `owed()` it
 
 | Function | Caller | Effect |
 |---|---|---|
-| `grant(member)` | operator | Once per member, never past `cap()`. Enrols the member here at a zero limit, then transfers `offerAmount` from this line |
+| `grant(member)` | `CREDIT_LINES_ROLE` | Once per member, never past `cap()`. Enrols the member here at a zero limit, then transfers `offerAmount` from this line |
 | `expire(member)` | anyone | After `grantedAt + expiryWindow`, takes back the unspent part, capped at what the member holds and what the line owes, with `reversePurchase(this, amount, member, amount, address(0), 0)` |
 | `settle()` | anyone | Pulls USDC from `treasury` up to its allowance and balance (`treasuryAvailable`) and repays the line with `repayCreditBalance`, which routes it like any repayment |
 
@@ -394,8 +409,8 @@ Carry reaches the ledger only when an issuer materialises it through `accrueCarr
 limit-checked: a member may come to owe more than their ceiling, and `creditLimitLeftOf` is then 0.
 
 **Where carry goes.** A revolving tier's carry is minted to `tierCarryRecipient[tier]`, or the
-issuer's `carryTreasury` when unset; a plan's to `TermIssuer.carryTreasury`. All are operator-set,
-and neither treasury can be zero. What the PayoutPool does with carry it holds is in
+issuer's `carryTreasury` when unset; a plan's to `TermIssuer.carryTreasury`. All are set by a
+`CREDIT_SETTINGS_ROLE` holder, and neither treasury can be zero. What the PayoutPool does with carry it holds is in
 [`settlement.md`](./settlement.md).
 
 ## Collateral and the ceiling
@@ -423,7 +438,8 @@ needed to cover what is drawn under it: `drawn × 10_000 / haircutBps`, converte
 refuses any transfer out of that amount and lets a `LIQUIDATOR_ROLE` holder `seize` up to it. The
 savings side is in [`savings.md`](./savings.md).
 
-`exposureOf(member)` — what the pool would pay if the member defaulted on everything — applies
+`exposureOf(member)` — what a default on everything would leave uncovered, which the
+AssurancePool reads through `poolExposure()` for its Credit Backstop floor — applies
 `ExposureMath.positionExposure` to each issuer's `debtByKind`: zero for `Savings`, `debt −
 collateral × haircut` floored at zero for `AssetExternal` and `AssetInternal`, all of it for
 `Unsecured`. An unregistered kind falls back to `ExposureMath.backingOf`: anything but `SAVINGS`,
@@ -445,9 +461,11 @@ flowchart TD
   LQ -->|"up to the Defaulted Amount"| SF["settleFromCollateral<br/>or payPlan"]
   T["Term: past defaultableAt"] -->|"declareDefault (anyone)"| WT["writeOffCreditLine<br/>unsecured plans' principal"]
   WT --> TS["plans closed, termLimitOf 0,<br/>termSuspended"]
-  WR --> LD["lostDebt()"]
+  WR --> LD["lostDebt()<br/><i>not redeemable</i>"]
   WT --> LD
-  LD -->|"burnLostDebt"| AP["AssurancePool.reimburse"]
+  LD --> CL["Clear Lending's charge-off"]
+  CL -->|"requestDraw, then two co-op signers"| CB["AssurancePool<br/>Credit Backstop"]
+  WT -->|"repayWrittenOff (anyone)"| LO["lenderOperating"]
 ```
 
 **Revolving default is computed, never declared, and fails closed (12.5, 10b; Addendum 2).** A
@@ -465,7 +483,7 @@ line is in default (`inDefault`) only when:
 With no timestamp there is no default. After the second miss the line is frozen until that amount is
 paid. Income Assurance, a DEFERRAL or REDUCED workout, and a pause in force hold default off, and
 paused time lengthens the grace period (Phase 2g). `triggerDefault(member)` (anyone) records a
-computed default and reverts otherwise; the Liquidator's `_requireCurrentDefault` reads the same
+computed default and reverts otherwise; the Liquidator's `_currentDefault` reads the same
 `inDefault`. A member whose only debt is secured never misses, so never defaults on the revolving
 line: an unpaid Secured Minimum only pauses secured draws. Unsecured term plans keep TermIssuer's own
 default (below).
@@ -479,12 +497,15 @@ issuer the member is enrolled with — capped at `totalDrawnOf(member)`, or the 
 with no exposure source. `_onDefault` zeroes tier capacities and revokes the MEMBER role; positions
 stay.
 
-**Write-offs are attributed like repayments.** `writeOffCreditLine` credits the member through
-`_systemTransfer`, so `_settleRepayment` offers the written-off amount to the member's issuers by
-rate band, dearest first, whichever issuer declared the default. On a revolving-only member that
-clears the dearest tiers — the unsecured ones in the deployed configuration — and leaves the savings
-tier drawn for liquidation. A term write-off on a member who also holds a dearer revolving tier is
-absorbed by that tier first; `TermIssuer._onDefault` then closes the plans regardless.
+**A write-off is attributed to the issuer that wrote it off, and to no other (audit X-6).**
+`writeOffCreditLine` credits the member through `_writeOffTransfer`: every issuer the member is
+enrolled with is told, so what each measures stays in step, but the reduction is offered only to
+the calling issuer (`absorbRepayment(member, remaining, 0)`), never through the rate-band
+waterfall. A revolving write-off clears that issuer's tiers dearest first — the unsecured ones in
+the deployed configuration — and, being only the uncovered share, leaves the collateralised tiers
+drawn for enforcement. A term write-off reduces the unsecured plans, which `TermIssuer._onDefault`
+then closes; it never clears a revolving tier. Clear Lending is the lender of record and bears the
+loss.
 
 **Liquidation (MB-05, Phase 2f stage 2).** Enforcement against collateral runs only on a default
 after notice and cure, or on a Shortfall after its wait, and never on a missed cycle alone (C2): a
@@ -548,10 +569,13 @@ delegatecall module its constructor creates.
 **Term.** `declareDefault` materialises carry on every plan, writes off the principal of the
 unsecured open plans, adds it to `writtenOffOf`, closes those plans, sets `termLimitOf` to 0 and
 `termSuspended`. Plans secured under MB-05 stay open and owed. Membership is
-not revoked. `repayWrittenOff` (anyone) deposits reserve token into the AssurancePool against
-`writtenOffOf − recoveredOf`. `reinstate` lifts the suspension for anyone once that is fully repaid,
-and for an operator at any time; a new `setTermLimit` is still needed. What the AssurancePool holds
-and how `reimburse` pays is in [`reserve.md`](./reserve.md).
+not revoked. `repayWrittenOff(member, amount)` (anyone, paying) sends reserve token to the ledger's
+`lenderOperating` against `writtenOffOf − recoveredOf` (`WrittenOffRepaid`): the write-off was
+Clear Lending's loss, so the recovery is its money. If the Credit Backstop covered that loss, Clear
+Lending pays the co-op back itself with the pool's `deposit(RECOVERY)`. `reinstate` lifts the
+suspension for anyone once that is fully repaid, and for a `CREDIT_LIMITS_ROLE` holder at any time;
+a new `setTermLimit` is still needed. The Credit Backstop and its draws are in
+[`reserve.md`](./reserve.md).
 
 **Secured term plans (12.14, Phase 2e).** A plan the member has secured under MB-05
 (`securePlanWithSignature`, EIP-712 `SecurePlan(uint256 planId,uint256 nonce,uint256 deadline)`)
@@ -580,12 +604,14 @@ inherited meaning.
 | Contract | Authority it checks |
 |---|---|
 | `StableCredit` | `access.isAdmin` for setters and UUPS upgrades; `NetworkRegistry.isIssuerOf` for every issuer entry |
-| `CreditIssuer` and children, `CreditPool` | `stableCredit.access().isOperator`; issuer UUPS upgrades by `owner()` |
-| `OffersIssuer` | As above, except `setCap`, `setTerms`: owner or operator; `setTreasury`: owner |
+| `CreditIssuer` and children | `stableCredit.access().hasCreditRole` with a scoped role (audit H-4): `CREDIT_LINES_ROLE` opens lines and plans, services credit periods and processes refunds; `CREDIT_LIMITS_ROLE` sets term limits and tier capacities; `CREDIT_SETTINGS_ROLE` sets tiers, rates, treasuries, card settlers and caps; `CREDIT_ATTESTER_ROLE` records the two-person attestations. Only `settleFromCollateral` still takes `isOperator` (the Liquidator). Issuer UUPS upgrades by `owner()` |
+| `CreditPool` | `stableCredit.access().isOperator` |
+| `OffersIssuer` | `grant`: `CREDIT_LINES_ROLE`; `setCap`, `setTerms`: owner or operator; `setTreasury`: owner |
 | `CollateralRegistry`, `LimitCalculator`, `Liquidator`, `NetworkRegistry` | Their own `OPERATOR_ROLE` and `DEFAULT_ADMIN_ROLE`; `LimitCalculator` adds `ATTESTOR_ROLE` |
 | `MembershipRegistry` | `REGISTRAR_ROLE`, `PAUSER_ROLE` |
 
-`AccessManager.isOperator` is the `"OPERATOR"` role or admin. `isMember` is the `"MEMBER"` role, an
+`AccessManager.isOperator` is the `"OPERATOR"` role or admin. `hasCreditRole(role, account)` is
+that role or admin; the plain operator role passes none of the credit roles. `isMember` is the `"MEMBER"` role, an
 operator, or `membershipRegistry.isActiveMember` (ACTIVE, expiry zero or ahead), so `revokeMember`
 does not remove a registry member. `grantOperator` is `onlyAdmin`. `grantMember` and `revokeOperator`
 pass `onlyOperator`, but the inner `grantRole`/`revokeRole` require the role admin — `"OPERATOR"` for
@@ -602,7 +628,10 @@ Accelerated (1.5× from the start, `payLedgerStore.ts`); everyone else is on the
 The co-op's own definition of membership (the savings account, as in a credit union) is in
 [Governance → Membership](../governance/membership.md); nothing on the chain records it.
 
-`NetworkRegistry.registerIssuer` binds an issuer to a ledger, AssurancePool and oracle;
+`NetworkRegistry.registerIssuer(issuer, stableCredit)` binds an issuer to its ledger and nothing
+else (Phase 2c: the old pool and oracle fields stay zero). `listMoneyPath` (admin, once per address,
+never undone) lists a system contract as a money path, which the AssurancePool reads
+(`isMoneyPath`) to refuse its deposits;
 `enrolMember` is open to the issuer, its ledger or an operator; `deregisterIssuer` refuses while
 anyone is enrolled. Since Phase 4b (re-review M-E) registering and deregistering an issuer are
 `DEFAULT_ADMIN_ROLE` (the credit timelock after the handover), not the operator's. `deploy/20` makes `ClearCredit`, both issuers and `LimitCalculator` AccessManager

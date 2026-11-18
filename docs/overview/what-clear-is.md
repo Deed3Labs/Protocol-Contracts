@@ -32,8 +32,8 @@ the reserve. They are open source. If you want the detail, start with
 
 ## The products
 
-**Savings and send run on Base, the public network.** Credit lines, split plans, the Clear Visa
-card and payouts to shops run only on the test network for now, where nothing is real money. See
+**Savings and send run on Base, the public network.** Credit lines, split plans, Earn, the Clear
+Visa card and payouts to shops run only on the test network for now, where nothing is real money. See
 [Status, security and licensing](./status-and-security.md).
 
 ### Savings
@@ -75,31 +75,44 @@ yet. More in [Deeds and real-world assets](./deeds-and-real-world-assets.md).
 
 Protections from the co-op for the moments that go wrong — for example, rent paid for you if you
 lose your job. **Protections unlock as your equity credits grow,** not by which plan you are on. A
-claim is read by a person at the co-op.
+claim is read by a person at the co-op, and paid from the Member Assurance part of the co-op's
+reserve.
 
 ### Credit lines and split plans
 
 Members can spend on credit, in two separate ways:
 
 - **A credit line** that backs the Clear Visa card and spending at partner shops. How much it allows
-  depends on what backs it — your savings, or other things you have pledged.
+  depends on what backs it — your savings, what you hold on Earn, or your income. What you hold in
+  savings and in the lending pool backs it automatically, unless you turn that off; a bond backs it
+  only once you agree.
 - **Split plans**, for paying a purchase back in 1, 2, 4, 6 or 12 instalments. These draw on a
   separate limit that starts small and grows as you pay on time.
 
-Credit has a cost, called **carry**. If you pledge savings behind your credit line, the part covering
-what you have drawn can be held until you repay it; the rest stays free. More in
+Credit is offered state by state, and opens once your identity is verified and your state of
+residence is on record. Credit has a cost, called **carry**. If your savings back your credit line,
+the part covering what you have drawn is held until you repay it; the rest stays free. More in
 [How the money works](./how-the-money-works.md).
 
 ### Cards
 
-**The Clear Visa card** is for spending anywhere Visa is taken. A swipe at a shop outside the Clear
-network is paid from the co-op's float, and recorded against your credit line once the payment
-clears. It runs on the test network only.
+**The Clear Visa card** is for spending anywhere Visa is taken. It spends your card cash first. The
+rest of a swipe at a shop outside the Clear network is paid by Clear Lending, which funds the credit
+book, and recorded against your credit line once the payment clears. It runs on the test network
+only.
 
 **The Clear card** is Clear's own wooden membership card, for paying at Clear shops without your
 phone. It is planned and not available yet.
 
 Both, side by side: [Your cards](../members/cards.md).
+
+### Earn
+
+Two ways to hold money that are not savings. **A bond** costs less than its face value today
+and pays its face value at maturity. **The lending pool** lends to Clear Lending, which funds
+members' credit; a position shares in what the pool earns and loses, and nothing covers a loss. Both
+can back your credit line. See
+[Savings and equity credits](../members/savings-and-equity-credits.md#bonds-on-earn).
 
 ### Send
 

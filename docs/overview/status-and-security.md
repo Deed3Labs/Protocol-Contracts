@@ -10,12 +10,16 @@ nothing is real money.
 
 | Network | What is there |
 |---|---|
-| Base Sepolia | Everything: savings, send, the credit ledger and its issuers, shop payouts, the reserve, bonds, offers and the Deed track |
+| Base Sepolia | Everything: savings, send, the credit ledger and its issuers, shop payouts, the lending pool on Earn, bonds, the reserve, offers and the Deed track |
 | Base | Savings and send only: CLRUSD, the savings vault and the escrow behind link-based send |
 | Ethereum Sepolia | CLRUSD only, for testing moving it between networks |
 
-**The credit side is not on Base yet.** Credit lines, split plans, shop payouts and the reserve exist
-only on the test network today.
+**The credit side is not on Base yet.** Credit lines, split plans, shop payouts, Earn and the reserve
+exist only on the test network today.
+
+**On Base Sepolia, the credit, Earn and reserve contracts were deployed or upgraded in a rollout that
+began on November 17, 2026.** Since then, changes to them pass through timelocks: a multi-signature
+wallet proposes a change, and it can take effect only after 7 days.
 
 Every address is listed in the root README under
 [Deployed addresses](../../README.md#deployed-addresses).
@@ -35,10 +39,13 @@ Equity credits earned on a test network are recorded separately from those earne
 - **Unaudited.** No independent audit of the contracts has been done.
 - **Access control on every money path.** Contracts that move value check roles, can be paused, and
   guard against re-entry.
-- **No single key should hold the contracts.** Admin powers are meant to sit with the Ops Safe, a
-  multi-signature wallet, and each day-to-day job with its own wallet. Until they are handed over on
-  a network, the deployer key holds every role there. Who holds what is in
-  [On-chain authority](../governance/on-chain-authority.md).
+- **No single key should hold the contracts.** Admin and upgrade powers sit with multi-signature
+  wallets, and on Base Sepolia with timelocks that make every change wait 7 days. Each day-to-day job
+  has its own wallet. Until powers are handed over on a network, the deployer key holds every role
+  there. Who holds what is in [On-chain authority](../governance/on-chain-authority.md).
+- **Two people for the sharpest powers.** Pausing the savings vault or an account, taking a wallet
+  off the members list, and paying anything out of the reserve each take two different people. A
+  pause lapses after 72 hours unless it is renewed.
 - **Interfaces still move.** Contract functions and API shapes can change between versions.
 
 ## Licensing

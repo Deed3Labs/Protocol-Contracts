@@ -119,6 +119,7 @@ has the capability and not only the right.
 
 **The structure is not enforced on the chain.** The contracts know an admin, operators and members.
 Boards, councils, seats and reserved matters are not on the chain. Admin of the deployed contracts
-sits with the Ops Safe, a multi-signature wallet; how that works, and how to check who can sign for
-it, is in [On-chain authority](./on-chain-authority.md). The Command Center records the co-op's
+sits with four timelocks, each with a 7-day delay and a multi-signature wallet (a Safe) that proposes
+its changes; how that works, and how to check who can sign for each Safe, is in
+[On-chain authority](./on-chain-authority.md). The Command Center records the co-op's
 decisions; it does not enforce them ([The Command Center](./command-center.md)).

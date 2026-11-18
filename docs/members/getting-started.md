@@ -50,7 +50,8 @@ Security number or date of birth.
 ### What you can do while you wait
 
 **Savings and Earn are open before you are verified.** They hold your own money. Credit and the Clear
-Visa card open once verification clears.
+Visa card open once verification clears. Credit is offered state by state, so it also needs your
+state of residence on record, in a state where Clear offers it.
 
 ### The answers you might get
 

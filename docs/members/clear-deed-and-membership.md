@@ -83,8 +83,13 @@ Not available yet.
 
 ### Permissions
 
-**Settings → Advanced → Permissions** has the **Repay from USDC deposits** switch for automatic
-repayment. See [Credit](./credit.md#automatic-repayment).
+**Settings → Advanced → Permissions** is where you see what Clear can do without asking each time:
+
+- **Back my credit line with my Savings and Earn automatically.** See
+  [Credit](./credit.md#what-backs-your-line-automatically).
+- **Auto-clear from deposits**, and what it clears. See [Credit](./credit.md#automatic-repayment).
+- **Card spending from Savings**: how much your card may draw against your savings. You can lower it
+  or turn it off at any time.
 
 The other entries on that page, and turning them off, are not available yet.
 

@@ -80,7 +80,23 @@ export const JOBS = {
   Liquidator: 'Seizes pledged collateral and settles the tier it backed',
   MembershipRegistry: 'The membership records AccessManager reads',
   SavingsIntentFactory: 'Single-use escrows for savings deposits and redemptions',
+  RateSchedule: 'Credit products, listed rates and legal caps, by state',
+  SettlementForwarder: 'Sends USDC from CL Operating to the card settlement off-ramp',
+  LendingPoolSettlementLane: 'The next LendingPool code, with the settlement lane. Not active yet',
+  EarnControls: 'Shared Earn rules: eligibility, caps, pauses and transfers',
+  CollateralAgent: 'The bond collateral agent: enforcement, distributions and costs',
+  HolderDirections: "Bond holders' signed directions, counted on chain",
+  PoolShareEnforcer: 'Enforces pledged pool shares after a credit default',
+  PauseClock: 'How long a pause has affected each member',
+  CreditTimelock: 'The 7-day delay on credit contract changes',
+  EarnTimelock: 'The 7-day delay on Earn and lending pool changes',
+  AssuranceTimelock: 'The 7-day delay on Assurance Pool changes',
+  VaultTimelock: 'The 7-day delay on CLRUSD and vault changes',
 };
+
+// Records kept for history after a redeploy: `<Name>PreAudit`, `<Name>Pre2f` and the like.
+const RETIRED = /Pre(Audit|\d[a-z])$/;
+const jobOf = (name) => JOBS[name] || (RETIRED.test(name) ? `Retired. Replaced by ${name.replace(RETIRED, '')}` : '');
 
 // Arrowheads, as in the design: right, left, down, up.
 const R = (x, y) => ` M${x - 8} ${y - 5} L${x} ${y} L${x - 8} ${y + 5}`;
@@ -93,8 +109,7 @@ const CREDIT = {
   nodes: {
     RevolvingIssuer: ['RevolvingIssuer', 300, 250],
     TermIssuer: ['TermIssuer', 300, 50],
-    // Not deployed with the fresh credit stack (decision 47); the pre-audit one is retired.
-    OffersIssuer: [null, 300, 150, 'protocol/credit', 'The $10 offer to a new member. Not deployed yet'],
+    OffersIssuer: ['OffersIssuer', 300, 150],
     ClearCredit: ['ClearCredit', 500, 150],
     ClearUSD: ['ClearUSDUpgradeable', 500, 350],
     ESADepositVault: ['ESADepositVault', 300, 350],
@@ -107,12 +122,16 @@ const CREDIT = {
     MerchantRegistry: ['MerchantRegistry', 700, 50],
     CollateralRegistry: ['CollateralRegistry', 100, 150],
     LimitCalculator: ['LimitCalculator', 100, 250],
+    RateSchedule: ['RateSchedule', 100, 350],
+    SettlementForwarder: ['SettlementForwarder', 700, 350],
   },
   edges: [
     ['NetworkRegistry', 'TermIssuer', 'read', 'M180 50 H220' + R(220, 50)],
     ['NetworkRegistry', 'OffersIssuer', 'read', 'M180 50 H200 V150 H220' + R(220, 150)],
     ['CollateralRegistry', 'LimitCalculator', 'read', 'M100 172 V228' + D(100, 228)],
     ['LimitCalculator', 'RevolvingIssuer', 'read', 'M180 250 H220' + R(220, 250)],
+    ['RateSchedule', 'RevolvingIssuer', 'read', 'M180 350 H210 V250 H220' + R(220, 250)],
+    ['RateSchedule', 'TermIssuer', 'read', 'M180 350 H210 V50 H220' + R(220, 50)],
     ['ESADepositVault', 'ClearUSD', 'write', 'M380 350 H420' + R(420, 350)],
     ['TermIssuer', 'ClearCredit', 'write', 'M380 50 H400 V150 H420' + R(420, 150)],
     ['OffersIssuer', 'ClearCredit', 'write', 'M380 150 H420' + R(420, 150)],
@@ -122,9 +141,10 @@ const CREDIT = {
     ['LendingPool', 'PayoutPool', 'write', 'M820 50 H800 V150 H780' + L(780, 150)],
     ['BondVault', 'PayoutPool', 'write', 'M820 150 H780' + L(780, 150)],
     ['AssurancePool', 'PayoutPool', 'write', 'M820 250 H800 V150 H780' + L(780, 150)],
+    ['LendingPool', 'SettlementForwarder', 'write', 'M980 50 H990 V350 H780' + L(780, 350)],
   ],
   heads: ['Rules', 'Issue', 'Ledger', 'Cash out', 'Lenders'],
-  layers: [['Rules', ['NetworkRegistry', 'CollateralRegistry', 'LimitCalculator', 'MerchantRegistry']], ['Issue', ['TermIssuer', 'OffersIssuer', 'RevolvingIssuer']], ['Ledger and money', ['ClearCredit', 'ClearUSD', 'ESADepositVault']], ['Cash out', ['PayoutPool']], ['Lenders', ['LendingPool', 'BondVault', 'AssurancePool']]],
+  layers: [['Rules', ['NetworkRegistry', 'CollateralRegistry', 'LimitCalculator', 'RateSchedule', 'MerchantRegistry']], ['Issue', ['TermIssuer', 'OffersIssuer', 'RevolvingIssuer']], ['Ledger and money', ['ClearCredit', 'ClearUSD', 'ESADepositVault']], ['Cash out', ['PayoutPool', 'SettlementForwarder']], ['Lenders', ['LendingPool', 'BondVault', 'AssurancePool']]],
   sel: 'PayoutPool',
 };
 
@@ -175,7 +195,7 @@ function graph(def, kind, deployments) {
     return {
       name,
       href: urlOf(page || `protocol/contracts/${contract}`),
-      job: job || JOBS[contract] || '',
+      job: job || jobOf(contract),
       addr,
       short: short(addr),
       scan: addr ? NETWORKS[0].scan + addr : '',
@@ -219,8 +239,9 @@ function addressRows(deployments, net) {
   const have = deployments[net.dir] || {};
   const order = [...Object.values(CREDIT.nodes).map((n) => n[0]), ...Object.values(DEED.nodes).map((n) => n[0])].filter(Boolean);
   const names = Object.keys(have);
-  const sorted = [...order.filter((n) => names.includes(n)), ...names.filter((n) => !order.includes(n)).sort((a, b) => a.localeCompare(b))];
-  return sorted.map((name) => ({ name, job: JOBS[name] || '', addr: have[name] }));
+  const rest = names.filter((n) => !order.includes(n)).sort((a, b) => RETIRED.test(a) - RETIRED.test(b) || a.localeCompare(b));
+  const sorted = [...order.filter((n) => names.includes(n)), ...rest];
+  return sorted.map((name) => ({ name, job: jobOf(name), addr: have[name] }));
 }
 
 export function contractMap(deployments, contractIds) {
