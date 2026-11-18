@@ -169,6 +169,112 @@ there rather than after.
   data work is in Phases 3 and 5 below. Every function and event the update names is in the deployed
   Base Sepolia ABIs (`LendingPool`, `PayoutPool`, `RevolvingIssuer`), so there is no conflict to raise.
 
+## Brief update 2 (2026-11-17)
+
+[`command-reference/command-center-brief-update-2.md`](command-reference/command-center-brief-update-2.md)
+brings the app up to a new reference: two new tabs (Governance → Legal, Build → Signing), new and
+reworked cards on Governance, Money and Build, and a polish pass. Three PRs into `dev`, one per page
+group: Governance (with Home's entity tree and this plan), Money, Build.
+
+### Where the brief and the repo disagree (Kai's answers, 17 Nov)
+
+- **Which reference it replaces.** The new file is the redesign: the same page modules (`GOV2`,
+  `MONEY2`, `BUILD2`…) and page templates (`vx-tpl`, `n-tpl`, `bx-tpl`…) as
+  `design/command-center-ui/command-center.html`, which every redesigned page and its sheet were ported
+  from (`scripts/port/module.cjs`, `sheets.cjs`). `docs/command-reference/clear-command-center.html` is
+  the original prototype that `npm run port` reads; it hasn't changed since #744. **Kai: replace the
+  `design/` copy**; the `docs/` prototype stays. So the diff is the redesign's own tools run on the old
+  (#803) and new copies, not `npm run port`, which doesn't parse the redesign.
+- **The day-0 records are already in `dev`.** 00d8a17 came in with #905/#906. Nothing to merge.
+  `claude/new-session-e5u3cp` has five later commits that aren't in `dev` (the newest, "Signing plan:
+  the state attester grant as stage SA"); this work doesn't need them.
+- **The signing plan isn't in the repo.** `deployments/*/signing-plan.json` is gitignored; only the run
+  logs are committed. **Kai: commit it** after each plan run (it holds public addresses and call data
+  only). The API reads it from the repo; until the first one lands, the tab reads the newest
+  `run-log/*signing-plan*.log` for each step's status and wait, with no titles or calls.
+- **Signing sends from Command.** **Kai: port the signing page's MetaMask flow** into Build → Signing:
+  Base Sepolia only, the plan's exact call data, the step's named account only, Safe steps as
+  Transaction Builder files (as `tools/signing-page` does). Command holds no key.
+- **OffersIssuer's new record isn't pushed.** Contracts reads `OffersIssuer.json` by name when it lands;
+  until then the map counts it as not live and Retired shows `OffersIssuerPreAudit`.
+- **What the brief calls #854.** The repo's redesign reference was last replaced in #803 (Oct); #854 was
+  the live-refresh change. The diff below is against #803.
+
+### The port diff, page by page
+
+Sheets (`sheets.cjs`, rules added/removed): `bx` +224/−3, `n` +334/−4, `vx` +133/−1, `g` +6, `fm` and
+`m` one rule each, `ax` `cx` `sx` unchanged. The app's sheets equal the #803 copies except `n.css`,
+which carries the Assurance fees card's `.naf-*` (a2f76e0); those move to `live.css` or give way to the
+new card. Shell stylesheet: +134 rules (Home's `.h-*` additions and a copy of the signing styles; the
+Build template has its own copy).
+
+**Governance (`GOV2` → `governance2.tsx`)**
+- New: Legal tab (`renderLegal`, `legalPanel`, `lgRow`, `lgNotes`, `lgFile`, `lgLink`, `lfam`; data
+  `LREG`, `LFAM`, `LST`, `LCOUNSEL`, `LGATES`, `LS1`, `LORDER`, `LRESEARCH`, `LSPEC`, `LSPECS`, `LPRS`),
+  `TABS` gains it between Agreements and Calendar.
+- Entities: Clear Building Co. replaces the lending subsidiary (`ENT`, `ENTF`, `ESHORT`, `OWN`,
+  `PARENT`), `MANAGED` (owned by Holdings, run by the Manager), `ENT_FAM`, `kids`, `ROW4`, new `ENTXY`
+  and a 680px map; lines drawn once per parent (`busY`), `box` rewritten.
+- Agreements: header row and first-line alignment (`AGR`, `AST`), the versions timeline (`ticks`:
+  250px names, Today on the months row, labels near Today hidden, grounded dot labels, "Both companies
+  sign"), Waiting rows 70px with a hatched filler.
+- Small: `brief`, `G`, `ok`, `render`, `renderBoards`, `renderPanel`, `closeG`.
+- Home's entity tree (`HOME`): four rows for the new layout (viewBox 342×124), plus the money tile
+  "Payout funding" and copy in the demo queue.
+
+**Money (`MONEY2` → `money2.tsx`)**
+- Yield pool: the loop diagram (`.ny-dg`), `yieldProjection` with `accrue`, `days`, `area`, `node`,
+  `Y_RET`; the rate bars (`yr`, `yApy`, `yBorrowBps`, `facts`) on the deployed Funding Rate model;
+  `memberPayments` with `CARRY`, `MFEE`, `outSeg` and the Spread strip.
+- The loss ladder as one component: `lossLayers`, `lossLadder({compact})`, `lossVerdict`, `NEVER`;
+  compact on Overview, full on Pools.
+- Payout pool and Assurance: `TU` (automatic top-ups, the top-up wallet), `AF`/`AF_ST` (Assurance fees
+  by stage), "Into the pool" (repayments and interchange), `chip`, `step`, `steps`, `item`, `link`,
+  `legend`, `opts`, `gl`, `X`.
+- Cash: grouped accounts (`GROUPS`, `PLACES`, `.nh-g`): Member cash, the Clear Treasury Safe, and a
+  Clear Lending group (CL Operating, the Credit Settlement Account, CL Loss Reserve, CL Fees);
+  exact-share segments.
+- Copy and figures in `M`, `Y`, `C`, `AC`, `AP_BAL`, `B`, `act`, `gateCell`, `poolAP`, `q`, `st`, `t`,
+  `term`, `pts`, `sp`, `renderCash`, `renderOverview`, `closeN`. `mo` is gone.
+
+**Build (`BUILD2` → `build2.tsx`)**
+- New: Signing tab (`renderSigning`, `sgPanel`, `sgState`, `sgStep`, `sgStage`, `sgTag`, `sgTo`,
+  `sgMine`; data `SG` (51 steps), `SGW`, `SG_ACCT`, `SG_STAGES` with TU).
+- Contracts: the map's flow (`flowMount`, `setFocus`, `paintFocus`, `tick`, `toPx`, `at`, `FLOW_DOT`,
+  `FLOW_REV`, `MAP_INFO`), timelocks (`TLK`, `TL_OF`, `TLTXT`, `SAFE_OF`, `ROLE_KEY`, `CTRL`, `P`), the
+  Timelocks and helpers card (`CTR_AUX`) and Retired (`CTR_OLD`); `CTR`, `ctrOf`, `LAYERS`, `REL`,
+  `ord`, `p`, `mapKey`.
+- Security: automatic jobs (`AUTO`, `.bd-aj-*`); protocol rules `p-topup`, `p-cef`, `p-ix` (`KEYS`).
+- Small: `BR`, `COLS`, `CHANGES`, `FINDINGS`, `INCIDENTS`, `STAGES`, `TABS`, `render`, `setHash`,
+  `closeB`, "37 of 41" on Overview and Home.
+
+### Live sources
+
+- **Legal:** `GET /sections/legal` reads `Deed3Labs/clear-agreements` (`COMMAND_AGREEMENTS_REPO`) with
+  its own read-only token (`COMMAND_AGREEMENTS_TOKEN`, Contents: read on that repo only), cached like
+  the GitHub feed. Admin only; every other level gets the totals. Nothing from that repo is committed
+  here: the demo, seed and tests use the reference's placeholders, and a test fails if a real register
+  title turns up in `src/` or the fixtures (it reads the titles at test time only when the token is
+  set, and otherwise checks the placeholders' shape).
+- **Yield rate:** `fundingRate()`, `fundingRateAt(u)`, `utilization()`, `pendingRate()`, `rateModel()`
+  on the LendingPool (the Yield Pool since E2b), all WAD and annual; `RateModelProposed`/`Applied`
+  for the model and a pending change. No rate is computed in the client.
+- **Contracts:** live counts, timelocks, helpers and retired copies from `deployments/base-sepolia`
+  by name (the indexer's inventory), never from the reference's addresses.
+- **Signing:** the committed plan (format `clear-signing-plan/1`, parsed as `tools/signing-page` does)
+  and `run-log/`.
+- **Automatic jobs:** each job's own status endpoint, as the top-ups card reads it; "Not on yet" until
+  its env is set.
+
+### Order
+
+1. This plan, the reference, the sheets.
+2. Governance: Entities (and Home's tree), Agreements, Legal UI on placeholders, then `/sections/legal`.
+3. Money: Yield pool, the loss ladder, Payout pool and Assurance, Cash.
+4. Build: Contracts, Signing (read, then send), Security.
+5. Baselines at 1500, 1100 and 390 in Paper and Ink; `test`, `typecheck`, `playwright test empty`, the
+   crawl; `DECISIONS.md`; a PR per group.
+
 ## Plan
 
 One PR per phase into `dev`. Commits as each piece verifies; push at the end of each phase.
