@@ -464,7 +464,7 @@ describe('where the fee can never come from', () => {
   test('the migration adds the columns where the ledger shares the database', async () => {
     const db = new PGlite();
     await db.exec(`CREATE TABLE lithic_auth_decisions (transaction_token TEXT PRIMARY KEY); CREATE TABLE lithic_tier_snapshots (card_token TEXT PRIMARY KEY);`);
-    await db.exec(readFileSync(new URL('../../../migrations/0084_card_credit_fee.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../../../migrations/0086_card_credit_fee.sql', import.meta.url), 'utf8'));
     const { rows } = await db.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name IN ('lithic_auth_decisions', 'lithic_tier_snapshots') ORDER BY column_name`,
     );

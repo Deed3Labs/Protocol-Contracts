@@ -28,7 +28,7 @@ const ACCOUNTS = [
   // Clear Treasury Safe isn't one: it is the Ops Safe, whose USDC is already the co-op's balance.
   { id: 'cash', name: 'Member cash', why: 'Spendable at the Bank Partner, through Lithic · the card spends it', group: 'members', source: 'lithic', swatch: 'color-mix(in srgb,var(--fg) 72%,transparent)' },
   { id: 'clop', name: 'CL Operating', why: 'Safe · Deployments land here; top-ups and fees leave from here', group: 'cl', source: 'protocol', swatch: 'color-mix(in srgb,var(--land) 60%,var(--fg) 25%)' },
-  { id: 'clset', name: 'Credit Settlement Account', why: 'At the Bank Partner · prefunded so card credit swipes settle', group: 'cl', source: 'lithic', swatch: 'color-mix(in srgb,var(--land) 40%,var(--fg) 15%)' },
+  { id: 'clset', name: 'Credit Settlement Account', why: 'At the Bank Partner · funded before each daily card cut-off', group: 'cl', source: 'lithic', swatch: 'color-mix(in srgb,var(--land) 40%,var(--fg) 15%)' },
   { id: 'cllr', name: 'CL Loss Reserve', why: 'Safe · takes credit losses right after the Spread', group: 'cl', source: 'protocol', swatch: 'color-mix(in srgb,var(--fg) 58%,transparent)' },
   { id: 'clfee', name: 'CL Fees wallet', why: 'CDP · pays the Assurance fee into the pool, once funded', group: 'cl', source: 'protocol', swatch: 'color-mix(in srgb,var(--underway) 45%,transparent)' },
 ];

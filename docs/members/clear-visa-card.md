@@ -32,6 +32,9 @@ Asset-backed, then Income-backed, then Clear Boost if you've added it. The Card 
 under **Spends from**, with each tier's rate. How the tiers work is in
 [Credit](./credit.md#your-credit-line).
 
+**A purchase that draws on your credit line will have a 30¢ credit swipe fee.** A purchase your
+cash covers in full has none. Not charged yet.
+
 **The card draws on your savings only as far as you allow.** Set or lower that amount, or turn it
 off, in **Settings → Advanced → Permissions → Card spending from Savings**. There is also a daily cap
 on what card purchases can put on your credit line.

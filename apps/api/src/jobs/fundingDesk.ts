@@ -443,7 +443,7 @@ export function createFundingDesk(deps: DeskDeps) {
       // Waiting moves first (landed, failed, or a Return's USDC arrived), so in-flight is current.
       const settled = (await store.halted()) ? null : await settleWaiting(now, chainReads.walletBalance);
       const halted = await store.halted();
-      const [card, csa, collection, inFlight, marginOutstanding, measured, idle] = await Promise.all([
+      const [card, csa, collection, inFlight, marginOutstanding, measured, idle, marginHeld] = await Promise.all([
         deps.card({ now, coverage: cov }),
         bank.balance(bank.accounts.csa),
         bank.balance(bank.accounts.collection),
@@ -451,6 +451,8 @@ export function createFundingDesk(deps: DeskDeps) {
         store.marginOutstanding(),
         store.measuredLatencyMinutes(),
         store.idleSurplus(new Date((now - c.returnIdleHours * 3_600) * 1000)),
+        // the Savings-Backed Margin's own account, for the card (the desk doesn't move from it on its own)
+        bank.accounts.margin ? bank.balance(bank.accounts.margin).catch(() => null) : Promise.resolve(null),
       ]);
       const reads: DeskReads = {
         now,
@@ -497,6 +499,7 @@ export function createFundingDesk(deps: DeskDeps) {
             collection,
             inFlight,
             marginOutstanding,
+            marginHeld,
             measuredLatencyMinutes: measured,
             lane: chainReads.lane,
             laneMissing: chainReads.laneMissing,
@@ -884,6 +887,14 @@ export async function defaultDeskDeps(env: Record<string, string | undefined> = 
   };
 }
 
+/** The desk this process runs, once it has started: Command's "Run the desk now" forces one check of it. */
+let runningDesk: ReturnType<typeof createFundingDesk> | null = null;
+
+/** One forced check now, within the desk's own limits; null when the desk isn't running in this process. */
+export async function runFundingDeskNow(): Promise<DeskTick | null> {
+  return runningDesk ? runningDesk.tick({ forced: true }) : null;
+}
+
 export function startFundingDesk(): void {
   if (!settlementFundingEnabled()) {
     console.log('[settlement-funding] disabled (set SETTLEMENT_FUNDING_ENABLED=1, with SETTLEMENT_FUNDING_DRY_RUN=1 first, for automatic Settlement Funding)');
@@ -897,6 +908,7 @@ export function startFundingDesk(): void {
     }
     const d = made.deps;
     const job = createFundingDesk(d);
+    runningDesk = job;
     setInterval(() => void job.tick(), d.config.checkMinutes * MINUTE_MS).unref?.();
     const forced = async () => {
       const measured = await d.store.measuredLatencyMinutes().catch(() => null);

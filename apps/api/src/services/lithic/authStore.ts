@@ -95,7 +95,7 @@ async function ensureTables(): Promise<void> {
      */
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS settled_at TIMESTAMPTZ;
     /*
-     * The card credit fee (decision 55; migration 0084 adds the same columns where this table shares
+     * The card credit fee (decision 55; migration 0086 adds the same columns where this table shares
      * the migrated database). Beside the purchase, never inside it: draws and credit_cents keep
      * meaning the purchase, which settlement funding (fiat owed to the merchant) relies on. The
      * fee is Clear Lending's, on the member's line, and is never paid to anyone in fiat.

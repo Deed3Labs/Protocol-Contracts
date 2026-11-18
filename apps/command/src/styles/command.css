@@ -2973,3 +2973,14 @@ body.h-pn .h-panel{transform:none;visibility:visible}
    !important over the rules that ask for thin ones. Inside the pages' shadow roots, live.css says the same. */
 html, *{scrollbar-width:none !important}
 *::-webkit-scrollbar{display:none}
+
+/* Card settlement (decision 54, the redesign): Home's 5th strip tile, as the reference has it. Five columns on desktop;
+   two below 1180px, where the fifth takes the whole row. */
+.h-strip.s5{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:1180px){ .h-strip.s5{grid-template-columns:repeat(2,minmax(0,1fr))} .h-strip.s5 > .h-sc:last-child{grid-column:span 2} }
+.h-sc{font:inherit;color:inherit;text-align:left;background:none;border-top:0;border-left:0;cursor:pointer}
+.h-sc .sfb-t{position:relative;height:10px;background:var(--hair)} .h-sc .sfb-i{position:absolute;inset:0} .h-sc .sfb-i > i{position:absolute;top:0;bottom:0;box-sizing:border-box} .h-sc .sfb-i > i + i{border-left:2px solid var(--ground)}
+.h-sc .sfb-in{background:var(--fg)} .h-sc .sfb-fl{background:var(--land)} .h-sc .sfb-dk{background:repeating-linear-gradient(45deg,var(--land) 0 1.5px,transparent 1.5px 5px),color-mix(in srgb,var(--land) 16%,transparent)}
+.h-sc .sfb-gap{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--absent) 75%,transparent) 0 1.5px,transparent 1.5px 5px),color-mix(in srgb,var(--absent) 12%,transparent)}
+.h-sc .sfb-due{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--fg);transform:translateX(-1px);z-index:1}
+.h-sc .h-sc-s.bad{color:var(--absent)}

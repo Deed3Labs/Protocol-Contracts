@@ -38,6 +38,9 @@ import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 import type { Deploys } from '../services/command/deploys.js';
 import { poolTierPrincipalFor, settlementFundingStatus } from '../services/settlementFunding/api.js';
+import { settlementFundingLive } from '../services/command/settlementFunding.js';
+import { stopTheDesk } from '../services/command/settlementActions.js';
+import { runFundingDeskNow } from '../jobs/fundingDesk.js';
 import { type Legal, LegalDenied, totalsOnly } from '../services/command/legal.js';
 import type { Signing } from '../services/command/signing.js';
 
@@ -97,6 +100,8 @@ export interface CommandDeps {
   /** Rate limits: sign-in attempts, and writes. */
   limits?: { signIn: RequestHandler; write: RequestHandler };
   now?: () => Date;
+  /** One forced settlement desk check (decision 54): the running desk's own, unless given (tests). Null when it isn't running. */
+  runSettlementDesk?: () => Promise<string | null>;
 }
 
 interface CommandContext {
@@ -589,6 +594,33 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/settlement-funding', need('money', SEE), async (req, res) => {
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ desk: await settlementFundingStatus(req.command!.db) });
+  });
+
+  /**
+   * Card settlement (decision 54, the redesign): one person's two levers, at Money Approve; every money move is the two-person
+   * actions (settlement-book, -deploy, -margin, -restart). Run: one forced desk check, within its limits, and what it decided.
+   * Stop: the desk's halt now (nothing moves while the chain call is pending) and stopSettlementFunder() for the signer's own
+   * wallet. Both go to Records.
+   */
+  router.post('/settlement-funding/run', limits.write, need('money', APPROVE), async (req, res) => {
+    const tick = await (deps.runSettlementDesk ?? runFundingDeskNow)();
+    if (tick === null) return fail(res, 409, 'DESK_NOT_RUNNING', 'The settlement funding desk isn’t running here (SETTLEMENT_FUNDING_ENABLED)');
+    await auditFrom(req, { area: 'money', action: 'Ran the settlement funding desk now', detail: `Forced one check · ${tick}`, result: 'done' });
+    res.json({ tick, card: await settlementFundingLive(req.command!.db).catch(() => null) });
+  });
+
+  router.post('/settlement-funding/stop', limits.write, need('money', APPROVE), async (req, res) => {
+    const why = typeof req.body?.why === 'string' ? req.body.why.trim().slice(0, 300) : '';
+    if (!why) return fail(res, 400, 'NO_REASON', 'Say why the desk is stopped: it shows on the card until two people restart it');
+    const c = req.command!;
+    try {
+      const out = await stopTheDesk(c.db, c.person.name || c.person.email || 'Someone', why);
+      await auditFrom(req, { area: 'money', action: 'Stopped the settlement funding desk', detail: `${why} · stopSettlementFunder for the signer’s wallet`, result: 'done' });
+      res.json(out);
+    } catch (e) {
+      if (e instanceof ActionError) return fail(res, e.status, e.code, e.message);
+      throw e;
+    }
   });
 
   router.get('/pool-tier-principal', need('money', SEE), async (req, res) => {

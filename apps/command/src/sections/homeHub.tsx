@@ -12,6 +12,7 @@ import { fmLive } from './fmLive';
 import { growthLive } from './growthLive';
 import { HOME_DEMO, HOME_QV } from './homeData';
 import { moneyLive } from './moneyLive';
+import { demoSettle, settleNeed, settleTile } from './settleCard';
 import { finish, go, render, toast, vLevel, vRO } from './shell';
 
 /*
@@ -107,7 +108,7 @@ function demoModel() {
     feeds: D.feeds.map(([n, ok]) => ({ n, ok: !!ok, why: ok ? 'synced' : '3 hours behind' })),
     feedBad: D.feedBad,
     money: { free: D.freeToSpend, operating: D.operating, payout: D.payoutFunding, reserve: '1:1' },
-    heads: D.heads,
+    heads: [...settleHead(), ...D.heads],
     tiles: D,
     start: D.start,
     today: D.today,
@@ -173,7 +174,7 @@ function liveModel() {
     feeds,
     feedBad: bad.length ? (bad.length === 1 ? `${bad[0].n} is ${bad[0].why}` : `${bad.length} feeds aren’t synced`) : '',
     money: liveVitals(),
-    heads: [...liveHeads(), ...ALERTS0.map((a) => ({ sv: a.sev, t: a.t, age: a.age, m: a.area, go: a.go, own: a.fix === 'resync' && a.progress ? ['resync', 'Re-syncing', Math.round((a.progress[0] / a.progress[1]) * 100), `${a.progress[0]}/${a.progress[1]}`] : null }))],
+    heads: [...settleHead(), ...liveHeads(), ...ALERTS0.map((a) => ({ sv: a.sev, t: a.t, age: a.age, m: a.area, go: a.go, own: a.fix === 'resync' && a.progress ? ['resync', 'Re-syncing', Math.round((a.progress[0] / a.progress[1]) * 100), `${a.progress[0]}/${a.progress[1]}`] : null }))],
     tiles: null,
     start,
     today: dateKey(now),
@@ -241,7 +242,7 @@ function header(M) {
         {M.when}
       </span>
       <p className="h-brief">{brief(M)}</p>
-      <div className="h-strip">
+      <div className="h-strip s5">
         <button type="button" className="h-sc" data-go="money">
           <span className="h-lbl">Feeds</span>
           <span className="h-sc-v">
@@ -282,8 +283,7 @@ function header(M) {
           )}
           <span className="h-sc-s">{M.money ? `Of ${money(M.money.operating)} operating cash` : 'Opens Money'}</span>
         </button>
-        {(
-          <button type="button" className="h-sc" data-npane="overview">
+        <button type="button" className="h-sc" data-npane="overview">
             <span className="h-lbl">Payout funding</span>
             {M.money?.payout != null ? (
               <>
@@ -298,7 +298,8 @@ function header(M) {
             )}
             <span className="h-sc-s">{M.money?.payout != null ? M.money.payout.s : 'Opens Money'}</span>
           </button>
-        )}
+        {/* card settlement (decision 54): the verdict, the small bar, the cut-off and what's due; opens Money's card */}
+        {settleTile(homeSettle(), { cls: 'h-sc', lblCls: 'h-lbl', valCls: 'h-sc-v', subCls: 'h-sc-s', attrs: { 'data-npane': 'overview' } })}
       </div>
     </header>
   );
@@ -388,6 +389,15 @@ function own(o) {
           </i>
           {o[3]}
         </span>
+      </div>
+    );
+  if (o[0] === 'settle')
+    return (
+      <div className="h-own">
+        <span>{o[1]}</span>
+        <button type="button" className="lnk" data-npane="overview">
+          {o[2]}
+        </button>
       </div>
     );
   if (o[0] === 'cap')
@@ -613,6 +623,17 @@ function liveHeads() {
   const SF = vars.settlementFunding;
   if (SF?.needsHuman) out.push({ sv: 'underway', t: 'Card settlement funding needs a person', age: '—', m: 'Money · Pools → Yield pool', go: 'money', own: null });
   return out;
+}
+/** Card settlement as Home has it: Money's section, live (once loaded); the reference's demo otherwise. */
+const SETTLE_DEMO_NOW = new Date(2026, 9, 21, 16, 4).getTime();
+const settleNow = () => (REAL ? Date.now() : SETTLE_DEMO_NOW);
+export function homeSettle() {
+  return REAL ? (loaded('money') ? vars.settlementFunding ?? null : null) : demoSettle(SETTLE_DEMO_NOW);
+}
+/** Heads-up's card settlement row, the same words as Money's Needs you; none when it's Covered. */
+function settleHead() {
+  const n = settleNeed(homeSettle(), settleNow());
+  return n ? [{ sv: n.sev, t: n.title, age: n.age, m: `Money · ${n.when}`, go: 'money', own: ['settle', n.owner, n.action] }] : [];
 }
 /** The audit log's areas, as Home's pages are named and where each one opens. */
 const PAST_AREA = { members: ['Members', 'members'], growth: ['Growth', 'growth'], field: ['Field', 'field'], merchants: ['Merchants', 'merchants'], money: ['Money', 'money'], shop: ['Shop', 'shop'], contracts: ['Build', 'contracts'], governance: ['Governance', 'governance'] };

@@ -594,6 +594,62 @@ The aim: **Command is where the catalog lives**, and the store reads it from Com
   Command's catalog with the content file (every price, variant and weight), then the env var on
   production. The content file stays as the fallback.
 
+### Card settlement redesign (decision 54, brief of 18 Nov)
+
+The card answers one question: will members' credit swipes settle at the next cut-off, and if not,
+what do I press? It leads with the verdict, shows the gap, lists the money sources in their legal
+order (L-01 §8.4A) with a button on each, and appears wherever someone looks first. The design is
+the reference's (Money → Overview); the data stays the desk's.
+
+**API: one verdict, the desk's own rule**
+1. `desk.ts`: the funding amounts (book from the Collection Account above its reserve, then the lane
+   within pool room, cap left and forward allowance, with `minMove`) move into one exported pure
+   function, `fundingPlan`. `decideFunding` calls it, and so does the verdict, so Home, Money and the
+   desk can't disagree.
+2. `settlementFunding.ts` (command): `verdict` on `SettlementCard`:
+   - `state` covered / ontrack / thin / short, and its pill (Covered · On track · Buffer short ·
+     Short, or Desk stopped);
+   - `willMove {book, lane}` (both 0 when the lane is stopped or the desk halted), `gapDue`,
+     `gapBuffer`, `fundBy` (the cut-off less the off-ramp latency, measured where there is one);
+   - `head`, `when` and the four stat cells (Due at, Will be there, Short or Buffer short, Fund by),
+     worded as the reference.
+   Tested in all four states, and stopped.
+3. New fields: `margin.held` (the Savings-Backed Margin account's balance, read by the desk's check
+   beside the CSA and the Collection Account), the in-flight ETA (the forwarded move's time plus the
+   measured latency), and `fundBy`.
+4. The seed follows the reference's four states (Covered by default).
+
+**Manual funding: the proposals flow**
+- Two-person Money actions through `/actions/money/:kind` → `command.proposals` → approve, the
+  amount prefilled from the verdict:
+  - `settlement-book`: on approve, a `book` move the desk carries out (Clear Financial's book
+    transfer, Collection Account → CSA).
+  - `settlement-deploy`: on approve, the Safe batch for a two-person `deploy` beyond the lane
+    (`remainderBatches`), for the Clear Lending Safe; the desk forwards it when it lands.
+  - `settlement-margin`: on approve, `recordMarginAdvance` (now an action as well as a script).
+  - `settlement-restart`: on approve, the two-signer `setSettlementFunder` batch.
+- One-person, at Money Approve:
+  - `POST /settlement-funding/run`: one forced desk check within its limits, returning its decision.
+  - `POST /settlement-funding/stop`: sets the job's halt and returns `stopSettlementFunder()` for the
+    signer's own wallet.
+- Everything goes to Records' audit log.
+
+**The card and where it goes**
+- Money → Overview, first band: the full card (`#nsettle`). Order: the stat band, bar and timeline;
+  "Where the money comes from" and its three tiles; Moves for this cut-off; Due, Covered by and Last
+  7 days. Footer: the desk's state, Stop the desk or Restart…, and Guide →.
+- Money → Pools → Yield pool: the slim card after the 30-day chart (it replaces the old card), then
+  Pool Tier principal, unchanged.
+- Money's header strip and Home's strip: a 5th tile, "Card settlement" (Home's strip becomes 5
+  columns on desktop, 2 on phone).
+- Home's Heads-up and Money's Needs you: one row when it isn't Covered, in the same words.
+- The Credit Settlement Account's copy on Cash flow.
+- Not shipped: the reference's preview chips and its footer chips.
+
+**Checks:** the verdict in every state; each action's level and second person; the placements
+(Overview, the slim card, both strips, both needs lists); the visual baselines re-recorded.
+Departures in `DECISIONS.md`.
+
 ## Size
 
 The prototype is 6,981 lines: 2,280 of CSS and about 4,650 of JavaScript across 11 sections,

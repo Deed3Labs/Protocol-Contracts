@@ -20,7 +20,7 @@ the tiers you have.
 
 | Tier | Backed by | How much it adds |
 |---|---|---|
-| **Savings** | Your CLRUSD | 100% of your savings. Free to use |
+| **Savings** | Your CLRUSD | 100% of your savings. No carry |
 | **Assets** | Your bonds and lending-pool position | 95% of what your bonds are worth today, 70% of your pool position |
 | **Income** | The income landing in your account | Half of your estimated monthly deposits. Income and Boost together never go above $2,499 |
 | **Clear Boost** | Nothing — it's opt-in | Nothing until you add it |
@@ -31,6 +31,10 @@ the tiers you have.
 Each tier except Savings carries a charge per cycle, called **carry**. The Credit card on Home shows
 each tier's rate beside its name, and so does **Spends from** on the Card page. **Limit breakdown**
 shows what backs each tier.
+
+**A card purchase that draws on your credit line will have a 30¢ credit swipe fee**, from any tier,
+Savings included. A purchase your cash covers in full has no fee. The fee is added to what you owe
+on that purchase, and it comes back if the shop refunds the whole purchase. Not charged yet.
 
 ### What backs your line automatically
 

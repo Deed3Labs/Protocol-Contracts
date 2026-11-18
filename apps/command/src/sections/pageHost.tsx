@@ -7,6 +7,7 @@ import m from '../styles/pages/m.css?raw';
 import n from '../styles/pages/n.css?raw';
 import sx from '../styles/pages/sx.css?raw';
 import vx from '../styles/pages/vx.css?raw';
+import sf from '../styles/pages/sf.css?raw';
 import live from '../styles/pages/live.css?raw';
 import { REAL } from '../live/env';
 import { dataStamp } from '../live/sections';
@@ -24,7 +25,7 @@ import type { ReactNode } from 'react';
  * reach the document listeners retargeted to the host; startup.tsx's evTarget reads the real target.
  */
 
-const CSS: Record<string, string> = { g, m, fm, n, bx, vx, cx, sx, ax, live };
+const CSS: Record<string, string> = { g, m, fm, n, bx, vx, cx, sx, ax, sf, live };
 
 /** Each page's chain of sheets, in the order the reference's shadow roots hold them. */
 export const CHAIN: Record<string, string[]> = {
@@ -32,7 +33,7 @@ export const CHAIN: Record<string, string[]> = {
   members: ['g', 'm'],
   field: ['g', 'fm'],
   merchants: ['g', 'fm'],
-  money: ['g', 'fm', 'n'],
+  money: ['g', 'fm', 'n', 'sf'],
   build: ['g', 'fm', 'n', 'bx'],
   governance: ['g', 'fm', 'n', 'bx', 'vx'],
   community: ['g', 'fm', 'n', 'bx', 'vx', 'cx'],
