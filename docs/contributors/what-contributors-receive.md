@@ -22,8 +22,7 @@ published either.
 
 ## Tax distributions
 
-**The agreement that governs the shares requires tax distributions.** The agreement is not public,
-and how a holder is taxed is a question for their own adviser. See [Tax basics](./tax-basics.md).
+**Holders receive tax distributions.** How a holder is taxed is a question for their own adviser. See [Tax basics](./tax-basics.md).
 
 ## What a contributor does not receive
 

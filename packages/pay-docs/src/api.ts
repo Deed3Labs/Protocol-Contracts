@@ -1,4 +1,4 @@
-import { describePublished, ENDPOINTS, ERROR_CODES, IDEMPOTENCY_HEADER, LATEST_VERSION, VERSION_HEADER, type PublishedShape } from '@clear/public-api-contracts';
+import { describePublished, ENDPOINTS, ERROR_CODES, IDEMPOTENCY_HEADER, LATEST_VERSION, MAX_PAYMENT_AMOUNT, MIN_PAYMENT_AMOUNT, VERSION_HEADER, type PublishedShape } from '@clear/public-api-contracts';
 
 /**
  * `docs/api.md`, generated from `@clear/public-api-contracts`: the routes (`ENDPOINTS`) and the JSON
@@ -49,7 +49,7 @@ export function typeOf(s: Schema): string {
   if (s.type === 'array') return `list of ${s.items ? typeOf(s.items) : 'anything'}${s.minItems ? ` (at least ${s.minItems})` : ''}`;
   if (s.type === 'object') return 'object';
   if (s.type === 'integer' || s.type === 'number') {
-    const lo = s.minimum;
+    const lo = s.minimum !== undefined && s.minimum > -SAFE_MAX ? s.minimum : undefined;
     const hi = s.maximum !== undefined && s.maximum < SAFE_MAX ? s.maximum : undefined;
     return `${s.type}${lo !== undefined && hi !== undefined ? `, ${lo} to ${hi}` : lo !== undefined ? `, at least ${lo}` : hi !== undefined ? `, at most ${hi}` : ''}`;
   }
@@ -97,7 +97,8 @@ export function renderApiMd(shape: PublishedShape = describePublished()): string
   out.push('');
   out.push('- `Authorization: Bearer <key>`. The secret key (`clear_sk_…`) from a server; the publishable key (`clear_pk_…`) only where a route says so.');
   out.push(`- \`${VERSION_HEADER}: ${LATEST_VERSION}\`. Without it, the key's pinned version is used, and said in the answer. An unknown version is refused.`);
-  out.push(`- \`${IDEMPOTENCY_HEADER}\` on the routes marked so: the same key and body give the same answer; the same key with another body is refused.`);
+  out.push(`- \`${IDEMPOTENCY_HEADER}\` on the routes marked so: the same key and body give the same answer; the same key with another body is refused. The key is 8 to 200 characters.`);
+  out.push(`- A payment's \`amount\` is ${MIN_PAYMENT_AMOUNT} to ${MAX_PAYMENT_AMOUNT} cents, tax included (\`amount_too_small\`, \`amount_too_large\`).`);
   out.push('- Bodies are JSON. Amounts are integer cents in `usd`. Times are ISO 8601. Lists are newest first: `{ object: "list", data, hasMore }`, continued with `startingAfter`.');
   out.push('- A test key sees only test objects, and a live key only live ones.');
   out.push('');

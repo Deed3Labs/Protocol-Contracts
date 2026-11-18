@@ -52,8 +52,8 @@ https://useclear.org/docs/api.md.
 ## The signature, without the SDK
 
 `Clear-Signature: t=<unix seconds>,v1=<hex>`. The `v1` is HMAC-SHA256, keyed with the endpoint's secret,
-of `"<t>.<raw body>"`. Accept it when any `v1` matches (while a secret is being rolled a delivery carries one
-for each) and `t` is within 5 minutes of your clock. Compare in constant time.
+of `"<t>.<raw body>"`. Accept it when the `v1` matches and `t` is within 5 minutes of your clock. Compare in
+constant time. An endpoint's secret can't be rolled: to change it, add a new endpoint and delete the old one.
 
 ## Retries
 

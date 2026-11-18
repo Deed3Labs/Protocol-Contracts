@@ -208,7 +208,9 @@ flowchart LR
   TI --> CC
   OI["OffersIssuer<br/><i>new-member offers</i>"] --> CC
   CC --> PP["PayoutPool"] --> OUT["Merchant USDC"]
-  LP["LendingPool"] -->|"lends float"| PP
+  CC -->|"repayments beyond payables"| CLO["Clear Lending"]
+  LP["LendingPool"] -->|"Deployments"| CLO
+  CLO -->|"payout top-ups"| PP
   CC -.->|"after default"| LQ["Liquidator"] -.->|"seizes pledged savings"| V
 ```
 
@@ -216,16 +218,17 @@ flowchart LR
 |---|---|
 | `ClearCredit.sol` | The deployable ledger — the concrete form of `StableCredit` / `MutualCredit` |
 | `CreditIssuer.sol` | Base underwriting: periods, compliance, default and write-off controls |
-| `RevolvingIssuer.sol` | The tiered line — savings, asset, income, Boost. Cheapest-first, one carry index per tier |
-| `TermIssuer.sol` | Term plans — partner credit, Clear Cash, ELPA. Per-position rate and clock, split schedules |
+| `RevolvingIssuer.sol` | The tiered line — savings, asset, income, Boost. Cheapest-first; carry accrues per second, simple, per tier. Cycles, dues, Automatic Clearing and card settlement |
+| `TermIssuer.sol` | Term plans — partner credit, Clear Cash, ELPA. Per-plan rate and clock, level split schedules, and Clear Lending's fee leg |
 | `CollateralRegistry.sol` | What each member has pledged, and where it sits |
 | `LimitCalculator.sol` | Values collateral, applies haircuts, emits the tiered ceiling |
 | `OffersIssuer.sol` | A capped line that gives each new member a one-time offer. Unspent offers expire; the Safe pays the line down. Not counted as exposure |
-| `LendingPool.sol` | ERC-4626. Lends float to holders of `BORROWER_ROLE` — the PayoutPool and the card settler — and depositors earn the carry members pay on what they funded. Its utilization curve is a view no contract charges |
+| `LendingPool.sol` | The lending pool on Earn (Phase 2f), an ERC-4626 vault of Pool Shares. Deploys only to Clear Lending, as two-person Deployments or through the settlement lane; holders earn Pool Interest at the Funding Rate; withdrawals queue first in, first out. Direct borrowing is retired |
 | `Liquidator.sol` | Once a member has defaulted, seizes the savings or pool shares they pledged and settles their debt with it |
-| `CreditPool.sol` | Queued deposit/withdraw with discount-rate servicing |
+| `CreditPool.sol` | Legacy queued deposit/withdraw. No deploy script uses it |
 | `AccessManager.sol` | Admin / operator / member authority boundaries |
-| `MembershipRegistry.sol`, `NetworkRegistry.sol` | Membership, and member → issuers → (credit, pool, oracle) |
+| `MembershipRegistry.sol`, `NetworkRegistry.sol` | Membership, and issuer → ledger, member → issuers, and the money-path list the AssurancePool refuses deposits from |
+| `RateSchedule.sol` | Credit products, listed rates and legal caps, by state |
 
 > Two credit lines, and confusing them breaks approvals. `TermIssuer.termLimitOf` is the ceiling a
 > **split plan** draws against, underwritten off-chain against attested income. The **revolving
@@ -237,25 +240,26 @@ flowchart LR
 | Contract | Role |
 |---|---|
 | `MerchantRegistry.sol` | Per-merchant terms: payout schedule, approval cap, discount rate, status |
-| `PayoutPool.sol` | Funds merchant redemptions at par and reports its own shortfall. Borrows float from the LendingPool; the AssurancePool and BondVault can lend to it as a last resort |
+| `PayoutPool.sol` | Funds merchant redemptions at par, earliest deadline first, and reports its own shortfall. Paid from members' repayments, funders' capital, Clear Lending's top-ups and the treasury allowance. Nothing lends to it, and the AssurancePool never reaches it |
+| `SettlementForwarder.sol` | Clear Lending's operating Safe delegate that forwards Settlement Funding to the card settlement off-ramp |
 
 A merchant's positive balance **is** the payables ledger — what the co-op owes them, on-chain, with
 no parallel off-chain record. A merchant carrying credit of their own is paid by drawdown first;
 only the surplus is redeemable.
 
-### Reserve, pricing and bonds
+### Reserve and Earn
 
 | Contract | Role |
 |---|---|
-| `AssurancePool.sol` | Primary / buffer / excess reserve accounting and conversion paths. Repayments fill primary up to the target RTD first, and an operator can move buffer to primary. Lends to the PayoutPool and BondVault as a last resort — excess, then buffer, never primary |
-| `AssuranceOracle.sol` | Uniswap V3 pricing with registry fallback, and RTD inputs |
-| `TokenRegistry.sol` | Token registry, stablecoin metadata, chain mappings, fallback pricing |
-| `BurnerBond.sol`, `BurnerBondDeposit.sol`, `BurnerBondFactory.sol` | ERC-1155 zero-coupon bond collections with curve-based discount mechanics |
-| `BondVault.sol`, `BondValuer.sol`, `BondTraits.sol`, `BondDiscountCurve.sol` | Where bond proceeds live — not the AssurancePool — with a derived redemption reserve, valuation and curve |
+| `AssurancePool.sol` | The co-op's Assurance contract (v2, Phase 2c, deployed as `AssurancePoolV2`): a Credit Backstop for Clear Lending's charged-off principal and a Member Assurance compartment for member grants, each with its own ledger. Two signers for everything, a 7-day timelock for parameters. Lends nothing, and no money path reaches it |
+| `TokenRegistry.sol` | Token whitelist read by validators, fee collection and the bond factory; stablecoin metadata, chain mappings and fallback prices for off-chain clients |
+| `BurnerBond.sol` (with `BurnerBondIssue`, `BurnerBondPledges`), `BurnerBondFactory.sol` | ERC-1155 zero-coupon bond collections (Phase 2f): sold by signed quote at the Ladder's rate, valued at Accreted Value, settled at maturity, rolled only on the holder's confirmation |
+| `EarnControls.sol`, `CollateralAgent.sol`, `HolderDirections.sol`, `PoolShareEnforcer.sol` | Shared Earn rules (eligibility, caps, pauses, transfers); the bond collateral agent; bond holders' signed directions; enforcement of pledged pool shares |
+| `BondVault.sol`, `BondValuer.sol`, `BondTraits.sol` | Where bond proceeds live — not the AssurancePool — with a derived Redemption Reserve (glide reserve and a 90-day window); what a pledged bond is worth |
 
 ### Libraries
 
-`CarryIndex` (lazy accrual — carry is derived on read, never by iterating accounts), `ExposureMath`,
+`CarryIndex` (each tier's and plan's rate and cycle length), `ExposureMath`,
 `JSONUtils`, `StringUtils`, `TickMath`.
 
 ### Standards and patterns
@@ -272,7 +276,7 @@ only the surplus is redeemable.
 Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 
 <details>
-<summary><b>Base Sepolia</b> — the working network (48 contracts)</summary>
+<summary><b>Base Sepolia</b> — the working network (46 contracts)</summary>
 
 
 Each contract's page in the [contract reference](docs/protocol/contracts/README.md) lists its functions and who can call them.
@@ -280,13 +284,11 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | Contract | Address |
 |---|---|
 | [AccessManager](docs/protocol/contracts/AccessManager.md) | `0x23aF9715761156C24C2de3666587753168f28DBe` |
-| [AssuranceOracle](docs/protocol/contracts/AssuranceOracle.md) | `0x2E5241bE8d35a0034aF5C6538ABd683655c2Fe38` |
-| [AssurancePool](docs/protocol/contracts/AssurancePool.md) | `0xf5E40414410672636Ab1691ae19D2Aa1c1705840` |
+| [AssurancePoolV2](docs/protocol/contracts/AssurancePoolV2.md) | `0x3c334D3AeD134191B7Ad0744a23978D71357BB15` |
 | [AssuranceTimelock](docs/protocol/contracts/AssuranceTimelock.md) | `0xE77F3C4B94Fa25A021f3Ef8d0E5D06F4Ea057C6b` |
 | [BondValuer](docs/protocol/contracts/BondValuer.md) | `0x7f63e01B1BBd79509138D825B5Ef4b186E9502C8` |
 | [BondVault](docs/protocol/contracts/BondVault.md) | `0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855` |
 | [BurnerBond](docs/protocol/contracts/BurnerBond.md) | `0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A` |
-| BurnerBondDeposit | `0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c` |
 | [BurnerBondFactory](docs/protocol/contracts/BurnerBondFactory.md) | `0xf36dE3553509BAafB835bC37c97f529Adf42a96a` |
 | [CLRUSDTokenPool](docs/protocol/contracts/CLRUSDTokenPool.md) | `0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1` |
 | [ClaimEscrow](docs/protocol/contracts/ClaimEscrow.md) | `0x24DAE7b66dC31657265260B5d9092280B57Bc37D` |
@@ -328,8 +330,8 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [ValidatorRegistry](docs/protocol/contracts/ValidatorRegistry.md) | `0x979E6cC741A8481f96739A996D06EcFb9BA2bc91` |
 | [VaultTimelock](docs/protocol/contracts/VaultTimelock.md) | `0xb49c85E8E7eFB4401aaAb2745C9198a239071994` |
 
-23 older records (names ending in `PreAudit`, `Pre2d`, `Pre2f`, `Legacy` or `V1`) are kept in `deployments/base-sepolia/` for history. They are retired and replaced by the contracts above.
-`AssurancePool` and `AssuranceOracle` are the retired Phase 1 reserve; the live reserve is `AssurancePoolV2`. `LendingPoolSettlementLane` is a prepared `LendingPool` implementation that the proxy does not run yet.
+23 older records (names ending in `PreAudit`, `Pre2d`, `Pre2f`, `Legacy` or `V1`) are kept in `deployments/base-sepolia/` for history. They are retired and replaced by the contracts above. So are `AssurancePool` (`0xf5E4…5840`) and `AssuranceOracle` (`0x2E52…Fe38`), the Phase 1 reserve, and `BurnerBondDeposit` (`0xA030…dB8c`), a record left under the retired bond deposit contract's name.
+`LendingPoolSettlementLane` is a prepared `LendingPool` implementation that the proxy does not run yet.
 
 </details>
 
@@ -382,12 +384,12 @@ npm run test:gas
 | Savings + settlement | `ESADepositVault`, `SavingsIntentFactory`, `ClearUSDUpgradeable`, `ClaimEscrow` |
 | Bonds | `BurnerBond`, `BondVault`, `BondCollateral`, `BondBackstop`, `BondSeniority` |
 | Deploy | `CreditCore.deploy` — the credit stack deploys and wires cleanly |
-| Reserve | `AssurancePool`, `AssuranceOracle` |
+| Reserve | `AssurancePool` (v2) |
 | Libraries | `CarryIndex`, `ExposureMath` |
 
 ### Deployment
 
-The `deploy/` scripts are numbered `00`–`27` and run in order; `deploy/deploy_all.ts` deploys the
+The `deploy/` scripts are numbered `00`–`28` and run in order; `deploy/deploy_all.ts` deploys the
 Deed track — the contracts of `00`–`06` — in one run.
 
 ```bash

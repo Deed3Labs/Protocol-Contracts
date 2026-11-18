@@ -1,7 +1,9 @@
 # Land
 
-Land is asset type `0` (`DeedNFT.AssetType.Land`): a parcel of land. A validated Land deed can be
-[subdivided](../subdivision.md) into units.
+Land is asset type `0` (`DeedNFT.AssetType.Land`): a parcel of land. A Land deed is a trust deed:
+it is minted with `mintTrustDeed`, not `mintAsset`, and has a trustee, a protector and a transfer
+policy ([trust deeds](../protocol-overview.md#trust-deeds-land-and-estate)). A validated Land deed
+can be [subdivided](../subdivision.md) into units.
 
 What a validator reviews off-chain before validating a deed, such as the title, a survey or the
 zoning, is up to that validator. The contracts do not check documents. They check that the traits
@@ -12,8 +14,9 @@ below are present, and record the validator's result.
 ## Trait keys
 
 **These are the keys the contracts read.** Each is a separate trait on the deed, set with
-`DeedNFT.setTrait` and a string value (`valueType` 1). Keys are case-sensitive and hashed with
-`keccak256`, so `parcelNumber` and `Parcel Number` are different traits.
+`DeedNFT.setTrait` by the holder or the deed's validator, with a string value (`valueType` 1). Keys
+are case-sensitive and hashed with `keccak256`, so `parcelNumber` and `Parcel Number` are different
+traits. Once the deed is validated, only the validator can change the keys its criteria require.
 
 | Key | Required by the preset criteria | Used in the metadata name |
 |---|---|---|
@@ -43,8 +46,13 @@ deedNFT.setTrait(tokenId, bytes("parcelNumber"), bytes("123-456-789"), 1);
 deedNFT.setTrait(tokenId, bytes("legalDescription"), bytes("Lot 5, Block 2, Tract 1234"), 1);
 ```
 
-Every deed also carries the seven traits set at mint: `assetType`, `isValidated`,
-`operatingAgreement`, `definition`, `configuration`, `validator` and `beneficiary`.
+Every deed also carries the six traits set at mint: `assetType`, `isValidated`,
+`operatingAgreement`, `definition`, `configuration` and `validator`. Who owns the deed is not a
+trait; `DeedNFT.beneficialOwnerOf` answers it. A Land or Estate deed also carries the reserved trust traits
+(`agreementHash`, `riderHashes`, `trustee`, `protector`, `transferPolicy`, `status`,
+`mintParamsHash`, and the program traits when a program applies).
+On a Land deed `definition`, `operatingAgreement` and `assetType` cannot be changed with
+`setTrait`; the definition changes only by the trustee's `correctDefinition`.
 
 ---
 
@@ -69,8 +77,9 @@ Supporting records are stored in the `MetadataRenderer`
 
 ## Subdividing land
 
-A validated Land deed can be split into units. Each unit copies `assetType`, `operatingAgreement`,
-`definition` and `configuration`, but not the keys above. To validate a unit against the preset,
+A validated Land deed can be split into units; `Subdivide` holds the deed while the subdivision is
+active. Each unit copies `assetType`, `operatingAgreement`, `definition` and `configuration`, but
+not the keys above. To validate a unit against the preset,
 the collection admin sets `country`, `state`, `county`, `parcelNumber` and `legalDescription` on
 the unit itself ([validating units](../subdivision.md#validating-units)).
 

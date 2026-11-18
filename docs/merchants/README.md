@@ -1,7 +1,7 @@
 # Merchants
 
-Running a shop on Clear: the merchant app at `merchant.useclear.org` and the Clear for Merchants app
-for iOS and Android, for owners, managers and counter staff.
+Running a shop on Clear: the merchant app at `merchant.useclear.org`, for owners, managers and
+counter staff. The Clear for Merchants app for iOS and Android: Not available yet.
 
 The merchant app is the shop's point of sale. One counter takes Clear, cards (Stripe smart readers,
 the Stripe Reader M2 and Tap to Pay), cash and split payments, sends payment links, and takes

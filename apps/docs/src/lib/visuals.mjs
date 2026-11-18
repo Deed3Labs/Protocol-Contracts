@@ -51,9 +51,9 @@ export const JOBS = {
   ClearUSD: 'The original CLRUSD, not upgradeable',
   ESADepositVault: '1:1 backing for CLRUSD',
   PayoutPool: 'Turns merchant balances into money',
-  LendingPool: 'Member money funding unsecured tiers',
+  LendingPool: 'The lending pool on Earn. Deploys only to Clear Lending',
   BondVault: 'Holds bond proceeds',
-  AssurancePool: 'Reserve tokens against defaults',
+  AssurancePool: 'Retired. The Phase 1 reserve, replaced by AssurancePoolV2',
   AssurancePoolV2: 'Credit Backstop and Member Assurance compartments (Phase 2c)',
   NetworkRegistry: 'Parent registry for issuers',
   MerchantRegistry: 'What each merchant was promised',
@@ -69,9 +69,9 @@ export const JOBS = {
   Subdivide: 'Splits a validated land or estate deed into ERC-1155 units',
   FractionTokenFactory: 'Clones a share token for each fraction',
   AccessManager: 'Admin, operator and member roles',
-  AssuranceOracle: 'Prices accepted tokens and serves the target reserve ratio',
+  AssuranceOracle: 'Retired with the Phase 1 reserve',
   BondValuer: "Tells CollateralRegistry what a member's pledged bonds are worth",
-  BurnerBond: 'The bond collection: mints, redeems and rolls',
+  BurnerBond: 'The bond collection: sold by quote, settled at maturity, rolled on confirmation',
   BurnerBondDeposit: 'The one entry point for buying a bond',
   BurnerBondFactory: 'Opens a bond collection for each accepted token',
   CLRUSDTokenPool: 'Chainlink CCIP pool for CLRUSD',
@@ -140,11 +140,10 @@ const CREDIT = {
     ['MerchantRegistry', 'PayoutPool', 'read', 'M700 72 V128' + D(700, 128)],
     ['LendingPool', 'PayoutPool', 'write', 'M820 50 H800 V150 H780' + L(780, 150)],
     ['BondVault', 'PayoutPool', 'write', 'M820 150 H780' + L(780, 150)],
-    ['AssurancePool', 'PayoutPool', 'write', 'M820 250 H800 V150 H780' + L(780, 150)],
     ['LendingPool', 'SettlementForwarder', 'write', 'M980 50 H990 V350 H780' + L(780, 350)],
   ],
-  heads: ['Rules', 'Issue', 'Ledger', 'Cash out', 'Lenders'],
-  layers: [['Rules', ['NetworkRegistry', 'CollateralRegistry', 'LimitCalculator', 'RateSchedule', 'MerchantRegistry']], ['Issue', ['TermIssuer', 'OffersIssuer', 'RevolvingIssuer']], ['Ledger and money', ['ClearCredit', 'ClearUSD', 'ESADepositVault']], ['Cash out', ['PayoutPool', 'SettlementForwarder']], ['Lenders', ['LendingPool', 'BondVault', 'AssurancePool']]],
+  heads: ['Rules', 'Issue', 'Ledger', 'Cash out', 'Lenders and reserve'],
+  layers: [['Rules', ['NetworkRegistry', 'CollateralRegistry', 'LimitCalculator', 'RateSchedule', 'MerchantRegistry']], ['Issue', ['TermIssuer', 'OffersIssuer', 'RevolvingIssuer']], ['Ledger and money', ['ClearCredit', 'ClearUSD', 'ESADepositVault']], ['Cash out', ['PayoutPool', 'SettlementForwarder']], ['Lenders', ['LendingPool', 'BondVault']], ['Reserve (lends nothing)', ['AssurancePool']]],
   sel: 'PayoutPool',
 };
 
@@ -262,7 +261,7 @@ export function contractMap(deployments, contractIds) {
     actions: `<div class="cd-actions"><div class="cd-seg" role="group" aria-label="Network" data-seg>${seg}</div><a class="cd-btn" data-variant="ghost" href="https://github.com/Deed3Labs/Protocol-Contracts/tree/dev/contracts">Source</a></div>`,
     body:
       `<h2 id="credit-and-money-contracts">Credit and money contracts</h2>${graph(CREDIT, 'credit', deployments)}` +
-      `<h2 id="deed-track-contracts">Deed track contracts</h2><p>The Deed track stands on its own. No contract outside it reads <code>DeedNFT</code>. The only piece it shares with the rest of the protocol is the optional <code>TokenRegistry</code> lookup.</p>${graph(DEED, 'deed', deployments)}` +
+      `<h2 id="deed-track-contracts">Deed track contracts</h2><p>The Deed track stands mostly on its own. <code>DeedNFT</code> reads the <code>MembershipRegistry</code> (for the Verified transfer policy) and its own <code>FunctionalContractRegistry</code>, and <code>CoopTransferAgent</code> moves Coop deeds. It shares the optional <code>TokenRegistry</code> lookup with the rest of the protocol. The deployed Base Sepolia Deed contracts are an earlier build than the source.</p>${graph(DEED, 'deed', deployments)}` +
       `<h2 id="deployed-addresses">Deployed addresses</h2>${tables}`,
     text: 'Contract map. The main contracts, how they connect, and where each one lives. Credit and money contracts. Deed track contracts. Deployed addresses. ' + Object.keys(JOBS).join(' '),
   };

@@ -1,7 +1,10 @@
 # Vehicles
 
-Vehicle is asset type `1` (`DeedNFT.AssetType.Vehicle`). A Vehicle deed cannot be subdivided. It
-can be [fractionalized](../fractionalization.md) like any deed.
+Vehicle is asset type `1` (`DeedNFT.AssetType.Vehicle`). A Vehicle deed is minted with
+`DeedNFT.mintAsset`. It is not a trust deed: in the contracts the trust applies only to Land and
+Estate, so a Vehicle deed has no trustee, protector or transfer policy, and the trust calls that
+change a deed revert on it (`NotTrustDeed`). It cannot be subdivided. It can be [fractionalized](../fractionalization.md)
+like any deed.
 
 What a validator reviews off-chain before validating a deed, such as the title, the registration or
 a VIN check, is up to that validator. The contracts do not check documents. They check that the
@@ -12,8 +15,9 @@ traits below are present, and record the validator's result.
 ## Trait keys
 
 **These are the keys the contracts read.** Each is a separate trait on the deed, set with
-`DeedNFT.setTrait` and a string value (`valueType` 1). Keys are case-sensitive and hashed with
-`keccak256`, so `vin` and `VIN` are different traits.
+`DeedNFT.setTrait` by the holder or the deed's validator, with a string value (`valueType` 1). Keys
+are case-sensitive and hashed with `keccak256`, so `vin` and `VIN` are different traits. Once the
+deed is validated, only the validator can change the keys its criteria require.
 
 | Key | Required by the preset criteria | Used in the metadata name |
 |---|---|---|
@@ -37,8 +41,9 @@ deedNFT.setTrait(tokenId, bytes("year"), bytes("2020"), 1); // a string, not a n
 deedNFT.setTrait(tokenId, bytes("vin"), bytes("4T1B11HK0LU000000"), 1);
 ```
 
-Every deed also carries the seven traits set at mint: `assetType`, `isValidated`,
-`operatingAgreement`, `definition`, `configuration`, `validator` and `beneficiary`.
+Every deed also carries the six traits set at mint: `assetType`, `isValidated`,
+`operatingAgreement`, `definition`, `configuration` and `validator`. Who owns the deed is not a
+trait; `DeedNFT.beneficialOwnerOf` answers it.
 
 ---
 
@@ -65,9 +70,9 @@ Supporting records are stored in the `MetadataRenderer`
 
 ## Known limitations
 
-- **`year` must be a string.** Both `validateDeed` and the renderer decode it as one. Stored as a
-  number (`valueType` 2), it can make validation revert and the renderer fall back to the stored
-  URI.
+- **`year` must be a string.** Both `validateDeed` and the renderer's name decode it as one. Stored
+  as a number (`valueType` 2), it can make validation revert and the renderer fall back to the
+  stored URI.
 - **The example metadata uses display labels, not trait keys.** `test/templates` lists "Make",
   "Model", "Year" and "VIN". The contracts read `make`, `model`, `year` and `vin`; a trait set
   under the label is a different key and is not read.

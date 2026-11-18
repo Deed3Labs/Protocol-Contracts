@@ -16,7 +16,8 @@ refuse the first draw: script `20` (`CreditCore`), `25` (`Compliance`), the hand
 `Earn`, `Compliance`), and the fresh-credit wiring of `22`, `27`, the Yield Pool upgrade, the vault
 batch and the bond unwind report (`FreshCredit`).
 
-**Nothing in this repository has been run against a network for the audit.** The full order, with
+**The Base Sepolia rollout has run** (day 0 on 17 November 2026; every step is logged in
+`deployments/base-sepolia/run-log/`). Base mainnet has not. The full order, with
 the waits and every owner-to-confirm item, is [DEPLOY-RUNBOOK.md](../audit/DEPLOY-RUNBOOK.md).
 
 **Rehearse on a fork first.** `scripts/rehearse_sepolia_fork.ts` runs the whole Base Sepolia order
@@ -161,8 +162,9 @@ On mainnet there is nothing to retire or unwind: `16`–`18`, `20`, `26`, `22`, 
 | `27_wire_Earn` | Nothing new: names EarnControls and the pool on each other; grants the Earn roles from [`deploy/config/earn-roles.json`](../../deploy/config/earn-roles.json); revokes the pool's retired `BORROWER_ROLE` and `LIQUIDATOR_ROLE` holders; `setYieldPool(0)` and `setBondVault(0)` on every PayoutPool that owes nothing; revokes every pool and EarnControls role a retired contract holds; prints the co-signed `BondVault.setBackstops(treasury, 0)` that clears the retired PayoutPool once `lentToPayoutPool` is 0 (it never sends it); before that it skips it on a testnet (test money, decision 50) and refuses it on Base mainnet; reports the Pool Tier ceiling | `EARN_RESOLUTION`, `POOL_TIER_PRINCIPAL`, `POOL_TIER_EVIDENCE` |
 | `28_deploy_SettlementForwarder` | `SettlementForwarder` (decision 54): CL Operating's AllowanceModule delegate for Settlement Funding. It sets nothing: CL Operating's own batch (signing plan `SL-cl-operating-*`) names it a delegate with its allowance and sets its off-ramp and desk wallet | `CLEAR_LENDING_ACCOUNT`, `RESERVE_TOKEN`, `PAYOUT_TOPUP_ALLOWANCE_MODULE` |
 
-**The Earn role holders are the owner's to fill.** Every list in `deploy/config/earn-roles.json` is
-`null`, and deploy 27 grants nothing, saying "owner to fill", until each is set: on the pool two
+**The Earn role holders are the owner's to fill.** On Base mainnet every list in
+`deploy/config/earn-roles.json` is `null`, and deploy 27 grants nothing, saying "owner to fill",
+until each is set; the Base Sepolia holders are filled in and were granted on day 0. The roles are: on the pool two
 `DEPLOYER_ROLE`, two `VALUATION_ROLE` (never a Deployment signer), `SUSPENSION_ROLE`, `CCO_ROLE` and
 `TREASURER_ROLE`; on EarnControls `ATTESTER_ROLE` and two each of `PAUSE_ROLE`, `SUCCESSOR_ROLE`,
 `ELIGIBILITY_ROLE`, `LADDER_ROLE`, `FUNDING_ROLE` and `WIND_DOWN_ROLE`, `ROLL_NOTICE_ROLE` and
@@ -204,11 +206,10 @@ there, and an environment variable named for the contract and the chain wins ove
 `OFFERS_ISSUER_84532` or the API runs without offers. The member app takes CLRUSD and vault
 addresses as `VITE_` variables per chain (`VITE_CLRUSD_84532`, `VITE_ESA_VAULT_84532`).
 
-After the fresh Base Sepolia credit stack, those defaults (and `apps/member/src/lib/clearNetwork.ts`)
-still name the retired contracts. [DEPLOY-RUNBOOK.md](../audit/DEPLOY-RUNBOOK.md) section 4.2 lists
-every file, line and address, and the record that replaces each. Change them in the app PRs, after
-the deploy and once `scripts/check_retired_credit.ts` passes, and check any `*_84532` environment
-value set on the hosts: it wins over the file.
+Those defaults (and `apps/member/src/lib/clearNetwork.ts`) name the fresh Base Sepolia stack. A
+`*_84532` environment value set on a host still wins over the file, so check none names a
+`*PreAudit` address. [DEPLOY-RUNBOOK.md](../audit/DEPLOY-RUNBOOK.md) section 4.2 lists every file,
+line and address, and the record that replaced each.
 
 `scripts/update-app-contracts.ts` predates the monorepo — it writes to `app/`, which no longer
 exists. Do not use it.
@@ -321,8 +322,8 @@ not something the deployer key can do.
 
 - `scripts/drill_redemption.ts` rehearses a merchant redemption against a fork of what is deployed
 - `npm run clrusd:validate` checks the CLRUSD, vault and CCIP setup
-- `npm run verify:deployments:sepolia` checks the reserve and the first bond contracts only
-  (`07`–`10`); it predates everything after
+- `npm run verify:deployments:sepolia` checks only the TokenRegistry and the first bond factory and
+  deposit contracts (`07` and `10`); it predates everything after
 - Verifying source on Basescan: `npx hardhat verify --network base-sepolia <address>`
 - The Command Center's Build page compares each deployed contract's code with this branch, from
   `scripts/command/code-fingerprints.mjs`; CI fails if that file is stale after a contract change

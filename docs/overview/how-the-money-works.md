@@ -42,6 +42,10 @@ renewed, and nothing keeps it going past 30 days except a court order or other l
 a pause is in force it never counts against your credit: due dates and grace periods move back by
 the time it lasted. Who holds these powers is in [Governance](../governance/on-chain-authority.md).
 
+On Base, the live network, savings run on an earlier version of the vault and CLRUSD. Members-only
+transfers, the savings lock, the two-person pause and the timelocks are on Base Sepolia, the test
+network, only. On Base: Not available yet.
+
 ## Equity credits
 
 Equity credits are a count Clear's server keeps for you, not money and not a token. New credits wait
@@ -140,7 +144,8 @@ allocation the co-op sets each year.
 **The Credit Backstop has a floor**: 5% of the credit it covers. Income-backed credit, Clear Boost
 and split plans count in full, asset-backed credit counts only for the part its backing would not
 repay, and **debt backed by a member's own savings does not count at all**, because the savings
-already cover it. With no unsecured credit live, the floor is zero.
+already cover it. The floor can also be set higher each month to cover a gap in timing, so it is
+zero only when no unsecured credit is live and no such gap is set.
 
 **Nothing else can reach it.** No credit, savings, payout or bond contract holds the pool's address,
 so no redemption, payout, refund or liquidation can take money from it. It lends nothing. Every
@@ -154,7 +159,8 @@ action takes two different people, and a change to its rules or its code also wa
    missed cycle.
 2. **Default.** Once a split-plan payment has stayed unpaid for two further instalment periods,
    anyone can declare the member in default. Their plans close and their split-plan limit goes to
-   zero. A credit line defaults only after two missed cycles in a row, a cure notice that two people
+   zero. A plan the member has secured with their savings or holdings is different: it defaults only
+   60 days past due, and at least 30 days after a cure notice that two people record. A credit line defaults only after two missed cycles in a row, a cure notice that two people
    record on the chain, and a grace period that ends with that amount still unpaid. Paying it cancels
    the notice.
 3. **Collateral.** Only what was past due can be collected from what the member pledged. Pledged

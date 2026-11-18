@@ -84,7 +84,8 @@ curl "http://localhost:3001/api/transactions/1/0xd8dA6BF26964aF9D7eEd9e03E53415D
 
 With Redis connected, the second identical request within the cache window returns
 `"cached": true`. The windows are set by `CACHE_TTL_PRICE` (300 seconds by default),
-`CACHE_TTL_BALANCE` and `CACHE_TTL_TRANSACTION` (600 seconds each). Without Redis, every response is
+`CACHE_TTL_BALANCE` (600 seconds for native balances, 300 for token balances) and
+`CACHE_TTL_TRANSACTION` (600 seconds). Without Redis, every response is
 `"cached": false`.
 
 ## Common problems

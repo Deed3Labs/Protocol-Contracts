@@ -70,8 +70,8 @@ there's no date.
 
 ## Bonds on Earn
 
-Earn holds bonds and the [lending pool](#the-lending-pool-on-earn). It is open before identity
-verification, like savings.
+Earn holds bonds and the [lending pool](#the-lending-pool-on-earn). It needs an eligibility check
+before you can buy a bond or add to the pool.
 
 **A BurnerBond is a fixed-term bond.** You pay less than its face value today, and at maturity it
 is worth its face value. Buying one:
@@ -87,13 +87,11 @@ maturity. A bond backing your line can't be moved to anyone else. See
 
 ### When a bond matures
 
-You choose what happens at maturity, and you can change your choice before then from the bond's
-sheet:
+**At maturity a bond pays its face value to Ready to allocate.** Nothing rolls on its own. Before
+maturity Clear may send a roll notice; a bond rolls into a new one only if you confirm that notice
+before the deadline shown on it, and a rolled bond keeps backing your line.
 
-- **Roll it over** — the default. It becomes a new bond and keeps backing your line.
-- **Take the cash** — redeem it for its face value, paid to Ready to allocate.
-
-**A bond that backs your line pays out in two parts if you take the cash.** At maturity, the part
+**A bond that backs your line pays out in two parts at maturity.** At maturity, the part
 needed to keep your asset-backed credit within its limit without this bond repays that credit first,
 and the rest is paid to you. Rolling it over keeps it backing your line.
 

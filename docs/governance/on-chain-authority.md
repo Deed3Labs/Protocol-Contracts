@@ -17,7 +17,9 @@ keys follows these rules; the steps are in [Deploying the contracts](../operator
 **When the contracts are deployed, the deployer key holds every admin and operational role.** The
 hand-overs move them off it: operational roles to the wallets that do each job, then admin power to
 the timelocks. On Base Sepolia, the test network, the hand-overs ran on November 17, 2026, when the
-testnet rollout began. Every admin change since then waits out a timelock's 7-day delay.
+testnet rollout began. Every admin change since then waits out a timelock's 7-day delay. Where a
+hand-over is still waiting out its delay, or a contract was deployed after day 0 (the fresh
+OffersIssuer), the deployer holds that power until the hand-over completes.
 
 ## The four timelocks
 
@@ -67,8 +69,8 @@ The credit contracts take their answer to "who may do this?" from one contract, 
 | Admin | The admin | Upgrading the credit ledger, changing its settings, granting every role below. The admin passes every credit check | The credit timelock |
 | `CREDIT_LINES_ROLE` | The admin | Opening credit lines and split plans, extending a credit period, closing a plan for a refund, granting new-member offers | The credit operator |
 | `CREDIT_LIMITS_ROLE` | The admin | Setting term limits and revolving tier capacities, within the issuers' daily caps, and reinstating a member who has not repaid in full | The credit operator, and the `LimitCalculator` contract |
-| `CREDIT_SETTINGS_ROLE` | The admin | Revolving tiers and their rates, treasuries, card settlers, card and daily caps, offer terms. Changing where Clear Lending's fee is paid takes two different holders | The Ops Safe |
-| `OPERATOR` | The admin | Writing to the ledger from another contract. It passes none of the three credit roles above | The credit issuers, the ledger, the `Liquidator` and the `LimitCalculator` |
+| `CREDIT_SETTINGS_ROLE` | The admin | Revolving tiers and their rates, treasuries, card settlers, card and daily caps, offer terms. Changing where Clear Lending's fee is paid takes two different holders | Two named signers, so a two-person change has two people to make it. The credit timelock, as admin, also passes every credit check |
+| `OPERATOR` | The admin | Writing to the ledger from another contract. It passes none of the three credit roles above. A holder also counts as a member | The credit issuers, the ledger, the `Liquidator` and the `LimitCalculator`, and the credit operator wallet |
 | `MEMBER` | An operator | Being treated as a member by the credit contracts. An active record in the membership registry counts too ([Protocol → Access](../protocol/credit.md#access)) | Members, as their lines open |
 
 The credit issuers also have a `CREDIT_ATTESTER_ROLE`. Its holders record the things that change a
@@ -93,7 +95,7 @@ deployer key for any of them.
 | **Send relayer** | `ClaimEscrow` `SETTLER_ROLE` | Holds link-based sends in escrow and releases them when claimed |
 | **Card settler** | The card-settler slot on `RevolvingIssuer` | Records card spending on the ledger. It borrows nothing from the lending pool on Earn, and nothing does |
 | **Payout top-up wallet** | `PayoutPool` `FUNDER_ROLE`, and a spending limit on Clear Lending's operating Safe | Tops up the payout pool when it is short, within a limit set on chain by that Safe's owners ([Payouts](../merchants/payouts.md#how-the-payout-pool-is-kept-funded)) |
-| **The Ops Safe** | `AccessManager` `CREDIT_SETTINGS_ROLE`; `MerchantRegistry` `OPERATOR_ROLE`; `PayoutPool` `FUNDER_ROLE` and `OPERATOR_ROLE`; `OPERATOR_ROLE` on `NetworkRegistry`, `Liquidator` and `LimitCalculator`; the Deed track's fee, criteria and validator roles | Credit settings, shop terms, payout pool top-ups by hand, validator fees. It is also the credit timelock's proposer |
+| **The Ops Safe** | `MerchantRegistry` `OPERATOR_ROLE`; `PayoutPool` `FUNDER_ROLE` and `OPERATOR_ROLE`; `OPERATOR_ROLE` on `NetworkRegistry`, `Liquidator` and `LimitCalculator`; the Deed track's fee, criteria and validator roles | Credit settings, shop terms, payout pool top-ups by hand, validator fees. It is also the credit timelock's proposer |
 
 **Upkeep needs no role.** Some contract upkeep happens only when someone calls a function: rolling a
 credit line into its next cycle, declaring a default the issuer has already computed, settling
@@ -186,8 +188,8 @@ To see every grant and removal, read the contract's `RoleGranted` and `RoleRevok
 ## Who can upgrade a contract
 
 **An upgrade keeps a contract's address and replaces its code.** The right to do it sits with each
-contract's admin. For every contract outside the Deed track that admin is a timelock, so an upgrade
-is a Safe proposal that waits 7 days.
+contract's admin. For every contract outside the Deed track that admin is, once its hand-over
+completes, a timelock, so an upgrade is a Safe proposal that waits 7 days.
 
 | Contracts | Upgraded by |
 |---|---|

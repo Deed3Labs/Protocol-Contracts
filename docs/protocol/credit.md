@@ -21,7 +21,7 @@ write to the same ledger through the same `NetworkRegistry`. Deployed addresses 
 | `AccessManager.sol` | Admin, operator and member roles, and the scoped credit roles (`CREDIT_LINES_ROLE`, `CREDIT_LIMITS_ROLE`, `CREDIT_SETTINGS_ROLE`) |
 | `MembershipRegistry.sol`, `NetworkRegistry.sol` | Membership records `AccessManager.isMember` reads; issuer → ledger, member → issuers, and the money-path list |
 | `CreditPool.sol` | Legacy: credits deposited for reserve token at `discountRate`, serviced from a queue. No deploy script or spec uses it |
-| `CarryIndex.sol`, `ExposureMath.sol` | Lazy carry accrual (one index per tier, one per plan); the share of a position no collateral covers |
+| `CarryIndex.sol`, `ExposureMath.sol` | Each tier's and plan's rate and cycle length (carry itself accrues per second in the issuers); the share of a position no collateral covers |
 
 ---
 
@@ -40,8 +40,8 @@ consulting what the obligor already holds, so an address can hold credits and ow
 
 | Function | Caller | Effect |
 |---|---|---|
-| `originatePurchase(member, purchase, merchant, payout, coop, discount)` | issuer | Asserts `purchase == payout + discount` and `owed + purchase <= creditLimitOf`, then `_accrueCredit` to the merchant and the co-op |
-| `reversePurchase(...)` | issuer | Same netting check. Burns the co-op's discount (reverts if it holds less) and as much of the merchant's payout as it holds; the rest moves to the merchant with `_transferObligation` (`RefundOwedByMerchant`) |
+| `originatePurchase(member, purchase, merchant, payout, coop, discount)` | issuer | Asserts `purchase == payout + discount` and `owed + purchase <= creditLimitOf`, then mints to the merchant and to the third leg, `coop` (on a plan, `TermIssuer.feeRecipient`), each first settling any refund that recipient owes (`_accrueToRecipient`) |
+| `reversePurchase(...)` | issuer | Same netting check. Burns the third leg's share from that recipient (reverts if it holds less) and as much of the merchant's payout as it holds; the rest moves to the merchant with `_transferObligation` and is recorded as a refund receivable (`RefundOwedByMerchant`) |
 | `repayRefund(member, paid, merchant, merchantShare, coop, coopShare, carryWithheld)` | issuer | Takes each share back (burn, else an obligation on the holder), then `payoutPool.payRefund(member, paid − carryWithheld)` |
 | `accrueCarry(member, recipient, amount)` | issuer | `_accrueCredit`: the member owes more, the recipient holds more. Not limit-checked |
 | `settleClaim(holder, amount)` | PayoutPool only | Burns a claim the pool paid with a member's repayment |
@@ -147,21 +147,24 @@ both parties' carry, then `_draw`s the sender's shortfall into active tiers in o
 its headroom (`capacity − drawnOf`, carry included). `_absorbRepayment` walks the tiers from the
 top, skipping any below the band the ledger offered.
 
-Each tier has one `CarryIndex`. `_materialiseCarry` — on every interaction, and public as
-`materialiseCarry(member)` — writes accrued carry to the ledger and raises `tierPrincipal` to match.
+Carry accrues per second as simple interest on principal at the tier's monthly rate × 12 / 365,
+trimmed to the legal caps and the Combined Ceiling, and never bears carry itself. Principal and
+carry are tracked apart (`tierPrincipal`, `tierCarry`, `carryOutstandingOf`). `_materialiseCarry` —
+on every interaction, and public as `materialiseCarry(member)` — writes accrued carry to the ledger.
 
 **Card settlement.** A swipe outside the network is paid from the co-op's float and recorded at
 clearing, with the whole claim minted to the operator-set `cardSettlementAccount` and no discount
-leg. All four functions require `isCardSettler[msg.sender]`. `settleCardSpend`, `repayCardSpend` and
+leg. Every card function requires `isCardSettler[msg.sender]`. `settleCardSpend`, `repayCardSpend` and
 `repayForMember` accept a given `ref` (the card issuer's transaction reference, hashed) once;
 `reverseCardSpend` may be called on a settled `ref` until its amount is used up.
 
 | Function | Effect |
 |---|---|
-| `settleCardSpend(ref, member, amount)` | Reverts unless active-tier headroom covers all of `amount`. `_draw`s the tiers, then `originatePurchase(member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0)` |
+| `authorizeCardSpend(ref, member, amount)` | Records what the card issuer approved, when it approved it. Refused for a member who is frozen, in default or has defaulted, or for more than the line could hold then |
+| `settleCardSpend(ref, member, amount)` | Settles only against a matching authorization for the same member, and never above it (audit M-2). Bound by `cardTxCap`, the daily `cardSpendCap` and the per-member cap; refused after a default on the current line; Savings draws only up to `savingsDrawAllowance`. Reverts unless active-tier headroom covers all of `amount`. `_draw`s the tiers, then `originatePurchase(member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0)` |
 | `reverseCardSpend(ref, amount)` | Up to what `ref` settled. Clears tiers dearest first and `reversePurchase` from the float |
 | `repayCardSpend(ref, member, amount)` | A fiat repayment. Requires `amount <= totalPrincipalOf(member)` and the float to hold `amount`, then clears tiers and burns the float's claim against the member's obligation with `reversePurchase`. No reserve token moves |
-| `repayForMember(ref, member, amount)` | Only while the member has called `setAutoRepay(true)`. Pulls the member's USDC with `repayCreditBalanceFor(member, member, amount)` and clears tiers dearest first |
+| `repayForMember(ref, member, amount, payer)` | Automatic Clearing (below). The settler delivers the cash, then `repayCreditBalanceFor(address(this), member, …)`. Refused in `hybridMode` or for an excluded payer. Clears at the member's chosen level |
 
 ### Cycles, dues and Automatic Clearing (Addendum 2, Phase 2e)
 
@@ -302,12 +305,11 @@ submitted by a `CREDIT_LINES_ROLE` holder with the member's EIP-712 signature ov
 `PlanTerms` they were shown (audit H-4). It reverts unless `installments` is 1, 2, 4, 6 or 12
 (`isOfferedSplit`; 13 for a large loan), the member is neither
 suspended nor behind on any plan, and `totalPrincipalOf(member) + purchase <= termLimitOf[member]`.
-It initialises the plan's own `CarryIndex`, fixes its schedule, and calls `originatePurchase(member,
+It records the plan's rate and cycle length, fixes its schedule, and calls `originatePurchase(member,
 purchase, merchant, payout, _feeRecipient(), purchase − payout)`.
 
-**The schedule is fixed when it opens.** `_fixSchedule` sets `scheduleTotal` with
-`CarryIndex.scheduleCost` — a level annuity over the plan's own index — and `installmentAmount`
-as that total divided by `installments`, rounded up. `installmentsDue` runs on wall-clock time.
+**The schedule is fixed when it opens.** `_fixSchedule` computes the level installment itself
+(`installmentAmount`, rounded up) and sets `scheduleTotal` to `installmentAmount × installments`. `installmentsDue` runs on wall-clock time.
 `scheduledPrincipalDue` is `scheduleFloor + installmentAmount × due`, or `scheduleFloor +
 scheduleTotal` once every installment is due. `arrearsOf` is that figure less `plan.repaid`.
 
@@ -336,8 +338,9 @@ the principal still owed and pays back, in cash, up to what was repaid and not a
 closes once what is outstanding is no more than that carry.
 
 **The fee leg (12.16, Addendum 2).** The third leg of each purchase is Clear Lending's fee, minted to
-`feeRecipient` — Clear Lending's own multisig, or an account Clear Financial holds as its agent, never
-the co-op's treasury. fee = min(`discountBpsBySplit` × amount, cap), the cap $50 up to $2,500 and $75
+`feeRecipient` — meant to be Clear Lending's own multisig, or an account Clear Financial holds as its
+agent. The contract refuses only zero and `carryTreasury` (`_checkFeeRecipient`); on Base Sepolia it
+is set to the Clear Treasury Safe. fee = min(`discountBpsBySplit` × amount, cap), the cap $50 up to $2,500 and $75
 above (`setFeeTerms`); the merchant is paid the amount less the fee and the member is never charged
 it. A plan with a fee will not open while no recipient is named. Changing it takes two
 `CREDIT_SETTINGS_ROLE` holders (`proposeFeeRecipient(recipient, reasonCode)`, then
@@ -399,11 +402,11 @@ nothing, so the line adds nothing to `CollateralRegistry.exposureOf`.
 
 ## Carry
 
-**Carry is derived from an index, not charged.** `CarryIndex.currentIndex` compounds
-`1 + ratePerCycle / 10_000` over whole cycles since `rateStart` and accrues linearly within the
-current one, so it reads the same however often it is touched. `setRate` checkpoints `base` first.
-Rates above `MAX_RATE_PER_CYCLE` (5,000 bps) revert. Positions store `amount / index`, rounded up on
-draws and on repayment reductions (`normalizeUp`).
+**Carry accrues per second, simple, on principal only.** Each tier and plan accrues at its monthly
+rate × 12 / 365 a day from the `RateSchedule` snapshot it took, trimmed to the legal caps and the
+Combined Ceiling; carry never bears carry. Principal and carry are held apart, and
+`materialiseCarry` writes accrued carry to the ledger. `CarryIndex` now only stores each tier's or
+plan's rate and cycle length: its `currentIndex` and `normalizeUp` are not used by the issuers.
 
 Carry reaches the ledger only when an issuer materialises it through `accrueCarry`, which is not
 limit-checked: a member may come to owe more than their ceiling, and `creditLimitLeftOf` is then 0.
@@ -455,7 +458,7 @@ needed; `releaseItem` will not free anything while the kind is drawn.
 
 ```mermaid
 flowchart TD
-  R["Revolving: period expires,<br/>grace over, balance owed"] -->|"expireCreditPeriod"| WR["writeOffCreditLine<br/>min(exposureOf, totalDrawnOf)"]
+  R["Revolving: two missed Rebalance Amounts,<br/>cure notice, grace over"] -->|"triggerDefault (anyone)"| WR["writeOffCreditLine<br/>min(exposureOf, totalDrawnOf)"]
   WR --> OD["_onDefault: tier capacities 0,<br/>MEMBER role revoked"]
   OD --> LQ["Liquidator.liquidate (Savings),<br/>payPledged (bonds),<br/>PoolShareEnforcer (pool shares)"]
   LQ -->|"up to the Defaulted Amount"| SF["settleFromCollateral<br/>or payPlan"]

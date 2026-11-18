@@ -6,8 +6,10 @@ out and pays it, and what the people who sign do. The rules are IV-03 Part 7 (7.
 repayment); the pool is [`AssurancePool.sol`](../../contracts/peripherals/AssurancePool.sol) and its
 reserve is described in [`reserve.md`](../protocol/reserve.md).
 
-**Off by default.** Nothing runs until the new pool's address is set, and nothing is ever sent until
-`ASSURANCE_FEE_PAYER_ENABLED=1`. On Base Sepolia the pool is not deployed yet.
+**Off by default.** The daily reading runs wherever the API knows the pool's address: on Base
+Sepolia that is the deployed `AssurancePoolV2` (`0x3c33…BB15`), the default in
+`apps/api/src/config/contracts.ts`, or `ASSURANCE_POOL_V2_<chain>`. Nothing is ever sent until
+`ASSURANCE_FEE_PAYER_ENABLED=1`.
 
 ## What it does
 
@@ -107,7 +109,7 @@ automatic. One per month.
 
 | Variable | Value | |
 |---|---|---|
-| `ASSURANCE_POOL_V2_84532` | the new pool's address, once deployed | Turns on the daily reading and the monthly fee. Not `ASSURANCE_POOL_84532`: that still names the Phase 1 reserve the Money page reads |
+| `ASSURANCE_POOL_V2_84532` | the pool's address; defaults to the deployed `AssurancePoolV2` on 84532 | Turns on the daily reading and the monthly fee. Not `ASSURANCE_POOL_84532`: that still names the Phase 1 reserve the Money page reads |
 | `ASSURANCE_FEE_PAYER_ENABLED` | `1` | Lets the job send the approve and deposit. Leave it off until the pool's payers are set and a first funding is signed |
 | `ASSURANCE_FEE_PAYER_CDP_ACCOUNT_NAME` | `cl-fees-base-sepolia` | The CL Fees CDP wallet, found by name (never created). A `_84532` suffix wins over the plain name |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET` | the CDP project the relayers use | Read under these names, or the relayers' `SAVINGS_CDP_*` and `SEND_CDP_*` names, so nothing new is needed if those are set |

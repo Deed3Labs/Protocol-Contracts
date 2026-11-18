@@ -71,7 +71,9 @@ A card payment is **authorised** at the sale and **captured at Close the day**. 
   amount; if it's refused, the app says so and the original hold stands;
 - **void** it (see [Refunds, voids and disputes](./refunds-voids-disputes.md)).
 
-Stripe releases a hold that isn't captured within two days, so close every day you take cards.
+Stripe releases a hold that isn't captured within two days, so close every day you take cards. If a
+day isn't closed, Clear captures each card itself about 36 hours after the sale, before the hold
+lapses; after that its tip can't be adjusted and it can't be voided.
 
 ## Cash
 

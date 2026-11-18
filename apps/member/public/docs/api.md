@@ -6,7 +6,8 @@ Generated from `@clear/public-api-contracts` for version `2026-10-16`. Base URL 
 
 - `Authorization: Bearer <key>`. The secret key (`clear_sk_…`) from a server; the publishable key (`clear_pk_…`) only where a route says so.
 - `Clear-Version: 2026-10-16`. Without it, the key's pinned version is used, and said in the answer. An unknown version is refused.
-- `Idempotency-Key` on the routes marked so: the same key and body give the same answer; the same key with another body is refused.
+- `Idempotency-Key` on the routes marked so: the same key and body give the same answer; the same key with another body is refused. The key is 8 to 200 characters.
+- A payment's `amount` is 50 to 99999999 cents, tax included (`amount_too_small`, `amount_too_large`).
 - Bodies are JSON. Amounts are integer cents in `usd`. Times are ISO 8601. Lists are newest first: `{ object: "list", data, hasMore }`, continued with `startingAfter`.
 - A test key sees only test objects, and a live key only live ones.
 
@@ -81,7 +82,7 @@ What `@useclear/js` calls from the page to open the modal. Only from a website o
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `amount` | integer, at least -9007199254740991 | yes |  |
+| `amount` | integer | yes |  |
 | `currency` | `usd` | yes |  |
 | `reference` | string, 1 to 100 characters | no |  |
 | `lines` | list of object (at least 1) | no |  |
@@ -396,7 +397,7 @@ Or:
 | `event.type` | one of `payment.succeeded`, `payment.failed`, `payment.canceled`, `refund.succeeded` | yes |  |
 | `status` | one of `pending`, `succeeded`, `failed` | yes |  |
 | `attempts` | integer, at least 0 | yes |  |
-| `responseStatus` | integer, at least -9007199254740991, or null | yes |  |
+| `responseStatus` | integer, or null | yes |  |
 | `lastAttemptAt` | timestamp (ISO 8601, with a zone), or null | yes |  |
 | `nextAttemptAt` | timestamp (ISO 8601, with a zone), or null | yes |  |
 | `createdAt` | timestamp (ISO 8601, with a zone) | yes |  |

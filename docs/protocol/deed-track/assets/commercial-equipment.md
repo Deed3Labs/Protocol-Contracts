@@ -1,8 +1,11 @@
 # Commercial equipment
 
 Commercial Equipment is asset type `3` (`DeedNFT.AssetType.CommercialEquipment`): machinery such as
-an excavator, a tractor or a production line. A Commercial Equipment deed cannot be subdivided. It
-can be [fractionalized](../fractionalization.md) like any deed.
+an excavator, a tractor or a production line. A Commercial Equipment deed is minted with
+`DeedNFT.mintAsset`. It is not a trust deed: in the contracts the trust applies only to Land and
+Estate, so a Commercial Equipment deed has no trustee, protector or transfer policy, and the trust
+calls that change a deed revert on it (`NotTrustDeed`). It cannot be subdivided. It can be
+[fractionalized](../fractionalization.md) like any deed.
 
 What a validator reviews off-chain before validating a deed, such as a purchase agreement, service
 records or an inspection, is up to that validator. The contracts do not check documents. They check
@@ -13,8 +16,9 @@ that the traits below are present, and record the validator's result.
 ## Trait keys
 
 **These are the keys the contracts read.** Each is a separate trait on the deed, set with
-`DeedNFT.setTrait` and a string value (`valueType` 1). Keys are case-sensitive and hashed with
-`keccak256`, so `serialNumber` and `Serial Number` are different traits.
+`DeedNFT.setTrait` by the holder or the deed's validator, with a string value (`valueType` 1). Keys
+are case-sensitive and hashed with `keccak256`, so `serialNumber` and `Serial Number` are different
+traits. Once the deed is validated, only the validator can change the keys its criteria require.
 
 | Key | Required by the preset criteria | Used in the metadata name |
 |---|---|---|
@@ -41,8 +45,9 @@ deedNFT.setTrait(tokenId, bytes("year"), bytes("2021"), 1); // a string, not a n
 deedNFT.setTrait(tokenId, bytes("equipmentType"), bytes("Excavator"), 1);
 ```
 
-Every deed also carries the seven traits set at mint: `assetType`, `isValidated`,
-`operatingAgreement`, `definition`, `configuration`, `validator` and `beneficiary`.
+Every deed also carries the six traits set at mint: `assetType`, `isValidated`,
+`operatingAgreement`, `definition`, `configuration` and `validator`. Who owns the deed is not a
+trait; `DeedNFT.beneficialOwnerOf` answers it.
 
 ---
 

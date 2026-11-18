@@ -22,7 +22,7 @@ the tiers you have.
 |---|---|---|
 | **Savings** | Your CLRUSD | 100% of your savings. Free to use |
 | **Assets** | Your bonds and lending-pool position | 95% of what your bonds are worth today, 70% of your pool position |
-| **Income** | The income landing in your account | Half of your estimated monthly deposits |
+| **Income** | The income landing in your account | Half of your estimated monthly deposits. Income and Boost together never go above $2,499 |
 | **Clear Boost** | Nothing — it's opt-in | Nothing until you add it |
 
 **Savings and Assets are secured**: what you draw on them is already covered by what you hold.
@@ -71,8 +71,8 @@ pause, until it is paid.
 ### Repaying
 
 **Repay** on the cycle card puts money against what you carry, most expensive tier first. It comes
-from Ready to allocate, and you can also repay from savings. If you repay more than you carry, the
-rest spills into your Spendable balance.
+from Ready to allocate, and you can also repay from savings. A repayment can't be more than you
+carry.
 
 ### Automatic repayment
 
@@ -94,7 +94,7 @@ off or back on at any time.
 A cycle that ends with its unsecured part unpaid is a **missed cycle**. Nothing is taken from your
 savings or anything else you hold for a missed cycle.
 
-- **One missed cycle** halves your income-backed and Boost limit, until you finish a cycle at zero.
+- **One missed cycle** halves your income-backed and Boost limit, until you pay a later cycle's amount in full.
 - **Two missed cycles in a row** pause your line: no new credit until the second amount is paid.
   Clear may then send a **cure notice**, which two people record on the chain.
 - **Default** comes only if that amount is still unpaid when the grace period ends: 15 days after the
@@ -132,7 +132,8 @@ At a shop, choose **Pay over time** on the charge and pick how to split it:
 - **In 2**, **In 4** or **In 12** cycles
 
 Paying over time is for charges of $50 or more; below that, a charge is paid now. Some shops,
-especially online, offer Pay now only. Each plan has its own rate, and the sheet shows your first
+especially online, offer Pay now only. Paying in full is free, and so is a plan under $100;
+otherwise each plan has its own rate, and the sheet shows your first
 payment and the rate before you approve. How the charge itself works is in
 [Paying at Clear shops](./paying-at-shops.md#approving-a-charge).
 
@@ -147,9 +148,8 @@ never ahead of schedule. USDC in Ready to allocate is never taken.
 
 ### Changing a split
 
-From a plan's sheet, **Change split** spreads what's left over a new number of cycles. Anything you
-are behind on stays due now; only the rest is re-spread. You can't change a split while you're
-behind. A plan can be re-split up to three times, at least one installment apart.
+From a plan's sheet, **Change split** spreads what's left over a new number of cycles. You can't
+change a split while you're behind. A plan can be re-split up to three times, at least one installment apart.
 
 ### Falling behind on a plan
 
@@ -163,9 +163,10 @@ If you miss an installment, the plan's sheet shows what's behind and the date to
 
 Time while the savings vault or your account is paused doesn't count toward a plan falling behind.
 
-To bring term plans back, pay back what was written off: **Term plans → Limit** shows what's left
-and a **Pay it back** button. Once it is fully repaid the pause lifts, and a new term limit is set
-from your income.
+There are two ways back. Pay back what was written off: **Term plans → Limit** shows what's left
+and a **Pay it back** button, and term plans reopen once it is fully repaid. Or, after six clean
+cycles on your card's credit line, the co-op reopens them. Either way, Clear then sets a new term
+limit; until it does, the limit stays at zero.
 
 ## Related
 

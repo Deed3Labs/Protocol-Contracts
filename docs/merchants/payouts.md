@@ -9,7 +9,8 @@ Each way of paying reaches you differently:
 
 | Paid by | Where the money goes | Shown on Payouts as |
 |---|---|---|
-| Clear | Clear owes it to the shop, and pays it out under your terms | **Clear** |
+| Clear, paid now | It lands in the shop's cash account at once, less Clear's fee | **Clear** |
+| Clear, over time | Clear owes it to the shop, and pays it out under your terms | **Clear** |
 | Card | Stripe pays it into your bank from your own Stripe account | **Card**, one row per deposit |
 | Cash | It's in the drawer; Close the day sets aside what goes to the bank | **Cash and tips** |
 
@@ -17,7 +18,8 @@ Each way of paying reaches you differently:
 
 For Clear payments, Payouts shows two balances:
 
-- **Owed** is what the co-op owes the shop for approved Clear charges, after Clear's fee. Part of it
+- **Owed** is what the co-op owes the shop for approved Clear charges paid over time, after Clear's
+  fee. A charge paid now never becomes Owed: it is already in the cash account. Part of it
   may already be **released**: money the payout pool can pay now. The rest releases on your payout
   day.
 - **The cash account** is money the shop already holds. It is the shop's own wallet, in your
@@ -63,8 +65,10 @@ Lending's money is moved in to cover what comes due over the weeks ahead. An aut
 moves more in a period than a limit Clear Lending's signers set on chain; anything larger waits for
 them to sign it.
 
-Payouts are paid in the order shops asked for them. No shop can be moved ahead of another: the terms
-have no such setting.
+Payouts are paid by due date. A withdrawal that queues is due when your terms run out, and the one
+due soonest is paid first; two due at the same moment go oldest first. So a shop on 14-day terms can
+be paid before an earlier withdrawal on 30-day terms. No shop can be moved ahead of another: the
+terms have no such setting.
 
 ## Withdrawing
 
