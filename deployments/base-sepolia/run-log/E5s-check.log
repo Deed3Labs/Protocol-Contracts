@@ -1,0 +1,4 @@
+pending: true  ready: false  done: false
+ready at: 2026-11-25T02:21:26.000Z
+Safe USDC allowance to OffersIssuer: 1000.0  Safe USDC: 30.0
+scheduled in tx 0xec661248a124045f154095fad5edc48977744d4f8d3cbfb90d3bf849215d762e block 60233087 2026-11-18T02:21:26.000Z

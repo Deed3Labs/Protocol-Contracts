@@ -1,0 +1,11 @@
+network        base-sepolia (84532)
+deployer       0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+treasury       0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+offer          10.0 · cap 0.0 · expires after 90 days
++ OffersIssuer deployed to 0x52EDD619B18D537B4c880d6Ff0925891ea05Edb1
+! The deployer is not NetworkRegistry's admin: propose this through the credit timelock:
+  registerIssuer(0x52EDD619B18D537B4c880d6Ff0925891ea05Edb1, 0x5923e02EdFb6724a08A28B79C902b40c748082Bc)
+
+left to do:
+  - the API: OFFERS_ISSUER_84532=0x52EDD619B18D537B4c880d6Ff0925891ea05Edb1
+  - the Safe: approve USDC to 0x52EDD619B18D537B4c880d6Ff0925891ea05Edb1 for whatever cap its owners choose, so settle() can pay the line down
