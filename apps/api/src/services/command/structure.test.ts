@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import contractsFx from '@clear/command-types/src/fixtures/contracts.json';
 import { beforeAll, describe, expect, test } from 'bun:test';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
@@ -17,7 +18,7 @@ beforeAll(async () => {
 describe('the structure', () => {
   test('writes the contracts, entities, boards and who decides, once', async () => {
     const first = await structureCommand(db);
-    expect(first).toEqual(['32 contracts', '7 accounts', '10 entities', '3 boards']);
+    expect(first).toEqual(['42 contracts', '7 accounts', '10 entities', '3 boards']);
     // a second start leaves it alone
     expect(await structureCommand(db)).toEqual([]);
   });
@@ -95,9 +96,44 @@ describe('the structure', () => {
     expect(n[0].n).toBe(1);
   });
 
+  test('a map written before brief update 2 gets the new one from migration 0080, keeping every id, and running it again changes nothing', async () => {
+    const C = contractsFx as unknown as { contracts: any[][]; links: any[][] };
+    const NEW = ['rs', 'pc', 'ec', 'lcm', 'ccp', 'pse', 'ca', 'hd', 'fcr', 'cta'];
+    // the map as 0038 and 0073 left it: thirty-two contracts in two bands, no controller, OffersIssuer at the retired address
+    await db.query('DELETE FROM command.contract_links');
+    await db.query('DELETE FROM command.contracts WHERE id = ANY($1)', [NEW]);
+    await db.query('ALTER TABLE command.contracts DROP CONSTRAINT contracts_band_check');
+    await db.query("UPDATE command.contracts SET band = 'c', controller = ''");
+    await db.query("ALTER TABLE command.contracts ADD CONSTRAINT contracts_band_check CHECK (band IN ('c', 'd'))");
+    await db.query("UPDATE command.contracts SET address = '0x150E…841c', map_y = 37, purpose = 'old words' WHERE id = 'oi'");
+    await db.query("UPDATE command.contracts SET layer = 3, version = 'v1.2' WHERE id IN ('lp', 'ap')");
+    await db.query("INSERT INTO command.contract_links (position, from_id, to_id, kind, verb, label) VALUES (0, 'oi', 'cc', 'mint', 'gives $10 offers', '')");
+    // and something that names a contract by id stays pointed at it
+    await db.query("INSERT INTO command.contract_releases (contract_id, version, released_at) VALUES ('oi', 'v1.0', now())");
+    const sql = readFileSync(new URL('../../../migrations/0080_command_contracts_map.sql', import.meta.url), 'utf8');
+    const statements = sql.replace(/^--.*$/gm, '').split(/;\s*$/m).map((x) => x.trim()).filter(Boolean);
+    for (let i = 0; i < 2; i++) for (const st of statements) await db.query(st);
+    const { rows } = await db.query<any>('SELECT * FROM command.contracts ORDER BY position');
+    // the reference's map, as the fixture a new database is written from has it
+    expect(rows.map((c) => [c.id, c.name, c.version, c.layer, c.status, c.address, c.purpose, Number(c.map_x), Number(c.map_y), c.band, c.controller])).toEqual(C.contracts);
+    expect(rows.map((c) => c.position)).toEqual(C.contracts.map((_, i) => i));
+    const { rows: links } = await db.query<any>('SELECT * FROM command.contract_links ORDER BY position');
+    expect(links.map((l) => [l.from_id, l.to_id, l.kind, l.verb, l.label, ...(l.label_side != null ? [Number(l.label_side)] : [])])).toEqual(C.links);
+    // OffersIssuer has no deployment record yet: no address, never the retired one's
+    expect(rows.find((c) => c.id === 'oi').address).toBe('—');
+    // the four not deployed, AssuranceOracle off the map, and who controls the rest
+    expect(rows.filter((c) => c.status === 'later').map((c) => c.id)).toEqual(['lcm', 'cp', 'fcr', 'cta']);
+    expect(rows.filter((c) => c.band === 'x').map((c) => c.id)).toEqual(['ao']);
+    expect(rows.filter((c) => c.band !== 'x').length).toBe(41);
+    expect(new Set(rows.map((c) => c.controller))).toEqual(new Set(['OPS', 'CF', 'CL', 'CO', 'AG', 'M', 'H', 'R', '']));
+    const { rows: rel } = await db.query<{ contract_id: string }>('SELECT contract_id FROM command.contract_releases');
+    expect(rel).toEqual([{ contract_id: 'oi' }]);
+    await db.query('DELETE FROM command.contract_releases');
+  });
+
   test('the contracts keep their map, without the prototype’s notes', async () => {
     const { rows } = await db.query<{ n: number; notes: number }>('SELECT count(*)::int AS n, count(note)::int AS notes FROM command.contracts');
-    expect(rows[0]).toEqual({ n: 32, notes: 0 });
+    expect(rows[0]).toEqual({ n: 42, notes: 0 });
     const { rows: links } = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.contract_links');
     expect(links[0].n).toBeGreaterThan(0);
     for (const t of ['agreements', 'contract_changes', 'contract_releases', 'signers', 'filings', 'board_people', 'resolutions', 'member_votes', 'account_snapshots', 'account_entries', 'figures']) {
@@ -150,7 +186,7 @@ describe('Contracts with only the structure', () => {
       await db.query('INSERT INTO command.chain_cursor (chain_id, indexed_to) VALUES (84532, 49815448)');
       const c: any = await contractsSection(db, { level: TOTALS, reveal: false, now: new Date() });
       expect(c.figures['contracts.chain']).toEqual({ network: 'Base Sepolia', block: 49815448, safe: 'No Ops Safe yet', threshold: 0, delayHours: 0 });
-      expect(c.CTR).toHaveLength(32);
+      expect(c.CTR).toHaveLength(42);
     } finally {
       env.p == null ? delete process.env.PROVIDER_CONTRACTS : (process.env.PROVIDER_CONTRACTS = env.p);
       if (env.s != null) process.env.COMMAND_SAFE_ADDRESS = env.s;

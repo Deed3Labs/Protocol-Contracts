@@ -34,10 +34,10 @@ export async function structureCommand(db: Db): Promise<string[]> {
   await db.transaction(async (tx) => {
     if ((await empty(tx, 'command.contracts')) && (await empty(tx, 'command.contract_links'))) {
       const C = contractsFx as unknown as Record<string, any>;
-      for (const [i, [id, name, ver, layer, st, addr, what, x, y, band]] of (C.contracts as any[]).entries()) {
+      for (const [i, [id, name, ver, layer, st, addr, what, x, y, band, controller]] of (C.contracts as any[]).entries()) {
         await tx.query(
-          'INSERT INTO command.contracts (id, position, name, version, layer, status, address, purpose, map_x, map_y, band, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL)',
-          [id, i, name, ver, layer, st, addr, what, x, y, band],
+          'INSERT INTO command.contracts (id, position, name, version, layer, status, address, purpose, map_x, map_y, band, controller, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL)',
+          [id, i, name, ver, layer, st, addr, what, x, y, band, controller ?? ''],
         );
       }
       for (const [i, [from, to, kind, verb, label, side]] of (C.links as any[]).entries()) {

@@ -7,6 +7,7 @@ import { testDb } from '../../db/testDb.js';
 import { syncInventory } from './indexer.js';
 import { ASSURANCE_POOL_VIEWS, assurancePoolLive, bondsLive, coopLive, deployedName, moneyAccountsLive, offersAddress, offersLive, readEach, type ChainCall, type ChainReader } from './onchain.js';
 import { CL_OPERATING_BASE_SEPOLIA } from '../payoutFunding/topUp.js';
+import contractsFx from '@clear/command-types/src/fixtures/contracts.json';
 import { contractsSection, moneySection } from './sections.js';
 import { seedCommand } from './seed.js';
 import { TOTALS } from './levels.js';
@@ -370,8 +371,89 @@ describe('releases, live', () => {
   });
 
   test('a map name finds its deployed contract', () => {
-    const d = new Set(['ClearUSD', 'ClearUSDUpgradeable', 'SavingsIntentFactory', 'RevolvingIssuer', 'RevolvingIssuerV1']);
-    expect(['ClearUSD', 'SavingsIntent', 'RevolvingIssuer', 'CreditPool'].map((x) => deployedName(x, d))).toEqual(['ClearUSDUpgradeable', 'SavingsIntentFactory', 'RevolvingIssuer', null]);
+    const d = new Set(['ClearUSD', 'ClearUSDUpgradeable', 'SavingsIntentFactory', 'RevolvingIssuer', 'RevolvingIssuerV1', 'AssurancePool', 'AssurancePoolV2', 'OffersIssuerPreAudit']);
+    expect(['ClearUSD', 'SavingsIntent', 'RevolvingIssuer', 'CreditPool', 'AssurancePool', 'OffersIssuer'].map((x) => deployedName(x, d))).toEqual([
+      'ClearUSDUpgradeable',
+      'SavingsIntentFactory',
+      'RevolvingIssuer',
+      null,
+      'AssurancePoolV2',
+      // the old (PreAudit) record never stands for the map's OffersIssuer
+      null,
+    ]);
+  });
+
+  test('every name on the map resolves to its own deployment record', () => {
+    const names = new Set(Object.keys(C));
+    const map = (contractsFx as unknown as { contracts: string[][] }).contracts.map((c) => c[1]);
+    expect(Object.fromEntries(map.map((n) => [n, deployedName(n, names)]).filter(([n, r]) => r !== n))).toEqual({
+      ClearUSD: 'ClearUSDUpgradeable',
+      AssurancePool: 'AssurancePoolV2',
+      SavingsIntent: 'SavingsIntentFactory',
+      FractionToken: 'FractionTokenFactory',
+      // not deployed
+      LegacyContactModule: null,
+      CreditPool: null,
+      FunctionalContractRegistry: null,
+      CoopTransferAgent: null,
+    });
+    // a retired copy never stands for a map name
+    for (const n of map) expect(deployedName(n, names) ?? '').not.toMatch(/(PreAudit|Pre2f|Pre2d|Legacy|V1)$/);
+  });
+});
+
+describe('Build’s map, its cards and Signing, live (brief update 2)', () => {
+  const sh = (a: string) => `${getAddress(a).slice(0, 6)}…${getAddress(a).slice(-4)}`;
+  const quiet = { env: {} };
+
+  test('each contract carries who controls it, the AssurancePool is v2, and 37 of the 41 on the map are deployed, the fresh OffersIssuer among them', async () => {
+    const c: any = await contractsSection(db, { ...read(), jobs: quiet });
+    const row = (id: string) => c.CTR.find((r: any[]) => r[0] === id);
+    expect(c.CTR).toHaveLength(42);
+    expect([row('am')[10], row('ca')[10], row('hd')[10], row('pc')[10], row('cp')[10]]).toEqual(['OPS', 'AG', 'H', 'R', '']);
+    expect(row('ap')[5]).toBe(sh(C.AssurancePoolV2.address));
+    expect(c.DEPLOYED).toContain('oi');
+    const onMap = c.CTR.filter((r: any[]) => r[9] !== 'x').map((r: any[]) => r[0]);
+    expect([c.DEPLOYED.filter((id: string) => onMap.includes(id)).length, onMap.length]).toEqual([37, 41]);
+  });
+
+  test('Timelocks and helpers, Retired and the timelocks, from the records by name', async () => {
+    const c: any = await contractsSection(db, { ...read(), jobs: quiet });
+    expect(c.TIMELOCKS).toEqual(['CreditTimelock', 'AssuranceTimelock', 'VaultTimelock', 'EarnTimelock']);
+    // BurnerBondDeposit's record is the same contract as BurnerBondDepositPre2f's (one address): the inventory keeps
+    // one name an address, the retired one, so it's counted among the earlier copies, not shown as a helper
+    expect(C.BurnerBondDeposit.address).toBe(C.BurnerBondDepositPre2f.address);
+    expect(c.CTR_AUX.map((r: string[]) => [r[0], r[1]])).toEqual(
+      ['CreditTimelock', 'AssuranceTimelock', 'VaultTimelock', 'EarnTimelock', 'BurnerBondFactory', 'Create2Deployer'].map((n) => [n, sh(C[n].address)]),
+    );
+    expect(c.CTR_AUX[0].slice(2)).toEqual(['Holds the credit contracts’ upgrades and settings for 7 days', 'Clear Treasury Safe, as the Ops Safe']);
+    expect(c.CTR_OLD).toEqual([
+      ['OffersIssuer (old)', sh(C.OffersIssuerPreAudit.address), 'Replaced by the 17 Nov deploy'],
+      ['AssurancePool v1', sh(C.AssurancePool.address), 'Replaced by AssurancePool v2'],
+      ['ClearUSD v1', sh(C.ClearUSD.address), 'Replaced by the upgradeable ClearUSD'],
+      ['AssuranceOracle', sh(C.AssuranceOracle.address), 'Off the money path since section 13'],
+    ]);
+    // ten PreAudit (less the old OffersIssuer, listed), four Pre2f, one Pre2d, five Legacy and RevolvingIssuerV1
+    expect(c.CTR_OLD_N).toBe(21);
+  });
+
+  test('Security’s automatic jobs wait, each "Not on yet", until its switch is set', async () => {
+    const c: any = await contractsSection(db, { ...read(), jobs: quiet });
+    expect(c.AUTO.map((j: any) => [j.t, j.run[0], j.st, j.off[0]])).toEqual([
+      ['Payout top-ups', 'Not on yet', 'wait', 'PAYOUT_TOPUP_ENABLED'],
+      ['Assurance fee payer', 'Not on yet', 'wait', 'ASSURANCE_FEE_PAYER_ENABLED'],
+      ['Payout funding keeper', 'Not on yet', 'wait', 'PAYOUT_KEEPER_ENABLED'],
+    ]);
+  });
+
+  test('Signing is what the reader gives, untouched; a reader that fails says why without failing the section', async () => {
+    const plan = { format: 'clear-signing-plan/1', steps: [{ id: 'C1d-1', b: 1, a: 2 }] };
+    const c: any = await contractsSection(db, { ...read(), jobs: quiet, signing: async () => ({ source: 'plan', file: 'deployments/base-sepolia/signing-plan.json', plan: plan as any, readAt: 1 }) });
+    expect(JSON.stringify(c.SIGNING.plan.steps)).toBe(JSON.stringify(plan.steps));
+    const bad: any = await contractsSection(db, { ...read(), jobs: quiet, signing: async () => Promise.reject(new Error('GitHub 503')) });
+    expect([bad.SIGNING.source, bad.SIGNING.plan, bad.SIGNING.problem]).toEqual(['none', null, 'GitHub 503']);
+    // no reader, no Signing: the client keeps the reference's
+    expect((await contractsSection(db, { ...read(), jobs: quiet }) as any).SIGNING).toBeUndefined();
   });
 });
 
