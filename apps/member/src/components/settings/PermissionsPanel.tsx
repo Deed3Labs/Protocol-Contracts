@@ -4,6 +4,7 @@ import { Pane, RowBtn, TwoLineRow } from './SettingsKit';
 import Switch from '@/components/clear/brand/Switch';
 import type { Permission } from '@/lib/clearModel';
 import type { AutoRepay } from '@/hooks/useAutoRepay';
+import type { AutoPledgeSetting } from '@/hooks/useAutoPledge';
 
 /**
  * What Clear can do without asking each time.
@@ -25,6 +26,7 @@ import type { AutoRepay } from '@/hooks/useAutoRepay';
 export default function PermissionsPanel({
   permissions,
   autoRepay,
+  autoPledge,
 }: {
   permissions: Permission[];
   /**
@@ -32,8 +34,14 @@ export default function PermissionsPanel({
    * harness, where the row shows but the switch is local.
    */
   autoRepay?: AutoRepay;
+  /**
+   * Backing the line with Savings and Earn in the background, saved on the server. Absent in the
+   * preview harness, where the switch is local.
+   */
+  autoPledge?: AutoPledgeSetting;
 }) {
   const [localAuto, setLocalAuto] = useState(false);
+  const [localPledge, setLocalPledge] = useState(true);
   const [allowanceInput, setAllowanceInput] = useState('');
   const [off, setOff] = useState<Set<string>>(new Set());
 
@@ -43,6 +51,32 @@ export default function PermissionsPanel({
   return (
     <>
       <p className="c-det mb-s3 lg:hidden">What Clear can do without asking each time.</p>
+
+      <p className="c-grouplabel">Credit line</p>
+      <Pane className="mb-s3">
+        <CMain>
+          <TwoLineRow
+            title={<label htmlFor="autopledge">Back my credit line with my Savings and Earn automatically</label>}
+            detail={
+              autoPledge?.error ? (
+                <span className="c-errline">{autoPledge.error}</span>
+              ) : autoPledge?.busy ? (
+                'Saving…'
+              ) : (
+                'What you hold in Savings and Earn backs your line without asking each time. Bonds always ask. Turning this off only stops new backing'
+              )
+            }
+            trailing={
+              <Switch
+                id="autopledge"
+                checked={autoPledge ? autoPledge.enabled : localPledge}
+                disabled={autoPledge?.busy}
+                onCheckedChange={(v) => (autoPledge ? autoPledge.onChange(v) : setLocalPledge(v))}
+              />
+            }
+          />
+        </CMain>
+      </Pane>
 
       <p className="c-grouplabel">Repayment</p>
       <Pane className="mb-s3">

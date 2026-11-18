@@ -117,6 +117,12 @@ export interface MemberSecuritySettings {
   biometricAccess: boolean;
   socialDiscovery: boolean;
   transferAlerts: boolean;
+  /**
+   * Back the credit line with Savings and Earn without asking each time: the app signs the pledge
+   * for what the member holds in the background (Phase 4b, L-I). On unless the member turns it off.
+   * Bonds are never pledged this way; their Maturity Instruction is shown and signed on its own.
+   */
+  autoPledge: boolean;
   updatedAt: Date;
 }
 
@@ -272,6 +278,7 @@ export interface UpdateSecuritySettingsInput {
   biometricAccess?: boolean;
   socialDiscovery?: boolean;
   transferAlerts?: boolean;
+  autoPledge?: boolean;
 }
 
 export interface UpsertMemberWalletInput {
@@ -341,6 +348,11 @@ const TABLE_PROFILE_PRIVATE = 'member_profile_private';
 const TABLE_ONBOARDING = 'member_onboarding';
 const TABLE_TERMS = 'member_terms_acceptances';
 const TABLE_SECURITY = 'member_security_settings';
+/**
+ * Background pledging of Savings and Earn, on by default. Added to tables made before it existed;
+ * every member already on file starts with it on, as a new member does.
+ */
+export const SECURITY_AUTO_PLEDGE_COLUMN = `ALTER TABLE ${TABLE_SECURITY} ADD COLUMN IF NOT EXISTS auto_pledge BOOLEAN NOT NULL DEFAULT TRUE`;
 const TABLE_VERIFICATIONS = 'member_verifications';
 const TABLE_WALLETS = 'member_wallets';
 const TABLE_WALLET_LINK_CHALLENGES = 'member_wallet_link_challenges';
@@ -431,6 +443,8 @@ type MemberSecurityDbRow = {
   biometric_access: boolean;
   social_discovery: boolean;
   transfer_alerts: boolean;
+  /** Absent on a row read before the column was added; null never, but read as on either way. */
+  auto_pledge?: boolean | null;
   updated_at: Date | string;
 };
 
@@ -830,18 +844,19 @@ function mapOnboarding(row: MemberOnboardingDbRow | null): MemberOnboardingRecor
   };
 }
 
-function defaultSecurity(): MemberSecuritySettings {
+export function defaultSecurity(): MemberSecuritySettings {
   return {
     signatureLock: true,
     sessionReview: true,
     biometricAccess: true,
     socialDiscovery: false,
     transferAlerts: true,
+    autoPledge: true,
     updatedAt: new Date(0),
   };
 }
 
-function mapSecurity(row: MemberSecurityDbRow | null): MemberSecuritySettings {
+export function mapSecurity(row: MemberSecurityDbRow | null): MemberSecuritySettings {
   if (!row) return defaultSecurity();
   return {
     signatureLock: row.signature_lock,
@@ -849,6 +864,8 @@ function mapSecurity(row: MemberSecurityDbRow | null): MemberSecuritySettings {
     biometricAccess: row.biometric_access,
     socialDiscovery: row.social_discovery,
     transferAlerts: row.transfer_alerts,
+    // On by default: only an explicit false (the member's own choice) turns it off.
+    autoPledge: row.auto_pledge !== false,
     updatedAt: parseDate(row.updated_at) ?? new Date(0),
   };
 }
@@ -1522,6 +1539,7 @@ export class MemberStore {
       biometricAccess: patch.biometricAccess ?? current.biometricAccess,
       socialDiscovery: patch.socialDiscovery ?? current.socialDiscovery,
       transferAlerts: patch.transferAlerts ?? current.transferAlerts,
+      autoPledge: patch.autoPledge ?? current.autoPledge,
     };
 
     const pool = this.mustPool();
@@ -1534,8 +1552,9 @@ export class MemberStore {
           session_review,
           biometric_access,
           social_discovery,
-          transfer_alerts
-        ) VALUES ($1,$2,$3,$4,$5,$6)
+          transfer_alerts,
+          auto_pledge
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
         ON CONFLICT (member_id)
         DO UPDATE SET
           signature_lock = EXCLUDED.signature_lock,
@@ -1543,6 +1562,7 @@ export class MemberStore {
           biometric_access = EXCLUDED.biometric_access,
           social_discovery = EXCLUDED.social_discovery,
           transfer_alerts = EXCLUDED.transfer_alerts,
+          auto_pledge = EXCLUDED.auto_pledge,
           updated_at = NOW()
         `,
         [
@@ -1552,6 +1572,7 @@ export class MemberStore {
           next.biometricAccess,
           next.socialDiscovery,
           next.transferAlerts,
+          next.autoPledge,
         ]
       );
     });
@@ -2530,6 +2551,33 @@ export class MemberStore {
     return { email: privateProfile.email ?? null, phone: privateProfile.phone ?? null };
   }
 
+  /**
+   * The state of residence on the member's private profile, as they typed it (free text), for the
+   * credit onboarding job's state attestation. `unreadable` when the profile exists but this server
+   * cannot decrypt it (MEMBER_PRIVATE_DATA_* unset): that is not "no state", and must not read as one.
+   */
+  async addressStateByWallet(
+    walletAddress: string,
+  ): Promise<{ addressState: string | null; unreadable?: boolean }> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ member_id: number }>(
+        `SELECT m.id AS member_id
+           FROM ${TABLE_MEMBERS} m
+          WHERE m.primary_wallet = $1
+          LIMIT 1`,
+        [addr],
+      );
+    });
+    const row = result.rows[0];
+    if (!row) return { addressState: null };
+    const { privateProfile, privateProfileExists } = await this.loadPrivateProfile(Number(row.member_id), false);
+    if (!privateProfile) return { addressState: null, unreadable: privateProfileExists };
+    return { addressState: privateProfile.addressState ?? null };
+  }
+
   private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
     const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
     if (authSubject) {
@@ -3336,9 +3384,12 @@ export class MemberStore {
           biometric_access BOOLEAN NOT NULL DEFAULT TRUE,
           social_discovery BOOLEAN NOT NULL DEFAULT FALSE,
           transfer_alerts BOOLEAN NOT NULL DEFAULT TRUE,
+          auto_pledge BOOLEAN NOT NULL DEFAULT TRUE,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+      // Background pledging of Savings and Earn (older tables predate this column). On by default.
+      await pool.query(SECURITY_AUTO_PLEDGE_COLUMN);
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${TABLE_VERIFICATIONS} (
