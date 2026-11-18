@@ -1,0 +1,1728 @@
+{
+  "format": "clear-signing-plan/1",
+  "generatedAt": "2026-11-18T06:04:25.694Z",
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "block": 60299909,
+  "blockTime": "2026-11-18T06:04:10.000Z",
+  "stepsSha256": "70ef78b04232ea2cee83499548a6b6b8d93b8224bbfd047201bab8e7b9b36b43",
+  "notes": [],
+  "steps": [
+    {
+      "id": "C1d-1",
+      "stage": "C1d",
+      "title": "Upgrade the savings vault, and set USDC as the one token it accepts",
+      "explanation": "Moves the savings vault to its audited code. The same call names USDC as the only token it accepts, so deposits and redemptions never stop between the two. Call 1 of 3, in order.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the vault's admin (VAULT_ADMIN, the deployer)",
+      "chainId": 84532,
+      "to": "0x836401Ed3e2bF7CAb5e2721188E74B834511413b",
+      "toLabel": "ESADepositVault (the savings vault)",
+      "value": "0",
+      "data": "0x4f1ef286000000000000000000000000c306138c82b0377fded21141da674fae61a76f4000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000044c997dbca000000000000000000000000036cbd53842c5426634e7929541ec2318f3dcf7e000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "upgradeToAndCall(address,bytes)",
+      "args": [
+        {
+          "name": "newImplementation",
+          "type": "address",
+          "value": "0xc306138C82B0377fdED21141da674FaE61A76f40",
+          "note": "the new implementation"
+        },
+        {
+          "name": "data",
+          "type": "bytes",
+          "value": "0xc997dbca000000000000000000000000036cbd53842c5426634e7929541ec2318f3dcf7e0000000000000000000000000000000000000000000000000000000000000001",
+          "note": "setAcceptedToken(USDC, true), run in the same call"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "C1d-2",
+      "stage": "C1d",
+      "title": "Give the savings relayer the savings vault's RELAYER_ROLE",
+      "explanation": "The relayer only submits deposits members signed: it gets the narrower relayer role (audit H-3). Call 2 of 3, in order.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the vault's admin (VAULT_ADMIN, the deployer)",
+      "chainId": 84532,
+      "to": "0x836401Ed3e2bF7CAb5e2721188E74B834511413b",
+      "toLabel": "ESADepositVault (the savings vault)",
+      "value": "0",
+      "data": "0x2f2ff15de2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc40000000000000000000000006cbdf4469856c70c07c95a6c276c218f64e0fcb3",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0xe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc4",
+          "note": "RELAYER_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3",
+          "note": "savings relayer"
+        }
+      ],
+      "dependsOn": [
+        "C1d-1"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "C1d-3",
+      "stage": "C1d",
+      "title": "Take the savings vault's OPERATOR_ROLE away from the savings relayer",
+      "explanation": "The old operator role let the relayer key do more than relay; it is taken away (audit H-3). Call 3 of 3, in order.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the vault's admin (VAULT_ADMIN, the deployer)",
+      "chainId": 84532,
+      "to": "0x836401Ed3e2bF7CAb5e2721188E74B834511413b",
+      "toLabel": "ESADepositVault (the savings vault)",
+      "value": "0",
+      "data": "0xd547741f97667070c54ef182b0f5858b034beac1b6f3089aa2d3188bb1e8929f4fa9b9290000000000000000000000006cbdf4469856c70c07c95a6c276c218f64e0fcb3",
+      "functionSignature": "revokeRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0x97667070c54ef182b0f5858b034beac1b6f3089aa2d3188bb1e8929f4fa9b929",
+          "note": "OPERATOR_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3",
+          "note": "savings relayer"
+        }
+      ],
+      "dependsOn": [
+        "C1d-2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "D4-settings-1",
+      "stage": "D4",
+      "title": "Give credit settings signer 1 the credit settings role",
+      "explanation": "Lets this person change how the credit system is set up (tiers, rates, treasuries, caps). Two people hold it: one proposes a change such as the fee recipient, the other approves it. The deployer still holds the new AccessManager's admin, so it grants it.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0x23aF9715761156C24C2de3666587753168f28DBe",
+      "toLabel": "AccessManager",
+      "value": "0",
+      "data": "0x2f2ff15d2e5f709e11a994a587658d8dde70a143dc81665d79fc5cb74fc480380284451d000000000000000000000000558d4318071ebc15e7ed13d8e880dc1d17a7698a",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0x2e5f709e11a994a587658d8dde70a143dc81665d79fc5cb74fc480380284451d",
+          "note": "CREDIT_SETTINGS_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+          "note": "Agent Key, credit settings signer 1, hold signer 1, valuation signer 2, new Safe owner"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "D4-settings-2",
+      "stage": "D4",
+      "title": "Give credit settings signer 2 the credit settings role",
+      "explanation": "Lets this person change how the credit system is set up (tiers, rates, treasuries, caps). Two people hold it: one proposes a change such as the fee recipient, the other approves it. The deployer still holds the new AccessManager's admin, so it grants it.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0x23aF9715761156C24C2de3666587753168f28DBe",
+      "toLabel": "AccessManager",
+      "value": "0",
+      "data": "0x2f2ff15d2e5f709e11a994a587658d8dde70a143dc81665d79fc5cb74fc480380284451d000000000000000000000000608d8a767c4bf5063f5fa5dfe29f31da3bf77c23",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0x2e5f709e11a994a587658d8dde70a143dc81665d79fc5cb74fc480380284451d",
+          "note": "CREDIT_SETTINGS_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+          "note": "treasury signer 1, credit settings signer 2, credit attester 1, Assurance signer 1"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "D4-attester-1",
+      "stage": "D4",
+      "title": "Give credit attester 1 the credit attester role",
+      "explanation": "Lets this person record the credit system's two-person attestations: cure notices, Income Assurance and workouts. Two people hold it. The deployer still holds the new AccessManager's admin, so it grants it.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0x23aF9715761156C24C2de3666587753168f28DBe",
+      "toLabel": "AccessManager",
+      "value": "0",
+      "data": "0x2f2ff15d230312f8872cbcfa6ec90a02566a5b5bf24f68cea356db1083ab8c4743ffa788000000000000000000000000608d8a767c4bf5063f5fa5dfe29f31da3bf77c23",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0x230312f8872cbcfa6ec90a02566a5b5bf24f68cea356db1083ab8c4743ffa788",
+          "note": "CREDIT_ATTESTER_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+          "note": "treasury signer 1, credit settings signer 2, credit attester 1, Assurance signer 1"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "D4-attester-2",
+      "stage": "D4",
+      "title": "Give credit attester 2 the credit attester role",
+      "explanation": "Lets this person record the credit system's two-person attestations: cure notices, Income Assurance and workouts. Two people hold it. The deployer still holds the new AccessManager's admin, so it grants it.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0x23aF9715761156C24C2de3666587753168f28DBe",
+      "toLabel": "AccessManager",
+      "value": "0",
+      "data": "0x2f2ff15d230312f8872cbcfa6ec90a02566a5b5bf24f68cea356db1083ab8c4743ffa788000000000000000000000000a0e10ccad487937195a0b756fc1055cd810bd8a7",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0x230312f8872cbcfa6ec90a02566a5b5bf24f68cea356db1083ab8c4743ffa788",
+          "note": "CREDIT_ATTESTER_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+          "note": "treasury signer 2, credit attester 2, hold signer 2, valuation signer 1, Assurance signer 2"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "D4-operator",
+      "stage": "D4",
+      "title": "Make the API's credit operator wallet an operator",
+      "explanation": "The members app's server uses this wallet to open credit lines and register members. Without it, no new credit line can open on the fresh credit stack.",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0x23aF9715761156C24C2de3666587753168f28DBe",
+      "toLabel": "AccessManager",
+      "value": "0",
+      "data": "0xe348da130000000000000000000000008801a480cd6a2ab40964d3895d5bed8fcfa51edd",
+      "functionSignature": "grantOperator(address)",
+      "args": [
+        {
+          "name": "operator",
+          "type": "address",
+          "value": "0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd",
+          "note": "credit operator"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-vault-propose",
+      "stage": "E8",
+      "title": "Propose: point the Collateral Agent at the BondVault, where bond money is held",
+      "explanation": "Treasury signer 1 proposes the change. Nothing changes yet: a second treasury signer confirms it, the Agent Key approves it, and the Clear Lending Safe runs it through the Earn timelock 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "treasury signer 1",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0x41d098f200000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d828258d7a3a7f3cf6af1760dbfe76cf51bcde204f45f5e6417bbc251db44ef2e6638ed84957a3ef9bed702a0dc51806502ea5eb72f0bb23e1c5e35954efa076b307b1",
+      "functionSignature": "proposeChange(address,bytes32,bytes32)",
+      "args": [
+        {
+          "name": "target",
+          "type": "address",
+          "value": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+          "note": "CollateralAgent"
+        },
+        {
+          "name": "callHash",
+          "type": "bytes32",
+          "value": "0x8d7a3a7f3cf6af1760dbfe76cf51bcde204f45f5e6417bbc251db44ef2e6638e",
+          "note": "keccak256 of the CollateralAgent call: CollateralAgent.setVault(0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855)"
+        },
+        {
+          "name": "descriptionHash",
+          "type": "bytes32",
+          "value": "0xd84957a3ef9bed702a0dc51806502ea5eb72f0bb23e1c5e35954efa076b307b1",
+          "note": "keccak256 of \"CollateralAgent.setVault(0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855)\""
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-vault-confirm",
+      "stage": "E8",
+      "title": "Confirm: point the Collateral Agent at the BondVault, where bond money is held",
+      "explanation": "A second treasury signer (not the one who proposed it) confirms the proposal. The Collateral Agent's 7-day wait starts now.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "treasury signer 2",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xbeda2483287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
+      "functionSignature": "confirmChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0x287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-vault-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-vault-approve",
+      "stage": "E8",
+      "title": "Agent Key approves: point the Collateral Agent at the BondVault, where bond money is held",
+      "explanation": "The Collateral Agent co-signs the change, as the bond terms require (IV-10 Exhibit A, Part 2 item 6).",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "the Agent Key",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xf8dae3d3287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
+      "functionSignature": "approveChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0x287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-vault-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-bondbook-propose",
+      "stage": "E8",
+      "title": "Propose: tell the Collateral Agent that the BondVault keeps the bond register",
+      "explanation": "Treasury signer 1 proposes the change. Nothing changes yet: a second treasury signer confirms it, the Agent Key approves it, and the Clear Lending Safe runs it through the Earn timelock 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "treasury signer 1",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0x41d098f200000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d82825eaadbff19314bad996717e9690519085bdfbbc84d5e022e2bd5af2ec981684978f3fc33cc17fb3b1793f274c86216892a36aaee1df8fefa63e281032db017409",
+      "functionSignature": "proposeChange(address,bytes32,bytes32)",
+      "args": [
+        {
+          "name": "target",
+          "type": "address",
+          "value": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+          "note": "CollateralAgent"
+        },
+        {
+          "name": "callHash",
+          "type": "bytes32",
+          "value": "0xeaadbff19314bad996717e9690519085bdfbbc84d5e022e2bd5af2ec98168497",
+          "note": "keccak256 of the CollateralAgent call: CollateralAgent.setBondBook(0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855)"
+        },
+        {
+          "name": "descriptionHash",
+          "type": "bytes32",
+          "value": "0x8f3fc33cc17fb3b1793f274c86216892a36aaee1df8fefa63e281032db017409",
+          "note": "keccak256 of \"CollateralAgent.setBondBook(0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855)\""
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-bondbook-confirm",
+      "stage": "E8",
+      "title": "Confirm: tell the Collateral Agent that the BondVault keeps the bond register",
+      "explanation": "A second treasury signer (not the one who proposed it) confirms the proposal. The Collateral Agent's 7-day wait starts now.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "treasury signer 2",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xbeda2483d891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
+      "functionSignature": "confirmChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0xd891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-bondbook-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-bondbook-approve",
+      "stage": "E8",
+      "title": "Agent Key approves: tell the Collateral Agent that the BondVault keeps the bond register",
+      "explanation": "The Collateral Agent co-signs the change, as the bond terms require (IV-10 Exhibit A, Part 2 item 6).",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "the Agent Key",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xf8dae3d3d891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
+      "functionSignature": "approveChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0xd891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-bondbook-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-holderdirections-propose",
+      "stage": "E8",
+      "title": "Propose: name HolderDirections as where bond holders' directions are counted",
+      "explanation": "Treasury signer 1 proposes the change. Nothing changes yet: a second treasury signer confirms it, the Agent Key approves it, and the Clear Lending Safe runs it through the Earn timelock 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "treasury signer 1",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0x41d098f200000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d828256c561d649f15f78c8906941572a1bf458d4992483b11cb908b89562a0ec6da6fc544e96ac5722ebda1710a5f311d4436d09a03c936c627b79b77d6aaf38e2c5c",
+      "functionSignature": "proposeChange(address,bytes32,bytes32)",
+      "args": [
+        {
+          "name": "target",
+          "type": "address",
+          "value": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+          "note": "CollateralAgent"
+        },
+        {
+          "name": "callHash",
+          "type": "bytes32",
+          "value": "0x6c561d649f15f78c8906941572a1bf458d4992483b11cb908b89562a0ec6da6f",
+          "note": "keccak256 of the CollateralAgent call: CollateralAgent.setHolderDirections(0x8ec35b88CCb59576957917a4F4B937b491815Cda)"
+        },
+        {
+          "name": "descriptionHash",
+          "type": "bytes32",
+          "value": "0xc544e96ac5722ebda1710a5f311d4436d09a03c936c627b79b77d6aaf38e2c5c",
+          "note": "keccak256 of \"CollateralAgent.setHolderDirections(0x8ec35b88CCb59576957917a4F4B937b491815Cda)\""
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-holderdirections-confirm",
+      "stage": "E8",
+      "title": "Confirm: name HolderDirections as where bond holders' directions are counted",
+      "explanation": "A second treasury signer (not the one who proposed it) confirms the proposal. The Collateral Agent's 7-day wait starts now.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "treasury signer 2",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xbeda2483789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
+      "functionSignature": "confirmChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0x789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-holderdirections-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-holderdirections-approve",
+      "stage": "E8",
+      "title": "Agent Key approves: name HolderDirections as where bond holders' directions are counted",
+      "explanation": "The Collateral Agent co-signs the change, as the bond terms require (IV-10 Exhibit A, Part 2 item 6).",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "the Agent Key",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xf8dae3d3789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
+      "functionSignature": "approveChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0x789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-holderdirections-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-pledgemodule-propose",
+      "stage": "E8",
+      "title": "Propose: name the Liquidator as the Collateral Agent's pledge module",
+      "explanation": "Treasury signer 1 proposes the change. Nothing changes yet: a second treasury signer confirms it, the Agent Key approves it, and the Clear Lending Safe runs it through the Earn timelock 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "treasury signer 1",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0x41d098f200000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d82825cfb3af17152ebb6b0c97b98a0666d8ba2708f0e8cb860590c13d6e0458e31eadc70e4c2319898c76ae435485a35eb085c7690bf50c6568baa13761c27c87d6f7",
+      "functionSignature": "proposeChange(address,bytes32,bytes32)",
+      "args": [
+        {
+          "name": "target",
+          "type": "address",
+          "value": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+          "note": "CollateralAgent"
+        },
+        {
+          "name": "callHash",
+          "type": "bytes32",
+          "value": "0xcfb3af17152ebb6b0c97b98a0666d8ba2708f0e8cb860590c13d6e0458e31ead",
+          "note": "keccak256 of the CollateralAgent call: CollateralAgent.setPledgeModule(0x621784117C037b3D20AF54e04589818e919e33f3)"
+        },
+        {
+          "name": "descriptionHash",
+          "type": "bytes32",
+          "value": "0xc70e4c2319898c76ae435485a35eb085c7690bf50c6568baa13761c27c87d6f7",
+          "note": "keccak256 of \"CollateralAgent.setPledgeModule(0x621784117C037b3D20AF54e04589818e919e33f3): the Liquidator answers IAgentPledgeModule (decision 19)\""
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-pledgemodule-confirm",
+      "stage": "E8",
+      "title": "Confirm: name the Liquidator as the Collateral Agent's pledge module",
+      "explanation": "A second treasury signer (not the one who proposed it) confirms the proposal. The Collateral Agent's 7-day wait starts now.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "treasury signer 2",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xbeda2483c0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
+      "functionSignature": "confirmChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0xc0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-pledgemodule-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-pledgemodule-approve",
+      "stage": "E8",
+      "title": "Agent Key approves: name the Liquidator as the Collateral Agent's pledge module",
+      "explanation": "The Collateral Agent co-signs the change, as the bond terms require (IV-10 Exhibit A, Part 2 item 6).",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "the Agent Key",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xf8dae3d3c0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
+      "functionSignature": "approveChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0xc0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-pledgemodule-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-backstop-propose",
+      "stage": "E9",
+      "title": "Propose: clear the BondVault's backstop link to the retired PayoutPool (the treasury is kept)",
+      "explanation": "Treasury signer 1 proposes the change. Nothing changes yet: a second treasury signer confirms it, the Agent Key approves it, and the Clear Lending Safe runs it through the Earn timelock 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "treasury signer 1",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0x41d098f20000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba8550ce40418a644765ffdd08f94a6a92515941b0178ab7f1ad4cf7e3e7d8d0d7caf50e476bdb9a136118769d4ce896e7bf911a033271e93106a537a0406b7293027",
+      "functionSignature": "proposeChange(address,bytes32,bytes32)",
+      "args": [
+        {
+          "name": "target",
+          "type": "address",
+          "value": "0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855",
+          "note": "BondVault"
+        },
+        {
+          "name": "callHash",
+          "type": "bytes32",
+          "value": "0x0ce40418a644765ffdd08f94a6a92515941b0178ab7f1ad4cf7e3e7d8d0d7caf",
+          "note": "keccak256 of the BondVault call: BondVault.setBackstops(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0)"
+        },
+        {
+          "name": "descriptionHash",
+          "type": "bytes32",
+          "value": "0x50e476bdb9a136118769d4ce896e7bf911a033271e93106a537a0406b7293027",
+          "note": "keccak256 of \"BondVault.setBackstops(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0): keep the treasury, clear the retired payout pool 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66 (decision 48)\""
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-backstop-confirm",
+      "stage": "E9",
+      "title": "Confirm: clear the BondVault's backstop link to the retired PayoutPool (the treasury is kept)",
+      "explanation": "A second treasury signer (not the one who proposed it) confirms the proposal. The Collateral Agent's 7-day wait starts now.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "treasury signer 2",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xbeda248352722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
+      "functionSignature": "confirmChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0x52722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-backstop-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-backstop-approve",
+      "stage": "E9",
+      "title": "Agent Key approves: clear the BondVault's backstop link to the retired PayoutPool (the treasury is kept)",
+      "explanation": "The Collateral Agent co-signs the change, as the bond terms require (IV-10 Exhibit A, Part 2 item 6).",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "the Agent Key",
+      "chainId": 84532,
+      "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
+      "toLabel": "CollateralAgent",
+      "value": "0",
+      "data": "0xf8dae3d352722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
+      "functionSignature": "approveChange(bytes32)",
+      "args": [
+        {
+          "name": "changeId",
+          "type": "bytes32",
+          "value": "0x52722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
+          "note": "the change's number (read from the CollateralAgent)"
+        }
+      ],
+      "dependsOn": [
+        "E8-backstop-propose"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8-hold-1",
+      "stage": "E8",
+      "title": "Give hold signer 1 the Liquidator's hold role",
+      "explanation": "Lets this person propose, confirm, renew and clear a Liquidation Hold on a member's pledged savings. Every step needs two different holders, so two people get it. Do this before the credit handover (I2).",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0x621784117C037b3D20AF54e04589818e919e33f3",
+      "toLabel": "Liquidator",
+      "value": "0",
+      "data": "0x2f2ff15da844042a78083da02851d6318af1d807a1d0b647556f679b96239a5c4874a1c6000000000000000000000000558d4318071ebc15e7ed13d8e880dc1d17a7698a",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0xa844042a78083da02851d6318af1d807a1d0b647556f679b96239a5c4874a1c6",
+          "note": "HOLD_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+          "note": "Agent Key, credit settings signer 1, hold signer 1, valuation signer 2, new Safe owner"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-hold-2",
+      "stage": "E8",
+      "title": "Give hold signer 2 the Liquidator's hold role",
+      "explanation": "Lets this person propose, confirm, renew and clear a Liquidation Hold on a member's pledged savings. Every step needs two different holders, so two people get it. Do this before the credit handover (I2).",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0x621784117C037b3D20AF54e04589818e919e33f3",
+      "toLabel": "Liquidator",
+      "value": "0",
+      "data": "0x2f2ff15da844042a78083da02851d6318af1d807a1d0b647556f679b96239a5c4874a1c6000000000000000000000000a0e10ccad487937195a0b756fc1055cd810bd8a7",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0xa844042a78083da02851d6318af1d807a1d0b647556f679b96239a5c4874a1c6",
+          "note": "HOLD_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+          "note": "treasury signer 2, credit attester 2, hold signer 2, valuation signer 1, Assurance signer 2"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "E8-earn-schedule",
+      "stage": "E8",
+      "title": "Clear Lending Safe: schedule the Collateral Agent changes on the Earn timelock",
+      "explanation": "Queues the co-signed changes (CollateralAgent: point the Collateral Agent at the BondVault, where bond money is held; CollateralAgent: tell the Collateral Agent that the BondVault keeps the bond register; CollateralAgent: name HolderDirections as where bond holders' directions are counted; CollateralAgent: name the Liquidator as the Collateral Agent's pledge module; BondVault: clear the BondVault's backstop link to the retired PayoutPool (the treasury is kept)). They can run 7 days later. Sign it in the Safe app: Transaction Builder, load the batch file.",
+      "kind": "safe",
+      "signer": "0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d",
+      "signerLabel": "Clear Lending Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911",
+      "toLabel": "Earn timelock",
+      "value": "0",
+      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000002400000000000000000000000000000000000000000000000000000000000000000723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d0000000000000000000000000000000000000000000000000000000000093a80000000000000000000000000000000000000000000000000000000000000000500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d828250000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001c0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000000246817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024b7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba85500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002485cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024e37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f30000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000441eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "scheduleBatch(address[],uint256[],bytes[],bytes32,bytes32,uint256)",
+      "args": [
+        {
+          "name": "targets",
+          "type": "address[]",
+          "value": "[\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855\"]",
+          "note": "CollateralAgent, CollateralAgent, CollateralAgent, CollateralAgent, BondVault"
+        },
+        {
+          "name": "values",
+          "type": "uint256[]",
+          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+        },
+        {
+          "name": "payloads",
+          "type": "bytes[]",
+          "value": "[\"0x6817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0xb7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0x85cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda\",\"0xe37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f3\",\"0x1eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf500000000000000000000000000000000000000000000000000000000000000000\"]",
+          "note": "the co-signed calls"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0x723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d",
+          "note": "a fixed label for this batch"
+        },
+        {
+          "name": "delay",
+          "type": "uint256",
+          "value": "604800",
+          "note": "7 days"
+        }
+      ],
+      "dependsOn": [
+        "E8-vault-confirm",
+        "E8-vault-approve",
+        "E8-bondbook-confirm",
+        "E8-bondbook-approve",
+        "E8-holderdirections-confirm",
+        "E8-holderdirections-approve",
+        "E8-pledgemodule-confirm",
+        "E8-pledgemodule-approve",
+        "E8-backstop-confirm",
+        "E8-backstop-approve"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "E8x-earn-execute",
+      "stage": "Day 7",
+      "title": "Clear Lending Safe: run the Collateral Agent changes (day 7)",
+      "explanation": "After both 7-day waits (the Earn timelock's and the Collateral Agent's), the Safe runs the queued changes. Only the Safe may run them: it is the timelock's only executor.",
+      "kind": "safe",
+      "signer": "0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d",
+      "signerLabel": "Clear Lending Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911",
+      "toLabel": "Earn timelock",
+      "value": "0",
+      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000002200000000000000000000000000000000000000000000000000000000000000000723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d000000000000000000000000000000000000000000000000000000000000000500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d828250000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001c0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000000246817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024b7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba85500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002485cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024e37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f30000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000441eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "executeBatch(address[],uint256[],bytes[],bytes32,bytes32)",
+      "args": [
+        {
+          "name": "targets",
+          "type": "address[]",
+          "value": "[\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855\"]",
+          "note": "CollateralAgent, CollateralAgent, CollateralAgent, CollateralAgent, BondVault"
+        },
+        {
+          "name": "values",
+          "type": "uint256[]",
+          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+        },
+        {
+          "name": "payloads",
+          "type": "bytes[]",
+          "value": "[\"0x6817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0xb7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0x85cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda\",\"0xe37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f3\",\"0x1eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf500000000000000000000000000000000000000000000000000000000000000000\"]",
+          "note": "the co-signed calls"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0x723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d",
+          "note": "the same label"
+        }
+      ],
+      "dependsOn": [
+        "E8-earn-schedule"
+      ],
+      "status": "waiting",
+      "reason": "Not yet: the Earn timelock's 7 days end at 2026-11-24T18:35:48.000Z; the Collateral Agent's 7 days (from the last confirmation) end at 2026-11-24T18:25:33.000Z."
+    },
+    {
+      "id": "F2-fee-approve",
+      "stage": "F2",
+      "title": "Approve the fee recipient for term plans",
+      "explanation": "Deploy 25 proposed Clear Financial Safe, Ops Safe, fee recipient, Clear Treasury (board) Safe, co-op treasury as where TermIssuer sends plan fees. A second credit settings signer approves it; until then no plan with a fee can open.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "credit settings signer 2",
+      "chainId": 84532,
+      "to": "0x1b1695353f14E889906237D9b9C386eD0393da57",
+      "toLabel": "TermIssuer",
+      "value": "0",
+      "data": "0x84caa98b00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50494e495449414c00000000000000000000000000000000000000000000000000",
+      "functionSignature": "approveFeeRecipient(address,bytes32)",
+      "args": [
+        {
+          "name": "arg0",
+          "type": "address",
+          "value": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+          "note": "Clear Financial Safe, Ops Safe, fee recipient, Clear Treasury (board) Safe, co-op treasury"
+        },
+        {
+          "name": "arg1",
+          "type": "bytes32",
+          "value": "0x494e495449414c00000000000000000000000000000000000000000000000000",
+          "note": "\"INITIAL\""
+        }
+      ],
+      "dependsOn": [
+        "D4-settings-2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "G1-tier-1",
+      "stage": "Pool Tier",
+      "title": "Post the Pool Tier principal ($100,000.00): valuation signer 1",
+      "explanation": "Records the Yield Pool's Pool Tier value. Two different valuation signers each send the same value and evidence; the second one makes it count. No Deployment from the pool is possible until then.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "valuation signer 1",
+      "chainId": 84532,
+      "to": "0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23",
+      "toLabel": "LendingPool (the Yield Pool)",
+      "value": "0",
+      "data": "0x4f910283000000000000000000000000000000000000000000000000000000174876e800273e44a21ee3907847a8caca6a4ce5d85ec814c9825bb98f2b55f255e99dfb7f",
+      "functionSignature": "postPoolTierPrincipal(uint256,bytes32)",
+      "args": [
+        {
+          "name": "value",
+          "type": "uint256",
+          "value": "100000000000",
+          "note": "$100,000.00 (USDC base units)"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "value": "0x273e44a21ee3907847a8caca6a4ce5d85ec814c9825bb98f2b55f255e99dfb7f",
+          "note": "POOL_TIER_EVIDENCE: the valuation's evidence hash"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Posted: 100000000000 (both signers)."
+    },
+    {
+      "id": "G1-tier-2",
+      "stage": "Pool Tier",
+      "title": "Post the Pool Tier principal ($100,000.00): valuation signer 2",
+      "explanation": "Records the Yield Pool's Pool Tier value. Two different valuation signers each send the same value and evidence; the second one makes it count. No Deployment from the pool is possible until then.",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "valuation signer 2",
+      "chainId": 84532,
+      "to": "0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23",
+      "toLabel": "LendingPool (the Yield Pool)",
+      "value": "0",
+      "data": "0x4f910283000000000000000000000000000000000000000000000000000000174876e800273e44a21ee3907847a8caca6a4ce5d85ec814c9825bb98f2b55f255e99dfb7f",
+      "functionSignature": "postPoolTierPrincipal(uint256,bytes32)",
+      "args": [
+        {
+          "name": "value",
+          "type": "uint256",
+          "value": "100000000000",
+          "note": "$100,000.00 (USDC base units)"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "value": "0x273e44a21ee3907847a8caca6a4ce5d85ec814c9825bb98f2b55f255e99dfb7f",
+          "note": "POOL_TIER_EVIDENCE: the valuation's evidence hash"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Posted: 100000000000 (both signers)."
+    },
+    {
+      "id": "safe-owner",
+      "stage": "Safe (before I2)",
+      "title": "Require 2 signatures on the Safe",
+      "explanation": "The vault and Earn handovers (I3, I4) refuse a Safe one person can run. Today it needs 2 of 4 (0x558D…698a, 0x7ec1…86cF, 0xD264…eFE5, 0x895d…7AAA). Owners other than the deployer may sign only inside the members app (Privy), so a second MetaMask account becomes an owner and every Safe transaction then needs 2 signatures. Today's owner signs this in the Safe app, just before the credit handover (I2); nothing before it needs it.",
+      "kind": "safe",
+      "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "signerLabel": "the Clear Treasury Safe 0x52e6…cf50 (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "toLabel": "the Safe itself",
+      "value": "0",
+      "data": "0x694e80c30000000000000000000000000000000000000000000000000000000000000002",
+      "functionSignature": "changeThreshold(uint256)",
+      "args": [
+        {
+          "name": "_threshold",
+          "type": "uint256",
+          "value": "2",
+          "note": "signatures each transaction will need"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "2 of 4."
+    },
+    {
+      "id": "I3-vault-schedule",
+      "stage": "I3",
+      "title": "Clear Financial Safe: schedule the vault timelock's acceptances",
+      "explanation": "The vault handover began moving CLRUSD's admin role and the CCIP token pool's ownership to the vault timelock; the timelock must accept them (CLRUSD: the vault timelock accepts DEFAULT_ADMIN_ROLE; the CCIP token pool: the vault timelock accepts ownership). This queues the acceptance; it can run 7 days later. Sign it in the Safe app.",
+      "kind": "safe",
+      "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "signerLabel": "Clear Financial Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0xb49c85E8E7eFB4401aaAb2745C9198a239071994",
+      "toLabel": "vault timelock",
+      "value": "0",
+      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000180000000000000000000000000000000000000000000000000000000000000000085b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b0000000000000000000000000000000000000000000000000000000000093a8000000000000000000000000000000000000000000000000000000000000000020000000000000000000000002a116bead17dd96dc5c560a0d76b02eb2d7ad6d1000000000000000000000000d8a171c293969e8b97efe1a9da7742205e23ccc10000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000004cefc142900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000479ba509700000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "scheduleBatch(address[],uint256[],bytes[],bytes32,bytes32,uint256)",
+      "args": [
+        {
+          "name": "targets",
+          "type": "address[]",
+          "value": "[\"0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1\",\"0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1\"]",
+          "note": "CLRUSD, CLRUSD token pool"
+        },
+        {
+          "name": "values",
+          "type": "uint256[]",
+          "value": "[\"0\",\"0\"]"
+        },
+        {
+          "name": "payloads",
+          "type": "bytes[]",
+          "value": "[\"0xcefc1429\",\"0x79ba5097\"]",
+          "note": "the acceptance calls"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0x85b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b",
+          "note": "a fixed label for this batch"
+        },
+        {
+          "name": "delay",
+          "type": "uint256",
+          "value": "604800",
+          "note": "7 days"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "I3x-vault-execute",
+      "stage": "Day 7",
+      "title": "Clear Financial Safe: run the vault timelock's acceptances (day 7)",
+      "explanation": "After the 7 days, the Safe runs the queued acceptances: the vault timelock becomes CLRUSD's admin and the token pool's owner. Only the Safe may run them.",
+      "kind": "safe",
+      "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "signerLabel": "Clear Financial Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0xb49c85E8E7eFB4401aaAb2745C9198a239071994",
+      "toLabel": "vault timelock",
+      "value": "0",
+      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000000085b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b00000000000000000000000000000000000000000000000000000000000000020000000000000000000000002a116bead17dd96dc5c560a0d76b02eb2d7ad6d1000000000000000000000000d8a171c293969e8b97efe1a9da7742205e23ccc10000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000004cefc142900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000479ba509700000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "executeBatch(address[],uint256[],bytes[],bytes32,bytes32)",
+      "args": [
+        {
+          "name": "targets",
+          "type": "address[]",
+          "value": "[\"0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1\",\"0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1\"]",
+          "note": "CLRUSD, CLRUSD token pool"
+        },
+        {
+          "name": "values",
+          "type": "uint256[]",
+          "value": "[\"0\",\"0\"]"
+        },
+        {
+          "name": "payloads",
+          "type": "bytes[]",
+          "value": "[\"0xcefc1429\",\"0x79ba5097\"]",
+          "note": "the acceptance calls"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0x85b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b",
+          "note": "the same label"
+        }
+      ],
+      "dependsOn": [
+        "I3-vault-schedule"
+      ],
+      "status": "waiting",
+      "reason": "Not yet: the vault timelock's 7 days end at 2026-11-24T21:00:10.000Z; CLRUSD's admin delay ends at 2026-11-19T20:43:36.000Z."
+    },
+    {
+      "id": "AS-payer-clfees-approve-1",
+      "stage": "Assurance",
+      "title": "Assurance signer 1 approves: let Clear Lending's fees wallet pay in (credit enhancement fee, recovery: mask 3)",
+      "explanation": "The Assurance Pool changes a setting only when the Assurance timelock calls it, and only if two of its signers approved that exact call first. This is the first approval; the other Assurance signer sends the same one next. Nothing changes yet: the board Safe schedules it, and runs it 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "Assurance signer 1",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d98762fe9c1d6fb66df7e3495d92f3f9b0dc8aa22d1f04ef5553d122935b713ef8a570",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0xfe9c1d6fb66df7e3495d92f3f9b0dc8aa22d1f04ef5553d122935b713ef8a570",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setPayer(0xB9ed7ea800c3a32a8F2cf7d2aB50AE2d4831cDFd, 3)"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-payer-clfees-approve-2",
+      "stage": "Assurance",
+      "title": "Assurance signer 2 approves: let Clear Lending's fees wallet pay in (credit enhancement fee, recovery: mask 3)",
+      "explanation": "The second approval of the same call, from the other Assurance signer. With both, the Assurance timelock may make the call once.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "Assurance signer 2",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d98762fe9c1d6fb66df7e3495d92f3f9b0dc8aa22d1f04ef5553d122935b713ef8a570",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0xfe9c1d6fb66df7e3495d92f3f9b0dc8aa22d1f04ef5553d122935b713ef8a570",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setPayer(0xB9ed7ea800c3a32a8F2cf7d2aB50AE2d4831cDFd, 3)"
+        }
+      ],
+      "dependsOn": [
+        "AS-payer-clfees-approve-1"
+      ],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-payer-treasury-approve-1",
+      "stage": "Assurance",
+      "title": "Assurance signer 1 approves: let the co-op treasury pay in interchange and board allocations (mask 12)",
+      "explanation": "The Assurance Pool changes a setting only when the Assurance timelock calls it, and only if two of its signers approved that exact call first. This is the first approval; the other Assurance signer sends the same one next. Nothing changes yet: the board Safe schedules it, and runs it 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "Assurance signer 1",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d98762e28a3e154b02bfd1bd54ec9638c59b71e292fae1a9807839bd4c2c1116f0ac5b",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0xe28a3e154b02bfd1bd54ec9638c59b71e292fae1a9807839bd4c2c1116f0ac5b",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setPayer(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 12)"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-payer-treasury-approve-2",
+      "stage": "Assurance",
+      "title": "Assurance signer 2 approves: let the co-op treasury pay in interchange and board allocations (mask 12)",
+      "explanation": "The second approval of the same call, from the other Assurance signer. With both, the Assurance timelock may make the call once.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "Assurance signer 2",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d98762e28a3e154b02bfd1bd54ec9638c59b71e292fae1a9807839bd4c2c1116f0ac5b",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0xe28a3e154b02bfd1bd54ec9638c59b71e292fae1a9807839bd4c2c1116f0ac5b",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setPayer(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 12)"
+        }
+      ],
+      "dependsOn": [
+        "AS-payer-treasury-approve-1"
+      ],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-lendingco-approve-1",
+      "stage": "Assurance",
+      "title": "Assurance signer 1 approves: register CL Operating as Lending Co.'s draw address and CL Loss Reserve as where draws are paid",
+      "explanation": "The Assurance Pool changes a setting only when the Assurance timelock calls it, and only if two of its signers approved that exact call first. This is the first approval; the other Assurance signer sends the same one next. Nothing changes yet: the board Safe schedules it, and runs it 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "Assurance signer 1",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d987623974545fa630157cbee4612b36462fba90efe853e040532fa7c5b25a22b407e1",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0x3974545fa630157cbee4612b36462fba90efe853e040532fa7c5b25a22b407e1",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setLendingCoAddresses(0xfAFf1081F77bF528bA21eea590f251a755bCdf65, 0xb42561F3FE68B6719628C0eAC398eA097DD56bAa)"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-lendingco-approve-2",
+      "stage": "Assurance",
+      "title": "Assurance signer 2 approves: register CL Operating as Lending Co.'s draw address and CL Loss Reserve as where draws are paid",
+      "explanation": "The second approval of the same call, from the other Assurance signer. With both, the Assurance timelock may make the call once.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "Assurance signer 2",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d987623974545fa630157cbee4612b36462fba90efe853e040532fa7c5b25a22b407e1",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0x3974545fa630157cbee4612b36462fba90efe853e040532fa7c5b25a22b407e1",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setLendingCoAddresses(0xfAFf1081F77bF528bA21eea590f251a755bCdf65, 0xb42561F3FE68B6719628C0eAC398eA097DD56bAa)"
+        }
+      ],
+      "dependsOn": [
+        "AS-lendingco-approve-1"
+      ],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-disbursement-approve-1",
+      "stage": "Assurance",
+      "title": "Assurance signer 1 approves: register the co-op's Assurance disbursement address, where grants are paid",
+      "explanation": "The Assurance Pool changes a setting only when the Assurance timelock calls it, and only if two of its signers approved that exact call first. This is the first approval; the other Assurance signer sends the same one next. Nothing changes yet: the board Safe schedules it, and runs it 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "Assurance signer 1",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d98762d393130fdad722624e64e5e4eddb47f19f04fe74d8f2873ed059dd28b4bc89bf",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0xd393130fdad722624e64e5e4eddb47f19f04fe74d8f2873ed059dd28b4bc89bf",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setAssuranceDisbursementAddress(0x510cDFa8e647C3f1fe0c431fe903fA60aA4F926B)"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-disbursement-approve-2",
+      "stage": "Assurance",
+      "title": "Assurance signer 2 approves: register the co-op's Assurance disbursement address, where grants are paid",
+      "explanation": "The second approval of the same call, from the other Assurance signer. With both, the Assurance timelock may make the call once.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "Assurance signer 2",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d98762d393130fdad722624e64e5e4eddb47f19f04fe74d8f2873ed059dd28b4bc89bf",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0xd393130fdad722624e64e5e4eddb47f19f04fe74d8f2873ed059dd28b4bc89bf",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setAssuranceDisbursementAddress(0x510cDFa8e647C3f1fe0c431fe903fA60aA4F926B)"
+        }
+      ],
+      "dependsOn": [
+        "AS-disbursement-approve-1"
+      ],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-exposure-approve-1",
+      "stage": "Assurance",
+      "title": "Assurance signer 1 approves: name the CollateralRegistry as what reports the covered book",
+      "explanation": "The Assurance Pool changes a setting only when the Assurance timelock calls it, and only if two of its signers approved that exact call first. This is the first approval; the other Assurance signer sends the same one next. Nothing changes yet: the board Safe schedules it, and runs it 7 days later.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "Assurance signer 1",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d9876215f11bc531971cdcf7053718632d8155fbb665041b6bc7e40a5f3542af20c24f",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0x15f11bc531971cdcf7053718632d8155fbb665041b6bc7e40a5f3542af20c24f",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setExposureSources([0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A])"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-exposure-approve-2",
+      "stage": "Assurance",
+      "title": "Assurance signer 2 approves: name the CollateralRegistry as what reports the covered book",
+      "explanation": "The second approval of the same call, from the other Assurance signer. With both, the Assurance timelock may make the call once.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "Assurance signer 2",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x62d9876215f11bc531971cdcf7053718632d8155fbb665041b6bc7e40a5f3542af20c24f",
+      "functionSignature": "approveAction(bytes32)",
+      "args": [
+        {
+          "name": "action",
+          "type": "bytes32",
+          "value": "0x15f11bc531971cdcf7053718632d8155fbb665041b6bc7e40a5f3542af20c24f",
+          "note": "keccak256 of the exact call the Assurance timelock will make: setExposureSources([0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A])"
+        }
+      ],
+      "dependsOn": [
+        "AS-exposure-approve-1"
+      ],
+      "status": "done",
+      "reason": "Both signers approved this exact call."
+    },
+    {
+      "id": "AS-assurance-schedule",
+      "stage": "Assurance",
+      "title": "Clear Treasury (board) Safe: schedule the Assurance Pool's setup on the Assurance timelock",
+      "explanation": "Queues the approved calls (payer-clfees, payer-treasury, lendingco, disbursement, exposure): the payers, Clear Lending's draw and loss-reserve addresses, the disbursement address and the exposure source. They can run 7 days later. Sign it in the Safe app: Transaction Builder, load the batch file.",
+      "kind": "safe",
+      "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "signerLabel": "Clear Treasury (board) Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0xE77F3C4B94Fa25A021f3Ef8d0E5D06F4Ea057C6b",
+      "toLabel": "Assurance timelock",
+      "value": "0",
+      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000240000000000000000000000000000000000000000000000000000000000000000002cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf5640000000000000000000000000000000000000000000000000000000000093a8000000000000000000000000000000000000000000000000000000000000000050000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb15000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000002800000000000000000000000000000000000000000000000000000000000000044c5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044c5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044a04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024d6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000064c988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a00000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "scheduleBatch(address[],uint256[],bytes[],bytes32,bytes32,uint256)",
+      "args": [
+        {
+          "name": "targets",
+          "type": "address[]",
+          "value": "[\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\"]",
+          "note": "AssurancePool"
+        },
+        {
+          "name": "values",
+          "type": "uint256[]",
+          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+        },
+        {
+          "name": "payloads",
+          "type": "bytes[]",
+          "value": "[\"0xc5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003\",\"0xc5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c\",\"0xa04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa\",\"0xd6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b\",\"0xc988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a\"]",
+          "note": "the approved calls"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0x02cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf564",
+          "note": "a fixed label for this batch"
+        },
+        {
+          "name": "delay",
+          "type": "uint256",
+          "value": "604800",
+          "note": "7 days"
+        }
+      ],
+      "dependsOn": [
+        "AS-payer-clfees-approve-1",
+        "AS-payer-clfees-approve-2",
+        "AS-payer-treasury-approve-1",
+        "AS-payer-treasury-approve-2",
+        "AS-lendingco-approve-1",
+        "AS-lendingco-approve-2",
+        "AS-disbursement-approve-1",
+        "AS-disbursement-approve-2",
+        "AS-exposure-approve-1",
+        "AS-exposure-approve-2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "ASx-assurance-execute",
+      "stage": "Day 7",
+      "title": "Clear Treasury (board) Safe: run the Assurance Pool's setup (day 7)",
+      "explanation": "After the Assurance timelock's 7 days, the board Safe runs the queued calls; the pool checks each one carries its two approvals. Only the board Safe may run them: it is the timelock's only executor.",
+      "kind": "safe",
+      "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "signerLabel": "Clear Treasury (board) Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0xE77F3C4B94Fa25A021f3Ef8d0E5D06F4Ea057C6b",
+      "toLabel": "Assurance timelock",
+      "value": "0",
+      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000001600000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000000002cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf56400000000000000000000000000000000000000000000000000000000000000050000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb15000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000002800000000000000000000000000000000000000000000000000000000000000044c5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044c5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044a04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024d6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000064c988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a00000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "executeBatch(address[],uint256[],bytes[],bytes32,bytes32)",
+      "args": [
+        {
+          "name": "targets",
+          "type": "address[]",
+          "value": "[\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\"]",
+          "note": "AssurancePool"
+        },
+        {
+          "name": "values",
+          "type": "uint256[]",
+          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+        },
+        {
+          "name": "payloads",
+          "type": "bytes[]",
+          "value": "[\"0xc5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003\",\"0xc5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c\",\"0xa04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa\",\"0xd6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b\",\"0xc988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a\"]",
+          "note": "the approved calls"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0x02cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf564",
+          "note": "the same label"
+        }
+      ],
+      "dependsOn": [
+        "AS-assurance-schedule"
+      ],
+      "status": "waiting",
+      "reason": "Not yet: the Assurance timelock's 7 days end at 2026-11-24T18:55:35.000Z."
+    },
+    {
+      "id": "AS-floor-1",
+      "stage": "Assurance",
+      "title": "Post the month's floor inputs (coverage cap $10,000.00): Assurance signer 1",
+      "explanation": "Sets how much the Credit Backstop may pay Clear Lending on a draw (the coverage cap), with the month's timing shortfall and attested covered book. Until both signers post the same figures the cap is $0 and every draw is refused; deposits and member grants don't need it. No timelock: it applies as soon as the second signer sends it. Re-post each month.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "Assurance signer 1",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x298d0ae6000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002540be40000000000000000000000000000000000000000000000000000000000000000004678dd099618cc0ea71b8a4797ab9d2a787d17ba88898299fa778a0c59a433d4",
+      "functionSignature": "setFloorInputs(uint256,uint256,uint256,bytes32)",
+      "args": [
+        {
+          "name": "shortfall",
+          "type": "uint256",
+          "value": "0",
+          "note": "timing-buffer shortfall $0.00"
+        },
+        {
+          "name": "cap",
+          "type": "uint256",
+          "value": "10000000000",
+          "note": "coverage cap $10,000.00"
+        },
+        {
+          "name": "attestedBook",
+          "type": "uint256",
+          "value": "0",
+          "note": "attested covered book $0.00"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "value": "0x4678dd099618cc0ea71b8a4797ab9d2a787d17ba88898299fa778a0c59a433d4",
+          "note": "ASSURANCE_FLOOR_EVIDENCE: the month's evidence hash"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Posted: coverage cap $10,000.00 (both signers)."
+    },
+    {
+      "id": "AS-floor-2",
+      "stage": "Assurance",
+      "title": "Post the month's floor inputs (coverage cap $10,000.00): Assurance signer 2",
+      "explanation": "The same figures from the other Assurance signer; this one makes them count.",
+      "kind": "wallet",
+      "signer": "0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7",
+      "signerLabel": "Assurance signer 2",
+      "chainId": 84532,
+      "to": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+      "toLabel": "AssurancePool",
+      "value": "0",
+      "data": "0x298d0ae6000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002540be40000000000000000000000000000000000000000000000000000000000000000004678dd099618cc0ea71b8a4797ab9d2a787d17ba88898299fa778a0c59a433d4",
+      "functionSignature": "setFloorInputs(uint256,uint256,uint256,bytes32)",
+      "args": [
+        {
+          "name": "shortfall",
+          "type": "uint256",
+          "value": "0",
+          "note": "timing-buffer shortfall $0.00"
+        },
+        {
+          "name": "cap",
+          "type": "uint256",
+          "value": "10000000000",
+          "note": "coverage cap $10,000.00"
+        },
+        {
+          "name": "attestedBook",
+          "type": "uint256",
+          "value": "0",
+          "note": "attested covered book $0.00"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "value": "0x4678dd099618cc0ea71b8a4797ab9d2a787d17ba88898299fa778a0c59a433d4",
+          "note": "ASSURANCE_FLOOR_EVIDENCE: the month's evidence hash"
+        }
+      ],
+      "dependsOn": [
+        "AS-floor-1"
+      ],
+      "status": "done",
+      "reason": "Posted: coverage cap $10,000.00 (both signers)."
+    },
+    {
+      "id": "TU-funder",
+      "stage": "Payout top-ups",
+      "title": "Give the payout top-up wallet the PayoutPool's FUNDER_ROLE (day 0, before I2)",
+      "explanation": "Lets the top-up wallet fund the PayoutPool (fund pulls the wallet's own USDC), and nothing else. Send it before the credit handover (I2): until then the deployer holds the PayoutPool's admin; afterwards the grant is a 7-day credit timelock proposal. The wallet never calls withdrawCapital (decision 51).",
+      "kind": "wallet",
+      "signer": "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+      "signerLabel": "the deployer",
+      "chainId": 84532,
+      "to": "0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861",
+      "toLabel": "PayoutPool",
+      "value": "0",
+      "data": "0x2f2ff15d0914bb97ca83e85ef385857d9d418f187ff630589e0c9f44db92976d8e4519cb000000000000000000000000c0c4ec7875d1838c0ae610accc16aadcdb475068",
+      "functionSignature": "grantRole(bytes32,address)",
+      "args": [
+        {
+          "name": "role",
+          "type": "bytes32",
+          "value": "0x0914bb97ca83e85ef385857d9d418f187ff630589e0c9f44db92976d8e4519cb",
+          "note": "FUNDER_ROLE"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "value": "0xC0C4EC7875D1838C0AE610accC16AAdCDb475068",
+          "note": "payout top-up wallet"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "TU-safe-module",
+      "stage": "Payout top-ups",
+      "title": "CL Operating: enable Safe's AllowanceModule",
+      "explanation": "Lets CL Operating give one wallet a spending limit. The module (Safe's audited AllowanceModule v0.1.1, 0xAA46724893dedD72658219405185Fb0Fc91e091C) moves CL Operating's money only for a delegate CL Operating names, within the limit CL Operating sets for it. CL Operating's only owner is the Clear Lending Safe (2 of 2): in the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute. Sign all three at once: safe-batches/signing-TU-cl-operating-setup.json (written while they are ready).",
+      "kind": "safe",
+      "signer": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+      "signerLabel": "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      "chainId": 84532,
+      "to": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+      "toLabel": "CL Operating itself",
+      "value": "0",
+      "data": "0x610b5925000000000000000000000000aa46724893dedd72658219405185fb0fc91e091c",
+      "functionSignature": "enableModule(address)",
+      "args": [
+        {
+          "name": "module",
+          "type": "address",
+          "value": "0xAA46724893dedD72658219405185Fb0Fc91e091C",
+          "note": "Safe's AllowanceModule v0.1.1"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "TU-safe-delegate",
+      "stage": "Payout top-ups",
+      "title": "CL Operating: name the payout top-up wallet a spending-limit delegate",
+      "explanation": "The top-up wallet may then spend from CL Operating, but only within the allowance the next call sets. CL Operating's only owner is the Clear Lending Safe (2 of 2): in the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute. Sign all three at once: safe-batches/signing-TU-cl-operating-setup.json (written while they are ready).",
+      "kind": "safe",
+      "signer": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+      "signerLabel": "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      "chainId": 84532,
+      "to": "0xAA46724893dedD72658219405185Fb0Fc91e091C",
+      "toLabel": "AllowanceModule",
+      "value": "0",
+      "data": "0xe71bdf41000000000000000000000000c0c4ec7875d1838c0ae610accc16aadcdb475068",
+      "functionSignature": "addDelegate(address)",
+      "args": [
+        {
+          "name": "delegate",
+          "type": "address",
+          "value": "0xC0C4EC7875D1838C0AE610accC16AAdCDb475068",
+          "note": "payout top-up wallet"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "TU-safe-allowance",
+      "stage": "Payout top-ups",
+      "title": "CL Operating: let the payout top-up wallet move up to $5,000.00 of USDC every 7 days",
+      "explanation": "The spending limit is the most the automatic top-ups can move out of CL Operating in a period, whatever happens to the bot or its key. What a top-up needs beyond it is prepared for CL Operating's owners to sign. Change it the same way. CL Operating's only owner is the Clear Lending Safe (2 of 2): in the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute. Sign all three at once: safe-batches/signing-TU-cl-operating-setup.json (written while they are ready).",
+      "kind": "safe",
+      "signer": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+      "signerLabel": "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      "chainId": 84532,
+      "to": "0xAA46724893dedD72658219405185Fb0Fc91e091C",
+      "toLabel": "AllowanceModule",
+      "value": "0",
+      "data": "0xbeaeb388000000000000000000000000c0c4ec7875d1838c0ae610accc16aadcdb475068000000000000000000000000036cbd53842c5426634e7929541ec2318f3dcf7e000000000000000000000000000000000000000000000000000000012a05f20000000000000000000000000000000000000000000000000000000000000027600000000000000000000000000000000000000000000000000000000001c87020",
+      "functionSignature": "setAllowance(address,address,uint96,uint16,uint32)",
+      "args": [
+        {
+          "name": "delegate",
+          "type": "address",
+          "value": "0xC0C4EC7875D1838C0AE610accC16AAdCDb475068",
+          "note": "payout top-up wallet"
+        },
+        {
+          "name": "token",
+          "type": "address",
+          "value": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "note": "USDC"
+        },
+        {
+          "name": "allowanceAmount",
+          "type": "uint96",
+          "value": "5000000000",
+          "note": "$5,000.00 per period (USDC base units)"
+        },
+        {
+          "name": "resetTimeMin",
+          "type": "uint16",
+          "value": "10080",
+          "note": "7 days: the limit resets this often"
+        },
+        {
+          "name": "resetBaseMin",
+          "type": "uint32",
+          "value": "29913120",
+          "note": "periods counted from 2026-11-16T00:00:00.000Z"
+        }
+      ],
+      "dependsOn": [
+        "TU-safe-delegate"
+      ],
+      "status": "done",
+      "reason": "$5,000.00 every 7 days; $0.00 spent this period."
+    }
+  ]
+}
