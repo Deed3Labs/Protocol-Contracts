@@ -4,6 +4,11 @@ import { openCreditLine, hasCreditLine } from '../services/chain/creditLineServi
 /*
  * Opens a credit line for members who already existed before anything opened one.
  *
+ * Superseded by the credit onboarding job (jobs/creditOnboarding.ts, CREDIT_ONBOARDING_ENABLED=1),
+ * which also attests each verified member's state first: no line opens without one. Kept for a
+ * one-off report; it attests nothing, so on the day-0 issuer it opens lines only for members
+ * already attested.
+ *
  * Onboarding does this now, but a member who signed up before that will never pass through it
  * again -- and until they have a period they have no cycle, which is the one thing the product
  * says every member has.

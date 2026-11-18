@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { decodeStateCode } from './stateCode.js';
 
 /*
  * The contracts' custom errors, decoded in one place (audit Phase 1).
@@ -89,6 +90,9 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error RevolvingIssuerExtensionMismatch()',
   // RateSchedule
   'error RateScheduleUnknownProduct(bytes32 stateCode, bytes32 productId)',
+  // NetworkRegistry: the state attestation (STATE_ATTESTER_ROLE)
+  'error NetworkRegistryInvalidAddress()',
+  'error NetworkRegistryInvalidStateCode()',
   // ClearUSD (CLRUSD), Phase 2: FRAUD_ROLE pauses one account, SECURITY_ROLE everyone; each lapses
   'error ClearUSDPaused(address holder, uint32 reason, uint64 until)',
   'error ClearUSDEncumbered(address holder, uint256 free, uint256 amount)',
@@ -246,15 +250,8 @@ export function describeRedeemRefusal(decoded: DecodedChainError | null): string
   }
 }
 
-/** The two-letter state in a bytes32 state code, or null for none. */
-function stateName(code: unknown): string | null {
-  if (typeof code !== 'string' || /^0x0*$/.test(code)) return null;
-  try {
-    return ethers.decodeBytes32String(code) || null;
-  } catch {
-    return null;
-  }
-}
+/** The two-letter state in a bytes32 state code, or null for none (one encoding: ./stateCode.ts). */
+const stateName = decodeStateCode;
 
 /** Unix seconds as a date and time a member can read, in UTC so the server and the log agree. */
 function until(seconds: unknown): string {
@@ -427,6 +424,34 @@ export function describeKeeperRefusal(decoded: DecodedChainError | null): string
     case 'LiquidatorNoShortfall':
     case 'LiquidatorShortfallNoticed':
       return describeLiquidatorRefusal(decoded);
+    default:
+      return null;
+  }
+}
+
+/** An OpenZeppelin 4.x AccessControl revert ("AccessControl: account 0x… is missing role 0x…"). */
+export function isMissingRoleRevert(decoded: DecodedChainError | null): boolean {
+  return (
+    decoded?.name === 'Error' &&
+    /^AccessControl: account 0x[0-9a-f]{40} is missing role 0x[0-9a-f]{64}$/i.test(String(decoded.args[0] ?? ''))
+  );
+}
+
+/**
+ * Credit onboarding's refusals (the state attestation, then `openLine`): the contract's own rule
+ * saying "not yet", which the job records and waits on rather than alerting. Null for anything else,
+ * which is a failure. Words for an operator, and never the member's state: a log line that carries
+ * the wallet must not carry where they live.
+ */
+export function describeOnboardingRefusal(decoded: DecodedChainError | null): string | null {
+  if (isMissingRoleRevert(decoded)) {
+    return 'The attester does not hold NetworkRegistry’s STATE_ATTESTER_ROLE, so no state can be attested.';
+  }
+  switch (decoded?.name) {
+    case 'RevolvingIssuerStateNotEnabled':
+      return stateName(decoded.args.stateCode) === null
+        ? 'No state is attested for this member, so the RevolvingIssuer opens no line.'
+        : 'The revolving product is not enabled in the member’s attested state, so the RevolvingIssuer opens no line.';
     default:
       return null;
   }

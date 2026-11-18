@@ -28,6 +28,7 @@ describe('the job wallets printed at startup', () => {
     const lines = jobWalletLines({}).join('\n');
     expect(lines).toContain('[wallets] savings relayer: not set (needed only in local-key mode; a CDP relayer has no key here) (SAVINGS_RELAYER_PRIVATE_KEY)');
     expect(lines).toContain('[wallets] membership registrar: not set (the credit operator registers members instead)');
+    expect(lines).toContain('[wallets] state attester: not set (the credit operator attests states instead) (STATE_ATTESTER_PRIVATE_KEY)');
   });
 
   test('flags one wallet doing several jobs', () => {

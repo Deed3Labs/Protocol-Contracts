@@ -20,6 +20,7 @@ const DEFAULTS: Record<string, string> = {
   TermIssuer: 'TermIssuer',
   CollateralRegistry: 'CollateralRegistry',
   LimitCalculator: 'LimitCalculator',
+  NetworkRegistry: 'NetworkRegistry',
   AssurancePoolV2: 'AssurancePoolV2',
   SavingsIntentFactory: 'SavingsIntentFactory',
   BondVault: 'BondVault',
@@ -52,7 +53,7 @@ describe('Base Sepolia defaults follow the deployment records', async () => {
 
   test('no default names a retired contract, and the retired deposit contract and OffersIssuer have none', () => {
     if (!record('ClearCredit')) return;
-    const retired = ['ClearCreditPreAudit', 'RevolvingIssuerPreAudit', 'TermIssuerPreAudit', 'CollateralRegistryPreAudit', 'LimitCalculatorPreAudit',
+    const retired = ['ClearCreditPreAudit', 'NetworkRegistryPreAudit', 'RevolvingIssuerPreAudit', 'TermIssuerPreAudit', 'CollateralRegistryPreAudit', 'LimitCalculatorPreAudit',
       'PayoutPoolPreAudit', 'MerchantRegistryPreAudit', 'LiquidatorPreAudit', 'OffersIssuerPreAudit', 'BurnerBondPre2f', 'BurnerBondDepositPre2f',
       'BurnerBondFactoryPre2f', 'SavingsIntentFactoryPre2d']
       .map(record)
