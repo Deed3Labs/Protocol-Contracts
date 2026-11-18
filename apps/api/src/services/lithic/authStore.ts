@@ -85,6 +85,12 @@ async function ensureTables(): Promise<void> {
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS status TEXT;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS unfunded_cents BIGINT NOT NULL DEFAULT 0;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ;
+    /*
+     * When Lithic first reported the transaction SETTLED. Set once and never moved by a later
+     * event, unlike reconciled_at: the settlement funding desk (jobs/fundingDesk.ts) reads it to
+     * know which bank cut-off a credit portion is due at.
+     */
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS settled_at TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS ${ENTRIES} (
       id BIGSERIAL PRIMARY KEY,
@@ -377,7 +383,8 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileOutcome
 
     if (delta === 0) {
       await client.query(
-        `UPDATE ${DECISIONS} SET status = COALESCE($2, status), reconciled_at = now()
+        `UPDATE ${DECISIONS} SET status = COALESCE($2, status), reconciled_at = now(),
+              settled_at = CASE WHEN $2 = 'SETTLED' THEN COALESCE(settled_at, now()) ELSE settled_at END
           WHERE transaction_token = $1`,
         [input.transactionToken, input.status ?? null],
       );
@@ -395,7 +402,8 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileOutcome
     if (!snapshot.rows[0]) {
       // Nothing to put it back on. Record the intent so the gap is visible rather than silent.
       await client.query(
-        `UPDATE ${DECISIONS} SET status = COALESCE($2, status), reconciled_at = now()
+        `UPDATE ${DECISIONS} SET status = COALESCE($2, status), reconciled_at = now(),
+              settled_at = CASE WHEN $2 = 'SETTLED' THEN COALESCE(settled_at, now()) ELSE settled_at END
           WHERE transaction_token = $1`,
         [input.transactionToken, input.status ?? null],
       );
@@ -453,7 +461,8 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileOutcome
     await client.query(
       `UPDATE ${DECISIONS}
        SET net_cents = $2, draws = $3::jsonb, credit_cents = $4, unfunded_cents = $5,
-           status = COALESCE($6, status), reconciled_at = now()
+           status = COALESCE($6, status), reconciled_at = now(),
+           settled_at = CASE WHEN $6 = 'SETTLED' THEN COALESCE(settled_at, now()) ELSE settled_at END
        WHERE transaction_token = $1`,
       [
         input.transactionToken,
