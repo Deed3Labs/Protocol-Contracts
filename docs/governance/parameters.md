@@ -48,9 +48,9 @@ sets these thresholds and draws the path toward the Clear Deed from them.
 
 | Protection | Unlocks at |
 |---|---|
-| Cycle assurance: two cycles a year can close short | From the start |
+| Cycle assurance: one cycle a year can close short | From the start |
 | Home repair | 1,500 credits |
-| Income: your credit limit holds for a cycle if your income drops | 4,000 credits |
+| Income: nothing is due for up to three cycles after a documented hardship | 4,000 credits |
 | Deposit: your security deposit paid to your landlord | 8,000 credits |
 | Rent: up to two months of rent if you lose your job | 15,000 credits |
 
@@ -110,7 +110,9 @@ Assurance grant takes two signers. How the reserve works:
 
 | Parameter | Lives in | Set by | Today |
 |---|---|---|---|
-| A shop's discount to the co-op | `MerchantRegistry` terms | `MerchantRegistry` `OPERATOR_ROLE` (the Ops Safe) | 2.5% by default when a shop is registered. Never above 100% |
+| A shop's discount on a plan paid over time, Clear Lending's fee | `MerchantRegistry` terms | `MerchantRegistry` `OPERATOR_ROLE` (the Ops Safe) | 2.5% by default when a shop is registered. Never above 100% |
+| The cap on that fee | `TermIssuer.setFeeTerms` | `CREDIT_SETTINGS_ROLE` | $50.00 a plan, or $75.00 on a plan over $2,500.00 |
+| Who receives the fee | `TermIssuer` `feeRecipient` | Two `CREDIT_SETTINGS_ROLE` holders: one proposes, another approves | Clear Lending, never the co-op's treasury |
 | A shop's approval cap: the largest Clear charge it can take | `MerchantRegistry` terms | Same | Set per shop. Zero means no cap |
 | A shop's payout window | `MerchantRegistry` terms | Same | The default window unless set |
 | The default payout window | `MerchantRegistry.setDefaultPayoutWindow` | Same | 30 days, set at deploy |

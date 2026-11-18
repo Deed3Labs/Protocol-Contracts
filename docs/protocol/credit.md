@@ -260,9 +260,9 @@ and writes off the plan's own position only (`declareWorkoutDefault`); no defaul
 recorded, so nothing reaches Savings or other collateral. The plan's principal is outside the
 Combined Ceiling.
 
-**Automatic Clearing (12.2).** The member's authorization runs to the Bank, Clear Financial and Clear
-Lending. It is set at line opening from the member's own choice on a separate screen: "Approve
-automatic clearing" signs `AutoClear(address member,bool on,uint8 level,bytes32 authHash,uint256
+**Automatic Clearing (12.2).** The member's authorization runs to the Bank (the bank that holds the
+member's Spendable account), Clear Financial Co. and Clear Lending. It is set at line opening from
+the member's own choice on a separate screen: "Approve automatic clearing" signs `AutoClear(address member,bool on,uint8 level,bytes32 authHash,uint256
 nonce,uint256 deadline)`, which sets it on and records `autoClearAuthHash`; "Turn off" signs nothing.
 The member changes it any time (`setAutoClear(on, level, authHash)` or the signature); no role does,
 and the governed `autoClearOffGlobal` is no longer read. `repayForMember(ref, member, amount, payer)`

@@ -6,7 +6,7 @@ together:
 | | Your credit line | Your term limit |
 |---|---|---|
 | What it's for | Spending on your card, beyond your cash | Paying for a shop purchase over time |
-| Set by | What backs each tier — your savings, your bonds and pool position, your income | Your observed income |
+| Set by | What backs each tier — your savings, your bonds and pool position, your income | $500.00 to start, growing as you pay on time, up to what your deposits support |
 | Where you see it | **Credit** on Home | **Term plans** on Home |
 
 Both open once your identity is verified. See
@@ -119,8 +119,9 @@ your term limit, never on your card's credit line.
 
 ### Your term limit
 
-Your term limit is set from your observed income, not from a credit score, and only once your
-identity check has passed. A new plan has to fit inside what's left of it, so clearing a plan early
+Your term limit is not set from a credit score. It starts at $500.00 once your identity check has
+passed, and grows by $250.00 for every three instalments you pay on time. Growth past $500.00 is
+capped by your deposits, and the automatic rule stops at $5,000.00. A new plan has to fit inside what's left of it, so clearing a plan early
 frees its share straight away.
 
 ### Opening a plan

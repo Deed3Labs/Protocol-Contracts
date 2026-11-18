@@ -15,7 +15,7 @@ Money is on the other: deposits, credit and loans.
 | Entity | What it does | Owned by |
 |---|---|---|
 | **The co-op** | The parent. One member, one vote | Its members |
-| **Program entity** | Accounts, cards and payments. Member money sits here, on the money side | The co-op |
+| **Clear Financial Co.** (the program entity) | Accounts, cards and payments. Member money sits here, on the money side: its Safe controls the savings vault and CLRUSD | The co-op |
 | **Deed & Title Co** | Records and administration for deeds and title | The co-op |
 | **Clear Capital Holdings** | A separate company with its own board, and the only place outside investors sit | The co-op |
 | **Clear Lending** | Funds the credit book. The money side; it never touches the land | Clear Capital Holdings |

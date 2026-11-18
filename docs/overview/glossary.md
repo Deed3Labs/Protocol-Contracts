@@ -13,13 +13,13 @@ described under [Protocol](../protocol/README.md).
 | **Carry** | The cost of credit. It builds up on what you have drawn |
 | **Clear card** | Clear's own wooden membership card, for paying at Clear shops without your phone. Planned; not available yet. See [Your cards](../members/cards.md) |
 | **Clear Deed** | The finish line: a home title, free of debt, earned through equity credits. Not a mortgage. On the chain, a T-Deed |
+| **Clear Financial Co.** | The program entity in the co-op's structure: accounts, cards and payments, where member money sits. Its Safe controls the savings vault and CLRUSD. See [The co-op's structure](../governance/structure.md) |
 | **Clear Lending** | The company in the co-op's structure that funds the credit book. See [The co-op's structure](../governance/structure.md) |
 | **Clear Pay** | Paying rent and bills through the app. Paying on time earns equity credits |
 | **Clear Protocol** | The contracts under the app: savings, the credit ledger, shop payouts, the reserve and the Deed track |
 | **Clear Visa card** | Today's card: a Visa card that spends your cash first, then your credit line, cheapest tier first. Test network only. See [The Clear Visa card](../members/clear-visa-card.md) |
 | **CLRUSD** | Clear USD. Your savings. One CLRUSD for each USDC deposited, redeemable for USDC at any time. Pays no interest |
 | **Command Center** | The co-op's internal app, where staff, members and invited investors each sign in with their own access. See [The Command Center](../governance/command-center.md) |
-| **Co-op discount** | The share of a partner purchase the shop has agreed to give up. It goes to the co-op |
 | **Credit Backstop** | The part of the reserve that covers credit Clear Lending has written off as lost. It has a floor: a share of the credit it covers |
 | **Credit ledger, `ClearCredit`** | The on-chain record of what each member owes and what each shop is owed |
 | **Credit line** | Credit you can draw on with the Clear Visa card or at partner shops. Its size depends on what backs it. Offered state by state |
@@ -45,6 +45,7 @@ described under [Protocol](../protocol/README.md).
 | **PayoutPool** | The contract that pays shops in dollars |
 | **Relayer** | A Clear wallet that submits a transaction you signed and pays its network fee |
 | **Reserve** | The co-op's money held against losses and for members' protections, in the AssurancePool: the Credit Backstop and Member Assurance |
+| **Shop discount** | The share of a purchase paid over time that the shop has agreed to give up. It goes to Clear Lending as its fee for funding the plan, capped at $50.00 a plan ($75.00 over $2,500.00). The member never pays it |
 | **Split plan** | Paying a purchase back in 1, 2, 4, 6 or 12 instalments, against its own limit |
 | **Standard** | The membership plan every member is on. Free. Its equity-credit multiplier grows with your on-time record |
 | **T-Deed** | The on-chain token for a property, issued by `DeedNFT` |

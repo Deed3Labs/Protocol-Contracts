@@ -357,19 +357,22 @@ How defaults, write-offs and liquidation work is in [Default](./credit.md#defaul
 
 ## 5. The lending pool
 
-`LendingPool` is an ERC-4626 vault over the reserve token whose share price counts what is out on
-loan. Its full behaviour is in [LendingPool](./settlement.md#lendingpool).
+`LendingPool` is the lending pool on Earn: an ERC-4626 vault over USDC whose share price counts what
+is deployed. Its full behaviour is in [LendingPool](./settlement.md#lendingpool), and the reader's
+version in [The lending pool](../investors/lending-pool.md).
 
-- **It lends to approved borrowers** (`BORROWER_ROLE`): the PayoutPool, for a due claim, and the
-  card-settler wallet. Depositors earn what comes back above principal: for the PayoutPool's loans,
-  their share of member carry.
-- **A tier can name it as its carry recipient** (`tierCarryRecipient`), so its depositors earn the
-  carry on the unsecured tiers it funds.
-- **Withdrawals queue when cash is lent out.** `requestWithdrawal` fixes the claim in assets and
-  `claimWithdrawal` pays it when cash covers it.
-- **The rate curve is a view.** `borrowRatePerCycle` and `supplyRatePerCycle` compute a
-  utilisation-based curve that no contract reads.
-- **Losses are written down with `absorbLoss`** (`LOSS_REPORTER_ROLE`). No contract calls it.
+- **It lends only to Clear Lending.** Direct borrowing is retired (`borrow` reverts
+  `LendingPoolDirectBorrowOff`). Money leaves as a Deployment to the registered deployment account,
+  proposed by one deployment signer and sent by another, or through the settlement lane
+  (`deploySettlement`) by the single registered settlement funder.
+- **Both are capped.** Utilization after a Deployment is at most 90%, and the Deployed Balance stays
+  within the Pool Tier principal two valuation signers last posted (plus Settlement Headroom for
+  the lane). Nothing deploys while a withdrawal request waits, the pool is suspended or a loss
+  charge is pending.
+- **Holders earn Pool Interest at the Funding Rate**, and withdrawals queue first in, first out
+  when cash is deployed (`requestWithdrawal`, then `claimWithdrawal`).
+- **Losses are charged to holders** through a recorded loss charge, with holdbacks. Nothing covers
+  a loss.
 
 ---
 
@@ -381,34 +384,32 @@ Bondholders are creditors and must be senior to loss absorption. In the inherite
 to the AssurancePool's excess reserve and redemptions came out of the same pool, so bondholder
 principal funded default cover and a redemption could revert. That was a seniority inversion.
 
-Proceeds now go to `BondVault`, which records each bond's principal, face and maturity and holds a
-**redemption reserve the code derives**: the larger of face due inside the reserve window (90 days at
-deployment) and a floor across everything outstanding (30% at deployment, bounded 20%–100%). Only
-the **deployable excess** above that can leave other than to a bondholder.
+Proceeds now go to `BondVault`, which holds a **Redemption Reserve the code derives**
+(`requiredReserve()`): the larger of the glide reserve, which never falls below a floor of 30% of
+what is outstanding and only rises, and 100% of every bond due within 90 days, plus anything
+recorded as owed. Only the **deployable excess** above that can leave other than to a bondholder.
+Below the reserve the vault is in Reserve Shortfall and purchases pause. Details are in
+[Bonds](./bonds.md#where-the-money-lives--bondvault).
 
 **Proceeds land in the vault, not the Safe.** Money does have to reach people eventually — a contract
 cannot wire dollars to the card issuer — but sending proceeds straight to a multisig would make the
-redemption reserve a policy someone must remember rather than a rule the code enforces. The Safe
-withdraws only deployable excess (`withdrawDeployable`, `TREASURY_ROLE`).
+redemption reserve a policy someone must remember rather than a rule the code enforces.
 
 ### When the vault is short at maturity
 
 `BondVault` pays from its own holdings, then from the treasury (the Safe) up to the USDC allowance
-its owners have given the vault, then borrows from the AssurancePool (`lendToBondVault`): excess,
-then buffer while `hasValidRTD()` holds, never the primary reserve. It reverts only when all three
-together cannot pay, and then nothing has moved.
-
-The reserve is repaid from new proceeds before the Safe can withdraw anything (`deployableExcess`
-subtracts `owedToReserve`; `repayReserve()` is permissionless). The treasury is not repaid as a
-loan: what it put in comes back as deployable excess. The AssurancePool counts the part it backs —
-face due inside the window that neither the vault nor the treasury's allowance can pay
-(`bondExposure()`) — in its RTD. Details are in [Bonds](./bonds.md#redemption).
+its owners have given the vault. A settlement never waits and never reverts for want of funds: what
+neither covers is recorded as owed (`pendingSettlement`), added to the reserve ahead of any excess,
+and paid later by the permissionless `completeSettlement`. Since section 13 the vault names no
+AssurancePool, and nothing on the bond side can reach one. Details are in
+[Bonds](./bonds.md#redemption).
 
 ### Pledged bonds at maturity
 
-A bond still backing drawn credit cannot be redeemed: `BondVault.settle` reverts with
-`BondVaultBondPledged`. The holder can roll it instead (`rollBond`), and the pledge moves to the new
-bond, so the member's limit does not contract the day it matures. Nothing rolls on its own.
+A bond still backing drawn credit settles against the debt it backs: the Liquidator applies the
+Maturity Amount to that debt first (`maturityToDebt`, then `BondVault.settlePledged`), and the rest
+goes to the Holder's payee. A Holder who confirmed a roll gets a new bond instead, and the pledge
+moves with it, so the member's limit does not contract the day it matures.
 
 ### The offers line
 
