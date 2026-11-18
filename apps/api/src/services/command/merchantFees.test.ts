@@ -26,3 +26,15 @@ describe('merchantFeesThisMonth', () => {
     expect(await merchantFeesThisMonth(charges as never, new Date('2026-11-18T12:00:00Z'))).toEqual({ financed: 0, fees: 0, count: 0 });
   });
 });
+
+describe('unsecuredOf', () => {
+  test('counts what’s drawn in tiers no pledge backs, and the term plans', async () => {
+    const { unsecuredOf } = await import('./sections.js');
+    const rates = { tiers: [{ name: 'Savings', out: 500 }, { name: 'Bond', out: 120 }, { name: 'Pool share', out: 80 }, { name: 'Income', out: 260.5 }, { name: 'Boost', out: 124 }, { name: 'WORKOUT', out: 10 }], term: { out: 300 } };
+    expect(unsecuredOf(rates, 1394.5)).toBe(694.5);
+  });
+  test('with the issuers unread, all of it counts', async () => {
+    const { unsecuredOf } = await import('./sections.js');
+    expect(unsecuredOf(null, 812.25)).toBe(812.25);
+  });
+});

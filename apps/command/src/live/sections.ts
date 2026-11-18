@@ -441,6 +441,8 @@ const apply = {
     mergeSummary(d.MEMBER_SUMMARY);
     assign(OWED, d.OWED);
     vars.shopNames = d.SHOP_NAMES;
+    // the week behind on the timeline: what people did here (the audit log), null below See
+    vars.homePast = d.PAST ?? null;
     vars.posterCount = d.POSTERS;
     replace(DEADLINES, d.DEADLINES);
     // the entities, as Governance's: Home draws them as a small tree
