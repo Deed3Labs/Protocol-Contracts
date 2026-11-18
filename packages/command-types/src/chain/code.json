@@ -919,6 +919,44 @@
     ]
    ]
   },
+  "SettlementForwarder": {
+   "source": "contracts/peripherals/SettlementForwarder.sol",
+   "sha256": "b25328aaec8f366cb61fbf1ac29d3803444b2eed2eb4df602833132beb2e5f37",
+   "immutables": [
+    [
+     161,
+     32
+    ],
+    [
+     366,
+     32
+    ],
+    [
+     435,
+     32
+    ],
+    [
+     564,
+     32
+    ],
+    [
+     768,
+     32
+    ],
+    [
+     838,
+     32
+    ],
+    [
+     878,
+     32
+    ],
+    [
+     1239,
+     32
+    ]
+   ]
+  },
   "Subdivide": {
    "source": "contracts/extensions/Subdivide.sol",
    "sha256": "735faa0ea427b67a15e09a76b61e14afe8b5f6488dacd08c74457e925e6be89e",
