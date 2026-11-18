@@ -784,16 +784,18 @@ function makeMoney() {
       return cell('s12', 'Where it sits', <span className="lbl">{ACCTS.length}{" accounts · "}{money(tot)}</span>, <><div className="nh"><div className="nh-bar">{seg.map(({
               a,
               w
-            }, __k) => !a[5] ? <button key={__k} className="z" data-nacct={a[0]} style={css(`flex:0 0 2px;--c:${a[7]}`)} title={`${a[1]} · ${money(a[5])}`} /> : <button key={__k} className={seg.find(x => x.a[3] === a[3]) === seg.find(x => x.a === a) ? 'g0' : ''} data-nacct={a[0]} style={css(`width:${w}%;--c:${a[7]}${w > 13 ? '' : ';padding:0'}`)} title={`${a[1]} · ${money(a[5])} · ${pct(a[5], tot, 1)}`}>{w > 13 ? <><span>{a[1]}</span><b>{pct(a[5], tot, 0)}</b></> : ''}</button>)}</div><div className="nh-br">{grp.map(({
+            }, __k) => !a[5] ? <button key={__k} className="z" data-nacct={a[0]} style={css(`flex:0 0 2px;--c:${a[7]}`)} title={L && a[9] ? `${a[1]} · not connected yet` : `${a[1]} · ${money(a[5])}`} /> : <button key={__k} className={seg.find(x => x.a[3] === a[3]) === seg.find(x => x.a === a) ? 'g0' : ''} data-nacct={a[0]} style={css(`width:${w}%;--c:${a[7]}${w > 13 ? '' : ';padding:0'}`)} title={`${a[1]} · ${money(a[5])} · ${pct(a[5], tot, 1)}`}>{w > 13 ? <><span>{a[1]}</span><b>{pct(a[5], tot, 0)}</b></> : ''}</button>)}</div><div className="nh-br">{grp.map(({
               g,
               l,
               w,
               v
             }, __k) => <span key={__k} style={css(`left:${l}%;width:${w}%`)}><i /><b>{GROUPS[g][0]}</b><em>{money(v)}{" "}<small>{Math.round(w)}%</small></em></span>)}</div></div><div className="nh-l"><div className="nh-r nh-hd"><span />{lbl('Account')}{lbl('Source')}{lbl('7 weeks')}{lbl('This week')}{lbl('Balance')}</div>{ACCTS.map((a, ai) => {
             const [id, n, why, g, src, bal, wk, col] = a,
-              ch = wk[wk.length - 1] - wk[wk.length - 2];
+              ch = wk[wk.length - 1] - wk[wk.length - 2],
+              // live, an account nothing reads yet (Lithic's, until it's wired): said, not drawn as $0
+              unread = L && a[9];
             const gh = !ai || ACCTS[ai - 1][3] !== g ? <div className="nh-g"><b>{GROUPS[g][0]}</b><span>{GROUPS[g][1]}</span><em>{money(ACCTS.filter(x => x[3] === g).reduce((t, x) => t + x[5], 0))}</em></div> : '';
-            return <Fragment key={ai}>{gh}<button className={`nh-r ${N.panel && N.panel.acct === id ? 'on' : ''}`} data-nacct={id}><i className="nh-sw" style={css(`background:${col}`)} /><span className="nh-k"><b>{n}</b><span>{why}</span></span><span className={`nh-src ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span>{sp(wk)}<span className={`nh-ch ${ch > 0 ? 'up' : ''}`}>{ch > 0 ? '+' : ''}{money(ch)}</span><b className="nh-v">{money(bal)}</b></button>{id === 'bv' ? bvSub() : ''}{id === 'coop' && L && L.COOP && L.COOP.credit > 0 ? coopSub() : ''}{id === 'coop' && L && L.OFFERS ? offersSub() : ''}{id === 'ops' ? ASIDE.map(([k, v, s], __k) => <div key={__k} className="nh-r sub"><span /><span className="nh-k"><b>{k}</b><span>{s}</span></span><span /><span /><span className="nh-ch">Set aside</span><b className="nh-v">{money(v)}</b></div>) : ''}</Fragment>;
+            return <Fragment key={ai}>{gh}<button className={`nh-r ${N.panel && N.panel.acct === id ? 'on' : ''}`} data-nacct={id}><i className="nh-sw" style={css(`background:${col}`)} /><span className="nh-k"><b>{n}</b><span>{why}</span></span>{unread ? <><span className="nh-src none"><i />{"Not connected yet"}</span><span /><span className="nh-ch" /><b className="nh-v quiet">—</b></> : <><span className={`nh-src ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span>{sp(wk)}<span className={`nh-ch ${ch > 0 ? 'up' : ''}`}>{ch > 0 ? '+' : ''}{money(ch)}</span><b className="nh-v">{money(bal)}</b></>}</button>{id === 'bv' ? bvSub() : ''}{id === 'coop' && L && L.COOP && L.COOP.credit > 0 ? coopSub() : ''}{id === 'coop' && L && L.OFFERS ? offersSub() : ''}{id === 'ops' ? ASIDE.map(([k, v, s], __k) => <div key={__k} className="nh-r sub"><span /><span className="nh-k"><b>{k}</b><span>{s}</span></span><span /><span /><span className="nh-ch">Set aside</span><b className="nh-v">{money(v)}</b></div>) : ''}</Fragment>;
           })}</div></>, <><span>{money(freeCash())}{" of operating cash is free to spend, after tax and deposits"}</span><button data-nacct="ops">Operating cash →</button></>);
     }
 
@@ -1338,6 +1340,19 @@ function makeMoney() {
       document.body.classList.add('pn');
       html(pn, P.acct ? acctPanel(P.acct) : P.propose ? proposePanel(P) : P.review ? reviewPanel(P.review) : '');
     }
+    /** Live, the facts for Member cash and Clear Lending's accounts: their addresses on chain, or that nothing reads them yet. */
+    function clFacts() {
+      const C = L.CL || {},
+        at = a => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : 'Not set',
+        lithic = ['Balance', 'Not connected yet · Lithic isn’t wired to Command'];
+      return {
+        cash: [lithic, ['Held for', 'Members, in their own names'], ['Held by', 'The Bank Partner · Clear Financial services it'], ['Never funds', 'Card credit · I-02 4.9(b)']],
+        clop: [['Owned by', 'Clear Lending Co. · through the Clear Lending Safe'], ['Address', at(C.clop)], ['Comes in', 'Yield Pool Deployments, BondVault excess'], ['Goes out', 'Payout top-ups, Assurance fee funding, card settlement funding']],
+        clset: [lithic, ['Owned by', 'Clear Lending Co. · Clear Financial runs it as servicer'], ['Pays', 'The credit part of each card swipe']],
+        cllr: [['Owned by', 'Clear Lending Co. · its own Safe'], ['Address', C.cllr ? `${at(C.cllr)}${C.cllrFrom === 'config' ? ' · the rollout’s; the pool names it after its Assurance batch runs' : ''}` : 'Not set'], ['Takes losses', 'After the month’s Spread, before the Credit Backstop'], ['Receives', 'Backstop draws, once two signers release them']],
+        clfee: [['Address', at(C.clfee)], ['Holds', 'Only what CL Operating sends it to pay'], ['Pays', 'Credit Enhancement Fees and recoveries into the Credit Backstop'], ['Between payments', 'Empty, by design']]
+      };
+    }
     function acctPanel(id) {
       const [, n, why, g, src, bal, wk, col] = acctOf(id),
         mx = Math.max(...wk) * 1.1 || 1;
@@ -1350,7 +1365,9 @@ function makeMoney() {
         ops: [['Bank', 'Business checking'], ['Last sync', srcTxt('plaid')], ['Set aside inside it', money(ASIDE.reduce((a, x) => a + x[1], 0))], ['Free to spend', money(freeCash())]],
         bv: [['Owed to bondholders', `${money(M.bonds)} · ${BONDS.length} bond${BONDS.length === 1 ? '' : 's'}`], ['Kept back', money(Math.min(M.bv || 0, BV_NEED())) + ' of ' + money(BV_NEED())], ['The Safe can take', money(Math.max(0, (M.bv || 0) - BV_NEED()))], ['First maturity', nb ? `${nb[3]} · ${nb[0]} · ${money(nb[1])}` : 'None'], ['Moves by', 'Two people · Ops Safe']],
         // the co-op's balance is the Ops Safe's USDC, from the chain; its ClearCredit is a claim still to be cashed, from the PayoutPool or the AssurancePool's excess
-        coop: L.COOP ? [['USDC in the Safe', money(L.COOP.usdc)], ...(L.COOP.credit ? [['ClearCredit claim', `${money(L.COOP.credit)} · not counted`]] : []), ['Held by', `Ops Safe · ${L.COOP.holder.slice(0, 6)}…${L.COOP.holder.slice(-4)}`], ['History', 'From today on'], ...(L.OFFERS ? [['Offers owed', `${money(L.OFFERS.owed)} of ${money(L.OFFERS.cap)}`]] : []), ['Spending it', 'Needs a member vote']] : [['Added, last 4 weeks', money(COOP_W.slice(-4).reduce((a, b) => a + b, 0))], ['From', 'The co-op’s fee on financed sales'], ['Spending it', 'Needs a member vote']]
+        coop: L.COOP ? [['USDC in the Safe', money(L.COOP.usdc)], ...(L.COOP.credit ? [['ClearCredit claim', `${money(L.COOP.credit)} · not counted`]] : []), ['Held by', `Ops Safe · ${L.COOP.holder.slice(0, 6)}…${L.COOP.holder.slice(-4)}`], ['History', 'From today on'], ...(L.OFFERS ? [['Offers owed', `${money(L.OFFERS.owed)} of ${money(L.OFFERS.cap)}`]] : []), ['Spending it', 'Needs a member vote']] : [['Added, last 4 weeks', money(COOP_W.slice(-4).reduce((a, b) => a + b, 0))], ['From', 'The co-op’s fee on financed sales'], ['Spending it', 'Needs a member vote']],
+        // Clear Lending's, from the chain by address; Lithic's two aren't read yet
+        ...clFacts()
       }[id] ?? [['Source', srcTxt(src)]] : {
         sav: [['Members', String(M.members)], ['Tied to credit', money(M.savingsBacked)], ['Free to withdraw', money(M.savings - M.savingsBacked)], ['USDC in the ESA vault', money(M.savings)], ['Trustee', 'Clear Financial · ESA Reserve Trust'], ['Reserve', '1 : 1 · checked hourly']],
         yld: [['Pool Assets', `${money(Y.assets)} · ${Y.depositors} members`], ['Deployed to Clear Lending', `${money(Y.lent)} · ${pct(Y.lent, Y.assets, 0)}`], ['Vault Cash', money(Y.cash)], ['Deploys to', 'Clear Lending’s lending account only · two signers'], ['Holders earn', `${(Y.apy * 100).toFixed(2)}% a year`]],
@@ -1387,7 +1404,7 @@ function makeMoney() {
         ap: <button className="btn" data-npool="ap">AssurancePool →</button>,
         coop: <button className="btn" data-ngo="governance">Propose a use · Governance</button>
       }[id];
-      return <><div className="pn-hd"><span className="lbl">{GROUPS[g][0]}</span><span className={`nsrc ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{n}</p><p className="npn-s">{why}</p></div><div><div className="m-big">{money(bal)}</div><svg className="npn-ch" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={`M${pts} L100,40 L0,40 Z`} className="ar" style={css(`fill:color-mix(in srgb,${col} 18%,transparent)`)} /><path d={`M${pts}`} className="ln" style={css(`stroke:${col}`)} /></svg><div className="npn-ax"><span>{L ? acctOf(id)[8] > 1 ? dayD(-7 * (wk.length - 1)) : 'Now' : NW[0]}</span><span>{L ? 'Now' : NW[NW.length - 1]}</span></div></div><div>{lbl('Facts')}<div className="led">{facts.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>{id === 'coop' && L && L.OFFERS && CAN() ? offersCapForm() : ''}</div><div className="pn-ft">{!act ? <span className="small quiet">{g === 'cl' ? 'Clear Lending’s account · its signers move it' : 'Read-only here'}</span> : CAN() || !/propose/.test(act) ? act : <span className="small quiet">Read-only for you</span>}</div></>;
+      return <><div className="pn-hd"><span className="lbl">{GROUPS[g][0]}</span><span className={`nsrc ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{n}</p><p className="npn-s">{why}</p></div><div><div className="m-big">{L && acctOf(id)[9] ? '—' : money(bal)}</div><svg className="npn-ch" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={`M${pts} L100,40 L0,40 Z`} className="ar" style={css(`fill:color-mix(in srgb,${col} 18%,transparent)`)} /><path d={`M${pts}`} className="ln" style={css(`stroke:${col}`)} /></svg><div className="npn-ax"><span>{L ? acctOf(id)[8] > 1 ? dayD(-7 * (wk.length - 1)) : 'Now' : NW[0]}</span><span>{L ? 'Now' : NW[NW.length - 1]}</span></div></div><div>{lbl('Facts')}<div className="led">{facts.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>{id === 'coop' && L && L.OFFERS && CAN() ? offersCapForm() : ''}</div><div className="pn-ft">{!act ? <span className="small quiet">{g === 'cl' ? 'Clear Lending’s account · its signers move it' : 'Read-only here'}</span> : CAN() || !/propose/.test(act) ? act : <span className="small quiet">Read-only for you</span>}</div></>;
     }
     function proposePanel(P) {
       if (L) {

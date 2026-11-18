@@ -87,8 +87,10 @@ export function moneyLive() {
     const s = (wk ?? []).map(num);
     if (!s.length) s.push(num(bal));
     if (s.length < 2) s.unshift(s[0]);
-    // the weeks it really has, after the colour (a series of one is drawn flat from now)
-    return [id === 'bond' ? 'bv' : id, n, why, g, src, num(bal), s, col, (wk ?? []).length];
+    // the weeks it really has, after the colour (a series of one is drawn flat from now); then whether nothing reads
+    // its balance yet (the API sends null: Member cash and the Credit Settlement Account until Lithic is wired), which
+    // the page says rather than draw $0
+    return [id === 'bond' ? 'bv' : id, n, why, g, src, num(bal), s, col, (wk ?? []).length, bal == null];
   });
   // read as the page draws, so the feeds' health is current (it loads after the section does)
   const SRC = Object.defineProperties({}, Object.fromEntries([...new Set(['protocol', 'plaid', 'bridge', 'lithic', ...ACC.map((a) => a[4])])].map((k) => [k, { get: () => source(k), enumerable: true }])));
@@ -130,6 +132,8 @@ export function moneyLive() {
     COOP: vars.coop ?? null,
     // what the co-op owes for $10 offers on their own line; null until OffersIssuer is deployed
     OFFERS: vars.offers ?? null,
+    // Clear Lending's accounts' addresses on chain, and whether the Loss Reserve's is the pool's or the rollout's
+    CL: vars.clAccounts ?? null,
     // the Assurance fees card: the fee, its items and their states, advances outstanding, interchange; read when drawn, as Money reloads
     get AF() {
       return vars.assuranceFees ?? null;
