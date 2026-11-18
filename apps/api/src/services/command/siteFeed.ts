@@ -17,6 +17,20 @@ type Env = Record<string, string | undefined>;
 type XY = { x: string | null; y: number | string };
 type Stats = { pageviews: number | string; visitors: number | string; visits: number | string };
 
+/** Umami's browser metric as Traffic draws it: the top three by visits, then everything else as Other (when there is any). */
+const BROWSER_NAMES: Record<string, string> = { chrome: 'Chrome', 'crios': 'Chrome', safari: 'Safari', ios: 'Safari', 'ios-webview': 'Safari', firefox: 'Firefox', fxios: 'Firefox', edge: 'Edge', 'edge-chromium': 'Edge', samsung: 'Samsung Internet', opera: 'Opera', 'chromium-webview': 'Android WebView' };
+export function browserRows(rows: Array<{ x?: string | null; y?: number | string }>): Array<[string, number]> {
+  const by = new Map<string, number>();
+  for (const r of rows) {
+    const k = BROWSER_NAMES[String(r.x ?? '').toLowerCase()] ?? (r.x ? String(r.x) : 'Other');
+    by.set(k, (by.get(k) ?? 0) + Number(r.y ?? 0));
+  }
+  const all = [...by].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const top = all.slice(0, 3);
+  const rest = all.slice(3).reduce((a, [, v]) => a + v, 0);
+  return rest ? [...top, ['Other', rest]] : top;
+}
+
 export const SOURCES = ['Posters', 'Direct', 'Social', 'Search'] as const;
 const SEARCH = /google|bing|duckduckgo|yahoo|ecosia|brave|baidu|yandex|startpage/i;
 const SOCIAL = /instagram|facebook|fb\b|tiktok|nextdoor|twitter|^x$|x\.com|t\.co|reddit|linkedin|youtube|threads|pinterest|snapchat|whatsapp|bluesky/i;
@@ -254,7 +268,7 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
       // the last 12 weeks, each the 7 days to a day of today's week
       const weeks = Array.from({ length: 12 }, (_, i) => back(7, (11 - i) * 7));
       // a join's source and landing page: the Join event's own referrer, UTM tag and page
-      const [src30, srcJoins, cities, refs, landing, landingJoins, devices, pages, heatRows, weekSrc, weekDev, agg, vs] = await Promise.all([
+      const [src30, srcJoins, cities, refs, landing, landingJoins, devices, pages, heatRows, weekSrc, weekDev, agg, vs, browsers] = await Promise.all([
         sources(from30, to30),
         sources(from30, to30, JOIN),
         metrics('city', from30, to30, { limit: 12 }),
@@ -269,6 +283,8 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
         stats(from30, to30),
         // bounces and time on page: without them (an Umami user that can’t see events, or more than EVENTS) the page says so, not 0
         events(from30, to30).then((e) => (e ? visitStats(e) : null), () => null),
+        // the browsers visits came in on (Traffic → Devices); none if Umami won't say
+        metrics('browser', from30, to30, { limit: 8 }).catch(() => [] as XY[]),
       ]);
       // each hour of the week's share of the last 4 weeks' visitors, Monday first
       const heatTotal = sum(heatRows.map((r) => n(r.y))) || 1;
@@ -333,6 +349,8 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
           }),
           'growth.heat': heat,
           'growth.devices': [['Phone', device(/mobile|phone/i)], ['Desktop', device(/desktop|laptop/i)], ['Tablet', device(/tablet/i)]],
+          // the top three browsers by visits, the rest as Other
+          'growth.browsers': browserRows(browsers),
           'growth.phone_share': phoneShare,
           // a visit by someone already counted in the 30 days is the closest to returning
           'growth.returning': [['New', visitors], ['Returning', Math.max(0, visits - visitors)]],

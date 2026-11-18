@@ -85,10 +85,15 @@ export function growthLive() {
   const shops = [...SHOPS, ...(BOARDS?.length ? [BOARDS] : []), ...(OTHERS?.length ? [OTHERS] : [])].filter((s) => s.length);
   const sources = SRC30.map(([n, v, j, a]) => ({ n, f: [v, j, 0, 0, a, 0] }));
   // invites aren't counted by source: they're a row of their own, so the funnel's totals stay whole
-  const inv = last4(W_INV);
-  if (inv) sources.push({ n: 'Not by source', f: [0, 0, inv, 0, 0, 0] });
-  const visits = SRC30.reduce((a, r) => a + r[1], 0);
   const fig = vars.growthFigures ?? {};
+  // opened and first $10 spends by week, from the members (the API counts them); not by source either
+  const W_OPEN = fig['growth.weekly.opened'] ?? zeros,
+    W_SPEND = fig['growth.weekly.spent'] ?? zeros;
+  const inv = last4(W_INV),
+    opened = last4(W_OPEN),
+    spent = last4(W_SPEND);
+  if (inv || opened || spent) sources.push({ n: 'Not by source', f: [0, 0, inv, opened, 0, spent] });
+  const visits = SRC30.reduce((a, r) => a + r[1], 0);
   const sum = vars.memberSummary ?? {};
   const funded = sum.funded ? (sum.funded.bank ?? 0) + (sum.funded.five ?? 0) + (sum.funded.deposit ?? 0) : 0;
   return {
@@ -98,8 +103,8 @@ export function growthLive() {
     W_JOIN: [...W_JOIN],
     W_INV: [...W_INV],
     W_ACT: [...W_ACT],
-    W_OPEN: zeros,
-    W_SPEND: zeros,
+    W_OPEN: [...W_OPEN],
+    W_SPEND: [...W_SPEND],
     D: {
       source: { name: 'Source', rows: sources },
       city: { name: 'City', rows: Object.entries(CITY_V).map(([n, v]) => ({ n, f: [v, 0, 0, 0, 0, 0], s: postersIn(n) ? `${postersIn(n)} posters` : 'No posters' })) },
@@ -117,11 +122,13 @@ export function growthLive() {
     ...appsLive(fig['growth.apps'], start),
     PROPS: visits ? [['useclear.org', visits, 'var(--fg)']] : [],
     // bounces and time on page from the site feed's events; null where it measured none
-    CHANNELS: SRC30.map(([n, v, j]) => [n, v, fig['growth.source_bounced']?.[n] ?? null, v ? Math.round((j / v) * 1000) / 10 : 0, 0, []]),
+    // a channel's change against the previous period isn't recorded: null, so the page shows none (not +0.0%)
+    CHANNELS: SRC30.map(([n, v, j]) => [n, v, fig['growth.source_bounced']?.[n] ?? null, v ? Math.round((j / v) * 1000) / 10 : 0, null, []]),
     PAGES: LANDING.map(([p, e, j, b, t]) => [p, 'useclear.org', e, b ?? null, t ?? null, j]),
     BOUNCED: fig['growth.bounced'] ?? null,
     DEV: fig['growth.devices'] ?? [],
-    BROWSERS: [],
+    // the top browsers by visits from the site feed (Umami); none until it's read
+    BROWSERS: fig['growth.browsers'] ?? [],
     TF_CITY: Object.entries(CITY_V).map(([n, v]) => [n, v, postersIn(n)]),
     W_CH: Object.fromEntries(Object.entries(W_SRC).map(([k, v]) => [k, [...v]])),
     LIVE: [],
@@ -131,6 +138,8 @@ export function growthLive() {
       ['Opened the invite', sum.opened ?? 0],
       ['Funded: bank, $5 or direct deposit', funded],
       ['Active', sum.active ?? 0],
+      // first $10 spends over the twelve weeks counted (the member app opened inside them)
+      ['First $10 spend', W_SPEND.reduce((a, v) => a + v, 0)],
     ],
     WAIT_NEXT: [],
     WAIT_NEW: [],

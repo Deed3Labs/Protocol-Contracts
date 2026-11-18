@@ -44,3 +44,31 @@ describe('Records and Settings, live', () => {
     expect(admin).toContain("['Ops Safe', AL.SAFE ? `${AL.SAFE.threshold} of ${AL.SAFE.owners} signers` : 'Not connected']");
   });
 });
+
+describe('Growth, Members, Field and Merchants, live', () => {
+  const growth = src('./growth2.tsx'),
+    growthLive = src('./growthLive.ts'),
+    members = src('./members2.tsx'),
+    fm = src('./fm2.tsx');
+  test('no made-up sparkline, change or jitter on a live breakdown; a channel’s unknown change is a dash', () => {
+    expect(growth).toContain('{L ? <span className="quiet">—</span> : spark(hash(r.n) + k, r.rate > avg)}');
+    expect(growth).toContain('r.prev = L ? null :');
+    expect(growthLive).toContain("v ? Math.round((j / v) * 1000) / 10 : 0, null, []]");
+  });
+  test('opened and first spends by week, browsers and the waitlist lists come from what’s recorded', () => {
+    expect(growthLive).toContain("fig['growth.weekly.opened'] ?? zeros");
+    expect(growthLive).toContain("BROWSERS: fig['growth.browsers'] ?? []");
+    expect(growth).toContain('const W = vars.WAITLIST;');
+    expect(growth).toContain("import { vars } from './data';");
+  });
+  test('Members: shops live by city from Merchants, the planner’s pace from the batches sent', () => {
+    expect(members).toContain("const SL = LV && !needsData('merchants') ? fmLive().LIVE_BY_CITY : null;");
+    expect(members).toContain('pace: LV ? recentPace() || 50 : 50');
+  });
+  test('Field and Merchants: the reference’s placement rule on live inputs, the pipeline contact, the 14-day bars', () => {
+    expect(fm).toContain('const C = cityRows().map(c => scored ? c :');
+    expect(fm).toContain('LV.MS?.find(m => m.name === x.shop)?.card?.contact?.name');
+    expect(fm).toContain('const d14 = vars.cleared14?.[m.id];');
+    expect(fm).toContain("import { S, vars } from './data';");
+  });
+});

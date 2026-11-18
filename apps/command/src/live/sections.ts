@@ -243,6 +243,8 @@ const apply = {
     replace(TX, d.TX);
     replace(TXO, TX.map(T));
     vars.txFromMerchants = true;
+    // each shop's approved Clear charges a day over the last 14 days, by its address (the shop panel's bars)
+    vars.cleared14 = d.CLEARED_14 ?? null;
     replace(SIGNED, d.SIGNED);
     replace(PROSPECTS, d.PROSPECTS);
     assign(OWED, d.OWED);
