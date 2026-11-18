@@ -80,7 +80,11 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   /** Sends a plan step exactly as the page would: from its signer, to its `to`, with its data. */
   async function send(st: PlanStep) {
     await ethers.provider.send("hardhat_impersonateAccount", [st.signer]);
-    await ethers.provider.send("hardhat_setBalance", [st.signer, "0x" + ethers.parseEther("10").toString(16)]);
+    // Top up only: a step signed by one of the test's own accounts (the deployer) must not have its
+    // 10,000 ETH cut to 10, or later test files in the same CI shard run out of gas money.
+    if ((await ethers.provider.getBalance(st.signer)) < ethers.parseEther("10")) {
+      await ethers.provider.send("hardhat_setBalance", [st.signer, "0x" + ethers.parseEther("10").toString(16)]);
+    }
     const signer = await ethers.getSigner(st.signer);
     const rc = await (await signer.sendTransaction({ to: st.to, data: st.data!, value: 0 })).wait();
     expect(rc!.status).to.equal(1);
