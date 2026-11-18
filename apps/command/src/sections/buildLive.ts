@@ -63,7 +63,8 @@ export function buildLive() {
   /* the map's contracts: the API's, live when the indexer found them deployed */
   const dep = Array.isArray(vars.contractsDeployed) ? new Set(vars.contractsDeployed) : new Set();
   // a contract the indexer hasn't found has no version or address of its own (the map's are the structure's)
-  const CT = CTR.map((c) => (dep.has(c[0]) ? [c[0], c[1], c[2], c[3], 'live', c[5], c[6], c[7], c[8], c[9]] : [c[0], c[1], '—', c[3], 'later', '—', c[6], c[7], c[8], c[9]]));
+  // c[10] is who controls it (brief update 2: OPS, CF, CL, CO, AG, M, H or R), the structure's
+  const CT = CTR.map((c) => (dep.has(c[0]) ? [c[0], c[1], c[2], c[3], 'live', c[5], c[6], c[7], c[8], c[9], c[10] ?? ''] : [c[0], c[1], '—', c[3], 'later', '—', c[6], c[7], c[8], c[9], c[10] ?? '']));
   const byId = Object.fromEntries(CT.map((c) => [c[0], c]));
   const known = new Set(Object.keys(byId));
   const placed = (c) => !!c && Number.isFinite(c[7]) && Number.isFinite(c[8]) && c[7] > 0 && c[8] > 0 && LAYER_OK(c[3]);
@@ -81,7 +82,9 @@ export function buildLive() {
 
   /* the monorepo's projects the poller watches (the API's PROJECTS); an API that sends none watches the contracts only */
   const [org = '', repoName = ''] = (CODE.repo || '').split('/');
-  const live = CT.filter((c) => c[4] === 'live').length;
+  // what Build counts: the map's contracts (band x is deployed but off the map), "37 of 41"
+  const onMap = CT.filter((c) => c[9] !== 'x');
+  const live = onMap.filter((c) => c[4] === 'live').length;
   const PROJ = CODE.projects?.length
     ? CODE.projects
     : [{ id: 'proto', name: 'Protocol', tiny: 'Contracts', what: 'Smart contracts', lang: 'Solidity · Hardhat', path: CODE.path || 'contracts', lastAt: CODE.commits[0]?.at ?? null }];
@@ -102,7 +105,7 @@ export function buildLive() {
     // the job that checks it on the branch: its runs, passes and usual time
     job: jobFor(p.path),
     last: p.lastAt ?? null,
-    live: p.id === 'proto' ? (CHAIN.network ? `${CHAIN.network} · ${live} of ${CT.length}` : 'Not indexed yet') : 'Not read yet',
+    live: p.id === 'proto' ? (CHAIN.network ? `${CHAIN.network} · ${live} of ${onMap.length}` : 'Not indexed yet') : 'Not read yet',
     url: CODE.repo ? `https://github.com/${CODE.repo}` : '',
   }));
   const RSHORT = Object.fromEntries(PROJ.map((p) => [p.id, p.name]));
@@ -419,6 +422,20 @@ export function buildLive() {
     roles: KEY_ROLES.roles?.length ? KEY_ROLES : null,
     chain: { network: CHAIN.network || '', block: Number(CHAIN.block) || 0 },
     deployed: live,
+    /** The contracts on the map (brief update 2's "of 41"). */
+    onMap: onMap.length,
+    /* brief update 2, from the deployment records by name (the API's contractsSection); null when it sends none */
+    /** The timelocks' names, which head the map. */
+    TIMELOCKS: Array.isArray(vars.contractsTimelocks) ? vars.contractsTimelocks : null,
+    /** Timelocks and helpers: [name, address, what it does, who runs it]. */
+    CTR_AUX: Array.isArray(vars.contractsAux) ? vars.contractsAux : null,
+    /** Retired: [name, address, note], and how many earlier copies besides. */
+    CTR_OLD: Array.isArray(vars.contractsOld) ? vars.contractsOld : null,
+    CTR_OLD_N: Number.isFinite(vars.contractsOldN) ? vars.contractsOldN : 0,
+    /** Security's automatic jobs, each from its own status: { t, d, w, a, lim, run, st, off }. */
+    AUTO: Array.isArray(vars.buildAuto) ? vars.buildAuto : null,
+    /** Signing: the committed plan, untouched (the client checks its fingerprint), or the run log's statuses. */
+    SIGNING: vars.contractsSigning ?? null,
     safe,
     threshold: thr,
     wallet: me?.wallet ?? null,
