@@ -1,4 +1,3 @@
-import CycleStandingNotice from '@/components/clear/CycleStandingNotice';
 import PendingFigures from '@/components/clear/PendingFigures';
 import { useEffect, useState } from 'react';
 import HomePage from './HomePage';
@@ -211,10 +210,9 @@ export default function HomeRoute() {
 
   return (
     <PendingFigures pending={pending}>
-    {/* Phase 2b: a missed cycle or a cure notice, and the Boost cap, from the chain's own record. */}
-    <CycleStandingNotice standing={credit?.standing} />
     <HomePage
       pending={pending}
+      standing={credit?.standing}
       data={data}
       onRepay={repay}
       onRepayFromSavings={repayFromSavings}

@@ -27,6 +27,7 @@ import { useIsDesktop } from '@/lib/useIsDesktop';
 import YourShopsCell from '@/components/clear/YourShopsCell';
 import type { YourShop } from '@/utils/apiClient';
 import type { AccountDetailsSource } from '@/lib/accountDetails';
+import { boostCapLine, standingNotice, type CycleStanding } from '@/lib/cycleStanding';
 import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, type HomeData } from '@/lib/clearModel';
 
 /**
@@ -55,7 +56,13 @@ export default function HomePage({
   yourShops = [],
   accountDetails,
   onSignInAgain,
+  standing,
 }: {
+  /**
+   * The chain's record of the member's cycles (Phase 2b): a missed cycle or a cure notice is said in
+   * the cycle card's footer, and the Boost cap under the credit card's tiers. Nothing above Home.
+   */
+  standing?: CycleStanding | null;
   /** Sign out and send a code (Spendable's full number, for a member without Face ID). Absent in the preview harness. */
   onSignInAgain?: () => void;
   /** Shops whose rewards they've joined (rewards spec, section 6): a list and links, once there's one. */
@@ -303,11 +310,13 @@ export default function HomePage({
       depositOn={data.cashAccount.nextDepositOn}
       onRepay={() => setRepayOpen(true)}
       onTopOff={() => setAddSavingsOpen(true)}
+      notice={standingNotice(standing)}
     />
   );
   const credit = (
     <ClearCreditCard
       credit={data.credit}
+      boostNote={boostCapLine(standing)}
       onViewBreakdown={() => setBreakdownOpen(true)}
       onAddBoost={() => setBoostOpen(true)}
     />

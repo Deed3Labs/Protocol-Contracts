@@ -37,8 +37,11 @@ export default function CycleCard({
   depositOn,
   onRepay,
   onTopOff,
+  notice,
 }: {
   cycle: Cycle;
+  /** A missed cycle or a cure notice (Phase 2b): it takes the footer's words and the short border. */
+  notice?: { title: string; body: string } | null;
   /** Needed to work out what actually has to clear. Without it the cycle reads as fully clear. */
   credit?: Credit;
   /** What's expected to land before the cycle ends — usually the next payday. */
@@ -118,8 +121,13 @@ export default function CycleCard({
       action = { label: 'Add to savings', primary: true, onSelect: onTopOff };
   }
 
+  if (notice) {
+    lead = notice.title;
+    detail = notice.body;
+  }
+
   return (
-    <Panel act tone={status === 'short' ? 'short' : status === 'clear' ? 'clear' : undefined}>
+    <Panel act tone={status === 'short' || notice ? 'short' : status === 'clear' ? 'clear' : undefined}>
       <CMain>
         <Line className="items-center!">
           <div>
