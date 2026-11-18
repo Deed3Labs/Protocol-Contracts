@@ -5,6 +5,7 @@ import { LIVE as LIVE_APP, REAL } from '../live/env';
 import { act } from '../live/actions';
 import { reloadSection } from '../live/sections';
 import { buildLive } from './buildLive';
+import { demoJobs, jobRows } from './settlementFunding';
 import { CC } from './cc';
 import { openCFlow } from './contracts';
 import { LOG, S } from './data';
@@ -1197,7 +1198,13 @@ function makeBuild() {
       const aud = cell('s4', 'Audits', <span className="lbl">31 contracts</span>, <div className="bd-au"><div className="m-big">{rv}{" "}<small>{"of "}{tot}{" contracts reviewed internally"}</small></div><div className="bd-au-b"><i style={css(`width:${rv / tot * 100}%`)} /><i className="hx" style={css(`width:${(tot - rv) / tot * 100}%`)} /></div><div className="led bd-au-k">{[['Reviewed', 'Credit and money · 18'], ['Not yet', 'Deeds and capital · 13']].map(([k, v], i) => <div key={i}><span><i className={i ? 'hx' : ''} />{k}</span><b>{v}</b></div>)}</div><div className="bd-au-l">{lbl('Before mainnet')}<div className="led">{[['Phase 0 fixes', '1 critical left', 'p'], ['External audit', 'Not booked', ''], ['Bug bounty', 'Not yet', ''], ['Mainnet deploy', 'After all three', '']].map(([k, v, st], __k) => <div key={__k}><span>{k}</span><b className={st ? 'wt' : ''}>{v}</b></div>)}</div></div></div>, <><span>Credit and money contracts first</span><span /></>);
       const keys = cell('s6', 'Keys and access', <span className="lbl">Who can change what</span>, <div className="led bd-ky">{KEYS.map(([k, v, s], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{v}</b></div>)}</div>, <><span>Set in Permissions and GitHub</span><button data-bgo="team">Permissions →</button></>);
       const inc = cell('s6', 'Incidents', <span className="lbl">Last 30 days</span>, <div className="bd-il">{INCIDENTS.map((i, __k) => <button key={__k} className={`bd-ir ${i.st}`} data-binc={i.id}>{leaf(i.at)}<span><b>{i.t}</b><span>{i.area}{" · "}{i.st === 'open' ? 'open' : 'resolved in ' + i.dur}</span></span><span className={`fst ${i.st === 'open' ? 'warn2' : ''}`}>{i.st === 'open' ? 'Open' : 'Closed'}</span></button>)}</div>, <><span>None reached members</span><span /></>);
-      html(document.getElementById('bv'), <>{band(<>{fnd}{aud}</>, 1)}{band(<>{keys}{inc}</>)}</>);
+      html(document.getElementById('bv'), <>{band(<>{fnd}{aud}</>, 1)}{band(<>{keys}{inc}</>)}{band(jobsCell(demoJobs(NOW)))}</>);
+    }
+    /* Security's automatic jobs (decisions 51 and 54): each bot that moves money from a server wallet, what it may
+       call, the limit two people set once, and how it is stopped. Its own wallet holds nothing between moves. */
+    function jobsCell(jobs) {
+      const rows = jobRows(jobs, NOW);
+      return cell('s12', 'Automatic jobs', <span className="lbl">Server wallets · limits set once by two people</span>, rows.length ? <div className="led bd-ky">{rows.map(([k, s, v], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{v}</b></div>)}</div> : <div className="bd-e">No automatic job has checked yet</div>, <><span>Each calls only its own contracts, exact amounts, and stops on any revert</span><span /></>);
     }
 
     /* ══ Live (REAL): each tab from what the poller, the indexer and the Ops Safe have ═════════════ */
@@ -1565,7 +1572,7 @@ function makeBuild() {
       const aud = audCell();
       const keys = cell('s6', 'Keys and access', <span className="lbl">Who can change what</span>, <div className="led bd-ky">{KEYS.map(([k, v, s], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{v}</b></div>)}</div>, <><span>Set in Team and GitHub</span><button data-bgo="team">Team →</button></>);
       const inc = incCell('s6', 6, CANW() ? <button data-bnew="incident">Open an incident</button> : null);
-      html(document.getElementById('bv'), <>{band(<>{fnd}{aud}</>, 1)}{band(<>{keys}{inc}</>)}</>);
+      html(document.getElementById('bv'), <>{band(<>{fnd}{aud}</>, 1)}{band(<>{keys}{inc}</>)}{band(jobsCell(LV.JOBS))}</>);
     }
     /* a change's panel, live: the pull request, the unreleased commits, or the Safe transaction */
     function chPanelLive(c) {

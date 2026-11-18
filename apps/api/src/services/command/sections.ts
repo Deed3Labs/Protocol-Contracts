@@ -7,7 +7,8 @@ import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
 import { assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
-import { payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
+import { payoutTopUpsJob, payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
+import { settlementFundingJob, settlementFundingLive, settlementFundingSeed } from './settlementFunding.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
@@ -1422,6 +1423,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     ASSURANCE_FEES: provider === 'live' ? await assuranceFeesLive(db, o.now).catch(() => null) : assuranceFeesDemo(),
     // the automatic payout top-ups (decision 51): what the job recorded, live; a sample, seeded
     PAYOUT_TOPUPS: provider === 'live' ? await payoutTopUpsLive(db) : payoutTopUpsSeed(o.now.getTime()),
+    // card settlement funding (decision 54): what the funding desk recorded, live; a sample, seeded
+    SETTLEMENT_FUNDING: provider === 'live' ? await settlementFundingLive(db, process.env, o.now.getTime()).catch(() => null) : settlementFundingSeed(o.now.getTime()),
     // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
     figures: {
       ...f,
@@ -1755,6 +1758,8 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
+    // Security's automatic jobs (decisions 51 and 54): each bot, its wallet, what it may call, its limit and whether it runs
+    AUTOMATIC_JOBS: await automaticJobs(db, provider === 'live', o.now.getTime()),
     NOW,
     figures: {
       ...(await figures(db, 'contracts')),
@@ -1763,6 +1768,16 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     },
     asOf: asOfFor(provider, o.now),
   };
+}
+
+/**
+ * The automatic jobs that move money from a server wallet, within limits two people set once
+ * (decisions 51 and 54): live, from what each recorded (none until it has checked); seeded, the samples.
+ */
+async function automaticJobs(db: Queryable, live: boolean, now: number) {
+  if (!live) return [payoutTopUpsJob(payoutTopUpsSeed(now)), settlementFundingJob(settlementFundingSeed(now))];
+  const [topUps, settlement] = await Promise.all([payoutTopUpsLive(db).catch(() => null), settlementFundingLive(db, process.env, now).catch(() => null)]);
+  return [payoutTopUpsJob(topUps), settlementFundingJob(settlement)];
 }
 
 /**

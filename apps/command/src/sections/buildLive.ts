@@ -415,6 +415,8 @@ export function buildLive() {
     RELEASES,
     CTR_NOTE: { ...CTR_NOTE },
     KEYS,
+    /** Security's automatic jobs (decisions 51 and 54), as the API recorded them; empty until it sends them. */
+    JOBS: Array.isArray(vars.automaticJobs) ? vars.automaticJobs : [],
     /** Who holds each AccessManager role, when it's been read (a figure nothing writes yet). */
     roles: KEY_ROLES.roles?.length ? KEY_ROLES : null,
     chain: { network: CHAIN.network || '', block: Number(CHAIN.block) || 0 },

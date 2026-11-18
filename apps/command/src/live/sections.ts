@@ -301,6 +301,8 @@ const apply = {
     vars.depositRail = d.DEPOSIT_RAIL ?? null;
     // the automatic payout top-ups (decision 51); null until the job has checked
     vars.payoutTopUps = d.PAYOUT_TOPUPS ?? null;
+    // card settlement funding (decision 54); null until the funding desk has checked
+    vars.settlementFunding = d.SETTLEMENT_FUNDING ?? null;
   },
   shop(d) {
     replace(PR, d.PR);
@@ -376,6 +378,8 @@ const apply = {
     replace(SIGNERS, d.SIGNERS);
     // Build's own records (migration 0066): incidents, findings, audits, and who can be given an incident
     vars.buildRecords = { incidents: d.INCIDENTS ?? [], findings: d.FINDINGS ?? [], audits: d.AUDITS ?? [], team: d.TEAM ?? [] };
+    // Security's automatic jobs (decisions 51 and 54): the payout top-up bot and the settlement funding desk
+    vars.automaticJobs = d.AUTOMATIC_JOBS ?? [];
     const f = d.figures;
     assign(CHAIN, f['contracts.chain']);
     assign(KEY_ROLES, f['contracts.key_roles']);

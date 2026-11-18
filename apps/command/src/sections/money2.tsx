@@ -8,6 +8,7 @@ import { CC } from './cc';
 import { LOG, S, vars } from './data';
 import { moneyLive, settleMove } from './moneyLive';
 import { demoTopUps, topUpsParts } from './payoutTopUps';
+import { demoSettlement, PoolTierPrincipal, settlementParts } from './settlementFunding';
 import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
@@ -914,7 +915,10 @@ function makeMoney() {
       const per = 8,
         rows = Y_DEP.slice(N.dp * per, N.dp * per + per);
       const tbl = cell('s12', 'Depositors', <span className="lbl">{Y.depositors}{" members · masked"}</span>, L && !rows.length ? <div className="lv-e"><span>No one has deposited yet</span></div> : <div className="bt-wrap"><table className="bt ndp"><colgroup><col style={css("width:16%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /></colgroup><thead><tr><th className="c-nm">Member</th><th style={css("text-align:left")}>Since</th><th>Put in</th><th>Earned</th><th>Worth now</th><th>Pledged</th><th>Can withdraw</th></tr></thead><tbody>{rows.map((r, __k) => <tr key={__k}><td className="tn"><b className="mono">M•••{r.id}</b></td><td style={css("text-align:left")}>{r.since}</td><td>{money(r.d)}</td><td>{money(r.e)}</td><td><b>{money(r.w)}</b></td><td>{r.pl ? money(r.pl) : <span className="quiet">None</span>}</td><td className="quiet">{r.pl ? money(r.w - r.pl) : 'All of it'}</td></tr>)}</tbody></table></div>, <><span>{"Names stay masked · "}{money(Y.assets)}{" in all"}</span>{pager(N.dp, Y_DEP.length, per, 'ndp')}</>);
-      return <>{band(<>{a}{b}</>)}{band(tbl)}</>;
+      // card settlement funding (decision 54): what the funding desk last saw and did, and the Pool Tier principal beside it
+      const SF = L ? vars.settlementFunding : demoSettlement(Date.now());
+      const sf = SF ? cell('s7', 'Card settlement funding', ...settlementParts(SF, money)) : notReal('s7', 'Card settlement funding', 'Needs the settlement funding desk (SETTLEMENT_FUNDING_ENABLED) to have checked: the next cut-off and what’s due, the Credit Settlement Account, the funder limit and each move it made.');
+      return <>{band(<>{a}{b}</>)}{band(<>{sf}<PoolTierPrincipal demo={!L} money={money} /></>)}{band(tbl)}</>;
     }
     function poolBonds() {
       // live, the ten months from this one, each bond by when it matures
