@@ -776,8 +776,8 @@ prototype in this folder). The page sheets are copied from it; the sections carr
 - **Contracts read the deployment records by name.** Migration 0080 brings the map's structure to the new
   reference (42 contracts: 41 on the map in three bands, AssuranceOracle kept off it; who controls each). No
   contract is deleted, so nothing that points at one moves. Live, a contract counts only when the indexer
-  found its record: **36 of 41 today, not the reference's 37**, because `OffersIssuer.json` isn't pushed yet.
-  When it lands, the map counts it and Retired says it was replaced by the 17 Nov deploy. `AssurancePool`
+  found its record: **37 of 41**, as the reference says, now that the fresh `OffersIssuer.json` is on `dev`
+  (deploy 24); Retired says the old one was replaced by the 17 Nov deploy. `AssurancePool`
   resolves to the `AssurancePoolV2` record.
 - **Timelocks and helpers, Retired** come from the records too: every `*Timelock`, then BurnerBondFactory,
   BurnerBondDeposit and Create2Deployer; Retired lists the old OffersIssuer, AssurancePool v1, ClearUSD v1 and
