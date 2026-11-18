@@ -1,6 +1,6 @@
 import type { Queryable } from '../../db/db.js';
 import { deskConfigFromEnv } from '../settlementFunding/config.js';
-import { laneSetup, remainderBatches, type DeskAddresses, type DeskReads } from '../settlementFunding/desk.js';
+import { laneSetup, remainderBatches, type DeskAddresses } from '../settlementFunding/desk.js';
 import { localDate, zonedInstant } from '../settlementFunding/schedule.js';
 import { deskOverview, deskStore, type MoveRow } from '../settlementFunding/store.js';
 
@@ -70,12 +70,16 @@ export interface SettlementCard {
   today: { day: string; sent: number; booked: number; returnedPool: number; returnedMargin: number; marginAdvanced: number };
   week: { days: number; sent: number; booked: number; returnedPool: number; returnedMargin: number };
   lane: {
-    /** The Yield Pool answers the lane's views (the SL upgrade is live). */
+    /** The Yield Pool answers `settlementLane()` (the SL upgrade is live). */
     upgraded: boolean;
+    /** Stopped by `stopSettlementFunder`: only two deployers restart it (SL-funder-1/2). */
+    stopped: boolean;
     cap: number;
     used: number;
     left: number;
     periodSeconds: number;
+    /** When the period running began (ms), or null before the lane is set. */
+    periodStart: number | null;
     headroom: number;
     headroomUsed: number;
     principal: number;
@@ -121,16 +125,16 @@ export async function settlementFundingLive(db: Queryable, env: Record<string, s
   const week = o.days.slice(0, 7);
   const sum = (k: 'fundedPool' | 'fundedBook' | 'returnedPool' | 'returnedMargin') => usd(week.reduce((t, x) => t + x[k], 0n));
 
-  // The lane setup, as the desk words it (the same check it makes before it deploys).
-  const setup = s.laneMissing
-    ? ['the Yield Pool does not have the settlement lane yet (the SL timelock proposal)']
-    : laneSetup(
-        {
-          lane: { funder: String(lane.funder ?? '0x0000000000000000000000000000000000000000'), capPerPeriod: big(lane.capPerPeriod) },
-          forwarder: { moduleEnabled: !!fw.moduleEnabled, allowance: { amount: big(al.amount) }, offRamp: fw.offRamp ?? null, desk: fw.desk ?? null },
-        } as unknown as DeskReads,
-        { ...a, wallet: a.wallet ?? '', offRamp: a.offRamp ?? '' },
-      );
+  // The lane setup, as the desk words it (the same check it makes before it deploys): a pool from
+  // before the SL upgrade reverts on settlementLane(), which the desk records as laneMissing.
+  const upgraded = !s.laneMissing && lane.upgraded !== false;
+  const setup = laneSetup(
+    {
+      lane: { upgraded, funder: String(lane.funder ?? '0x0000000000000000000000000000000000000000'), stopped: !!lane.stopped, capPerPeriod: big(lane.capPerPeriod) },
+      forwarder: { moduleEnabled: !!fw.moduleEnabled, allowance: { amount: big(al.amount) }, offRamp: fw.offRamp ?? null, desk: fw.desk ?? null, safe: fw.safe ?? null, module: fw.module ?? null, token: fw.token ?? null },
+    },
+    { wallet: a.wallet ?? '', offRamp: a.offRamp ?? '', safe: a.safe, module: a.module, usdc: a.usdc },
+  );
 
   const capShort = d.kind === 'fund' ? big(d.capShort) : 0n;
   const poolShort = d.kind === 'fund' ? big(d.poolShort) : 0n;
@@ -194,11 +198,13 @@ export async function settlementFundingLive(db: Queryable, env: Record<string, s
     },
     week: { days: week.length, sent: sum('fundedPool'), booked: sum('fundedBook'), returnedPool: sum('returnedPool'), returnedMargin: sum('returnedMargin') },
     lane: {
-      upgraded: !s.laneMissing,
+      upgraded,
+      stopped: upgraded && !!lane.stopped,
       cap: usd(cap),
       used: usd(used),
       left: usd(cap > used ? cap - used : 0n),
       periodSeconds: Number(lane.periodSeconds ?? 0),
+      periodStart: upgraded && lane.periodStart ? sec(lane.periodStart) : null,
       headroom: usd(lane.headroom),
       headroomUsed: usd(deployed > principal ? deployed - principal : 0n),
       principal: usd(principal),
@@ -251,7 +257,7 @@ export function settlementFundingSeed(now: number): SettlementCard {
     netting: { collection: 412.6, bookedToday: 1_412.6, drawsDue: 2_316.4 },
     today: { day: new Date(now).toISOString().slice(0, 10), sent: 0, booked: 1_412.6, returnedPool: 0, returnedMargin: 0, marginAdvanced: 0 },
     week: { days: 5, sent: 3_850, booked: 6_204.35, returnedPool: 640, returnedMargin: 0 },
-    lane: { upgraded: true, cap: 5_000, used: 1_783.65, left: 3_216.35, periodSeconds: 604_800, headroom: 1_000, headroomUsed: 0, principal: 9_400, deployed: 8_870, poolRoom: 1_530 },
+    lane: { upgraded: true, stopped: false, cap: 5_000, used: 1_783.65, left: 3_216.35, periodSeconds: 604_800, periodStart: now - 3 * 86_400_000, headroom: 1_000, headroomUsed: 0, principal: 9_400, deployed: 8_870, poolRoom: 1_530 },
     allowance: { cap: 5_000, spent: 1_783.65, remaining: 3_216.35, resetMinutes: 10_080 },
     setup: [],
     needsHuman: null,
@@ -283,7 +289,7 @@ export function settlementFundingJob(card: SettlementCard | null) {
     lastCheck: card?.lastCheck ?? null,
     calls: 'deploySettlement on the Yield Pool · forward on the SettlementForwarder · approve and returnFunds for a Return',
     limit: card ? { cap: card.lane.cap, periodSeconds: card.lane.periodSeconds, used: card.lane.used, allowance: card.allowance.cap } : null,
-    stop: 'stopSettlementFunder() · one DEPLOYER_ROLE or CCO_ROLE holder',
+    stop: 'stopSettlementFunder() · one DEPLOYER_ROLE or CCO_ROLE holder · restarting takes two deployers (SL-funder-1/2)',
     note: card?.halted ? `Stopped after move #${card.halted.id}: ${card.halted.error}` : card?.setup.length ? card.setup.join('; ') : '',
   };
 }

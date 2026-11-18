@@ -32,7 +32,7 @@ export function demoSettlement(now) {
     netting: { collection: 412.6, bookedToday: 1412.6, drawsDue: 2316.4 },
     today: { day: new Date(now).toISOString().slice(0, 10), sent: 0, booked: 1412.6, returnedPool: 0, returnedMargin: 0, marginAdvanced: 0 },
     week: { days: 5, sent: 3850, booked: 6204.35, returnedPool: 640, returnedMargin: 0 },
-    lane: { upgraded: true, cap: 5000, used: 1783.65, left: 3216.35, periodSeconds: 604800, headroom: 1000, headroomUsed: 0, principal: 9400, deployed: 8870, poolRoom: 1530 },
+    lane: { upgraded: true, stopped: false, cap: 5000, used: 1783.65, left: 3216.35, periodSeconds: 604800, periodStart: now - 3 * DAY, headroom: 1000, headroomUsed: 0, principal: 9400, deployed: 8870, poolRoom: 1530 },
     allowance: { cap: 5000, spent: 1783.65, remaining: 3216.35, resetMinutes: 10080 },
     setup: [], needsHuman: null, halted: null, marginOutstanding: 0,
     recent: [
@@ -84,7 +84,10 @@ export function settlementParts(S, money, now = Date.now()) {
     ['New card draws due · authorized, not settled', `${money(S.netting.drawsDue)} · ${money(S.pendingCredit)}`],
     ['Settlement Funding today · sent / returned', `${money(S.today.sent)} / ${money(S.today.returnedPool)}`],
     [`Last ${S.week.days || 0} days reconciled · sent / returned`, `${money(S.week.sent)} / ${money(S.week.returnedPool + S.week.returnedMargin)}`],
-    [`Funder limit · every ${period(S.lane.periodSeconds)}`, S.lane.upgraded ? `${money(S.lane.used)} of ${money(S.lane.cap)} used` : 'Not on chain yet'],
+    [
+      `Funder limit · every ${period(S.lane.periodSeconds)}${S.lane.periodStart ? ` · since ${when(S.lane.periodStart)}` : ''}`,
+      !S.lane.upgraded ? 'Not on chain yet' : `${money(S.lane.used)} of ${money(S.lane.cap)} used${S.lane.stopped ? ' · stopped' : ''}`,
+    ],
     ['Settlement Headroom · over the posted principal', S.lane.upgraded ? `${money(S.lane.headroomUsed)} of ${money(S.lane.headroom)} used` : '—'],
     ...(S.marginOutstanding ? [['Savings-Backed Margin to restore', money(S.marginOutstanding)]] : []),
   ];
@@ -101,7 +104,7 @@ export function settlementParts(S, money, now = Date.now()) {
   const body = (
     <>
       {S.halted ? note(`Stopped after move #${S.halted.id}`, `${S.halted.error}. Nothing moves until someone looks and clears it: bun src/scripts/clearSettlementFundingHalt.ts ${S.halted.id} "<your name>"`) : ''}
-      {S.setup?.length ? note('The settlement lane isn’t set up', `${S.setup.join('; ')}. The one-time steps are SL-funder, SL-headroom and the CL Operating batch (Build → Signing). Until then the CSA is funded from the Collection Account, and by people.`) : ''}
+      {S.setup?.length ? note('The settlement lane isn’t set up', `${S.setup.join('; ')}. The one-time steps are stage SL of scripts/signing_plan.ts, on the signing page: the upgrade (SL-upgrade-schedule, then SLx-upgrade-execute), SL-funder-1/2, SL-headroom-1/2 and CL Operating’s batch (SL-cl-operating-*). Until then the CSA is funded from the Collection Account, and by people.`) : ''}
       {N && N.capShort ? note(
         `Over the limit: ${money(N.capShort)} needs two deployers and CL Operating’s owners`,
         'The lane’s limit (or the forwarder’s allowance) is used up this period. Two DEPLOYER_ROLE signers send the Deployment batch; then CL Operating’s owners sign the transfer to the off-ramp.',
@@ -208,7 +211,7 @@ export function demoJobs(now) {
   const S = demoSettlement(now);
   return [
     { id: 'payout-topups', name: 'Payout top-ups', state: 'on', wallet: T.wallet, lastCheck: T.lastCheck, calls: 'AllowanceModule pull from CL Operating · approve and fund on the PayoutPool', limit: { cap: T.allowance.cap, periodSeconds: T.allowance.resetMinutes * 60, used: T.allowance.spent, allowance: T.allowance.cap }, stop: 'CL Operating’s owners remove the bot as delegate (AllowanceModule.removeDelegate)', note: '' },
-    { id: 'settlement-funding', name: 'Settlement funding', state: 'on', wallet: S.wallet, lastCheck: S.lastCheck, calls: 'deploySettlement on the Yield Pool · forward on the SettlementForwarder · approve and returnFunds for a Return', limit: { cap: S.lane.cap, periodSeconds: S.lane.periodSeconds, used: S.lane.used, allowance: S.allowance.cap }, stop: 'stopSettlementFunder() · one DEPLOYER_ROLE or CCO_ROLE holder', note: '' },
+    { id: 'settlement-funding', name: 'Settlement funding', state: 'on', wallet: S.wallet, lastCheck: S.lastCheck, calls: 'deploySettlement on the Yield Pool · forward on the SettlementForwarder · approve and returnFunds for a Return', limit: { cap: S.lane.cap, periodSeconds: S.lane.periodSeconds, used: S.lane.used, allowance: S.allowance.cap }, stop: 'stopSettlementFunder() · one DEPLOYER_ROLE or CCO_ROLE holder · restarting takes two deployers (SL-funder-1/2)', note: '' },
   ];
 }
 

@@ -37,6 +37,8 @@ describe('Card settlement funding on Money → Pools → Yield pool (decision 54
     expect(card).toContain("if (S.setup?.length) return 'setup';");
     expect(card).toContain("if (S.needsHuman) return 'short';");
     expect(card).toContain('The settlement lane isn’t set up');
+    // a lane stopped on chain (stopSettlementFunder) says so beside its limit
+    expect(card).toContain("S.lane.stopped ? ' · stopped' : ''");
     expect(card).toContain('settlement-remainder-deployers.json');
     expect(card).toContain('settlement-remainder-cl-operating.json');
     expect(card).toContain('The ESA vault is never a source.');

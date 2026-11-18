@@ -39,7 +39,11 @@ function snapshot(over: { lane?: Record<string, unknown>; forwarder?: Record<str
     inFlight: { book: s(300n * U), offRamp: '0' },
     marginOutstanding: '0',
     measuredLatencyMinutes: 200,
-    lane: { funder: WALLET, capPerPeriod: s(5_000n * U), periodSeconds: 604_800, periodUsed: s(3_500n * U), headroom: s(1_000n * U), principal: s(9_000n * U), principalPosted: true, deployedBalance: s(9_400n * U), availableCash: s(4_000n * U), vaultCash: s(20_000n * U), queuedShares: '0', suspended: false, ...over.lane },
+    lane: {
+      upgraded: !over.laneMissing, funder: WALLET, capPerPeriod: s(5_000n * U), periodSeconds: 604_800, periodStart: CUTOFF - 3 * 86_400, periodUsed: s(3_500n * U), stopped: false, epoch: 0,
+      headroom: s(1_000n * U), principal: s(9_000n * U), principalPosted: true, deployedBalance: s(9_400n * U), availableCash: s(4_000n * U), vaultCash: s(20_000n * U), queuedShares: '0', suspended: false, chargePending: false,
+      ...over.lane,
+    },
     laneMissing: !!over.laneMissing,
     forwarder: { moduleEnabled: true, allowance: { amount: s(5_000n * U), spent: s(3_500n * U), resetTimeMin: 10_080, lastResetMin: 0, nonce: 1 }, offRamp: OFFRAMP, desk: WALLET, ...over.forwarder },
     operatingBalance: '0',
@@ -72,7 +76,7 @@ describe('Money’s card settlement funding card', () => {
     expect(c.netting).toEqual({ collection: 250, bookedToday: 250, drawsDue: 2_000 });
     expect(c.today).toMatchObject({ booked: 250, sent: 0 });
     expect(c.week).toEqual({ days: 1, sent: 800, booked: 100, returnedPool: 40, returnedMargin: 0 });
-    expect(c.lane).toMatchObject({ upgraded: true, cap: 5_000, used: 3_500, left: 1_500, periodSeconds: 604_800, headroom: 1_000, headroomUsed: 400 });
+    expect(c.lane).toMatchObject({ upgraded: true, stopped: false, cap: 5_000, used: 3_500, left: 1_500, periodSeconds: 604_800, periodStart: (CUTOFF - 3 * 86_400) * 1000, headroom: 1_000, headroomUsed: 400 });
     expect(c.allowance).toEqual({ cap: 5_000, spent: 3_500, remaining: 1_500, resetMinutes: 10_080 });
     expect(c.setup).toEqual([]);
     expect(c.needsHuman).toBe(null);
@@ -94,13 +98,20 @@ describe('Money’s card settlement funding card', () => {
     expect(c.outcome).toBe('needs-human');
   });
 
-  test('lane not set up: before the SL upgrade, and with no funder or allowance', async () => {
+  test('lane not set up: before the SL upgrade, stopped, and with no funder or allowance', async () => {
     const { db } = await testDb();
     const store = deskStore(db, 84532, POOL);
     await store.saveCheck(check(snapshot({ laneMissing: true, outcome: 'setup' })));
     let c = (await settlementFundingLive(db))!;
     expect(c.lane.upgraded).toBe(false);
-    expect(c.setup[0]).toContain('settlement lane yet');
+    expect(c.lane.periodStart).toBe(null);
+    expect(c.setup[0]).toContain('the settlement lane is not set up: the Yield Pool has no settlementLane() yet');
+    expect(settlementFundingJob(c).state).toBe('setup');
+
+    await store.saveCheck(check(snapshot({ lane: { stopped: true, epoch: 1 }, outcome: 'setup' }), new Date((CUTOFF - 5.5 * 3600) * 1000)));
+    c = (await settlementFundingLive(db))!;
+    expect(c.lane.stopped).toBe(true);
+    expect(c.setup).toEqual(['the settlement lane is stopped (stopSettlementFunder); two DEPLOYER_ROLE signers restart it (SL-funder-1/2)']);
     expect(settlementFundingJob(c).state).toBe('setup');
 
     await store.saveCheck(check(snapshot({ lane: { funder: '0x0000000000000000000000000000000000000000', capPerPeriod: '0' }, forwarder: { allowance: { amount: '0', spent: '0', resetTimeMin: 0, lastResetMin: 0, nonce: 0 } }, outcome: 'setup' }), new Date((CUTOFF - 5 * 3600) * 1000)));
