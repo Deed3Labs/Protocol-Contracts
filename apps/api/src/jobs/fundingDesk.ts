@@ -11,7 +11,7 @@ import { ALLOWANCE_MODULE_ABI, CANONICAL_ALLOWANCE_MODULE, CL_OPERATING_BASE_SEP
 import { DESK_ERC20_ABI, SETTLEMENT_DEPLOYED_TOPIC, SETTLEMENT_FORWARDER_ABI, YIELD_POOL_ABI, erc20Interface, forwarderInterface, isSettlementDeployedFor, laneInterface } from '../services/settlementFunding/abi.js';
 import { bankAccountsFromEnv, lithicBank, mockBank, transferClassFromEnv, type BankRail, type LithicLike } from '../services/settlementFunding/bank.js';
 import { cardCreditBetween, readCardCredit, type CardCredit } from '../services/settlementFunding/cardCredit.js';
-import { deskConfigFromEnv, settlementFundingEnabled, type DeskConfig } from '../services/settlementFunding/config.js';
+import { deskAccountName, deskConfigFromEnv, settlementFundingEnabled, type DeskConfig } from '../services/settlementFunding/config.js';
 import {
   assertDeskCall,
   decideFunding,
@@ -677,10 +677,6 @@ const isRevert = (e: unknown) => {
   const x = e as { code?: string; message?: string };
   return x?.code === 'CALL_EXCEPTION' || /execution reverted|revert/i.test(String(x?.message ?? ''));
 };
-
-export function deskAccountName(id: number, env: Record<string, string | undefined> = process.env): string {
-  return (env[`SETTLEMENT_DESK_CDP_ACCOUNT_NAME_${id}`] || env.SETTLEMENT_DESK_CDP_ACCOUNT_NAME || '').trim() || (id === 84532 ? 'settlement-desk-base-sepolia' : `settlement-desk-chain-${id}`);
-}
 
 const opt = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null);
 const addressOrNull = (v: unknown) => (typeof v === 'string' && ethers.isAddress(v) ? ethers.getAddress(v) : null);

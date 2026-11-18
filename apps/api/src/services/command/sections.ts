@@ -10,6 +10,7 @@ import { payoutKeeperConfigFromEnv } from '../payoutFunding/fundingStatus.js';
 import { CL_OPERATING_BASE_SEPOLIA } from '../payoutFunding/topUp.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
+import { settlementFundingLive, settlementFundingSeed } from './settlementFunding.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
@@ -1469,6 +1470,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     ASSURANCE_FEES: provider === 'live' ? await assuranceFeesLive(db, o.now).catch(() => null) : assuranceFeesDemo(),
     // the automatic payout top-ups (decision 51): what the job recorded, live; a sample, seeded
     PAYOUT_TOPUPS: provider === 'live' ? await payoutTopUpsLive(db) : payoutTopUpsSeed(o.now.getTime()),
+    // card settlement funding (decision 54): what the funding desk recorded, live; a sample, seeded
+    SETTLEMENT_FUNDING: provider === 'live' ? await settlementFundingLive(db, process.env, o.now.getTime()).catch(() => null) : settlementFundingSeed(o.now.getTime()),
     // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
     figures: {
       ...f,

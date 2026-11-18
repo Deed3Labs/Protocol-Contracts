@@ -129,3 +129,8 @@ export function deskConfigFromEnv(env: Record<string, string | undefined>): Desk
 export function settlementFundingEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return truthy(env.SETTLEMENT_FUNDING_ENABLED);
 }
+
+/** The desk wallet's CDP account name (looked up, never created); Build → Security's automatic jobs show it too. */
+export function deskAccountName(id: number, env: Record<string, string | undefined> = process.env): string {
+  return (env[`SETTLEMENT_DESK_CDP_ACCOUNT_NAME_${id}`] || env.SETTLEMENT_DESK_CDP_ACCOUNT_NAME || '').trim() || (id === 84532 ? 'settlement-desk-base-sepolia' : `settlement-desk-chain-${id}`);
+}

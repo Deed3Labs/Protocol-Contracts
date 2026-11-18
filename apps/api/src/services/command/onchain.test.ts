@@ -443,6 +443,7 @@ describe('Build’s map, its cards and Signing, live (brief update 2)', () => {
       ['Payout top-ups', 'Not on yet', 'wait', 'PAYOUT_TOPUP_ENABLED'],
       ['Assurance fee payer', 'Not on yet', 'wait', 'ASSURANCE_FEE_PAYER_ENABLED'],
       ['Payout funding keeper', 'Not on yet', 'wait', 'PAYOUT_KEEPER_ENABLED'],
+      ['Settlement funding', 'Not on yet', 'wait', 'SETTLEMENT_FUNDING_ENABLED'],
     ]);
   });
 

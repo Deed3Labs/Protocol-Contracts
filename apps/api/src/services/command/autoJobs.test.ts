@@ -17,12 +17,13 @@ const WALLET = '0xC0C4EC7875D1838C0AE610accC16AAdCDb475068';
 const NOW = Date.parse('2026-11-25T12:00:00Z');
 
 describe('automatic jobs', () => {
-  test('every switch off: three rows, each "Not on yet" and waiting, with its wallet and its switch', async () => {
+  test('every switch off: four rows, each "Not on yet" and waiting, with its wallet and its switch', async () => {
     const jobs = await autoJobs(db, { env: { PAYOUT_TOPUP_WALLET: WALLET }, topUps: async () => payoutTopUpsSeed(NOW), keeper: () => ({ at: NOW, result: 'RED' }) });
     expect(jobs.map((j) => [j.id, j.w, j.a, j.run[0], j.st, j.off[0], j.at])).toEqual([
       ['topup', 'payout-topup-base-sepolia', '0xC0C4…5068', 'Not on yet', 'wait', 'PAYOUT_TOPUP_ENABLED', null],
       ['fees', 'cl-fees-base-sepolia', '0xB9ed…cDFd', 'Not on yet', 'wait', 'ASSURANCE_FEE_PAYER_ENABLED', null],
       ['keeper', 'No wallet', 'read-only', 'Not on yet', 'wait', 'PAYOUT_KEEPER_ENABLED', null],
+      ['settlement', 'settlement-desk-base-sepolia', '—', 'Not on yet', 'wait', 'SETTLEMENT_FUNDING_ENABLED', null],
     ]);
     // the top-up rule's own horizon, and the fee payer's need for the new pool
     expect(jobs[0].d).toBe('Decision 51 · CL Operating to the PayoutPool when 14 days is short');
@@ -42,6 +43,7 @@ describe('automatic jobs', () => {
       [['Checked 25 Nov, 11:54 UTC', 'Nothing to top up'], 'ok'],
       [['Checked 25 Nov, 11:00 UTC', 'Nothing to pay'], 'ok'],
       [['Green · 25 Nov, 11:50 UTC', 'Funded ahead of every deadline'], 'ok'],
+      [['Not on yet', 'Turns on when SETTLEMENT_FUNDING_ENABLED is set'], 'wait'],
     ]);
     // the limit is the one the job read from the chain
     expect(jobs[0].lim).toEqual(['$5,000 a week', 'Set on chain · $3,216.30 spent this period']);
@@ -56,15 +58,17 @@ describe('automatic jobs', () => {
       [['Stopped', 'Top-up 7 failed: fund reverted'], 'bad'],
       [['Stopped', 'The fee for 2026-10 failed: execution reverted'], 'bad'],
       [['Amber · 25 Nov, 12:00 UTC', 'Ops is emailed once a day'], 'bad'],
+      [['Not on yet', 'Turns on when SETTLEMENT_FUNDING_ENABLED is set'], 'wait'],
     ]);
   });
 
   test('on, but nothing recorded yet: waiting for its first run', async () => {
     await db.query('DELETE FROM command.assurance_items');
     await db.query('DELETE FROM command.assurance_snapshots');
-    const env = { PAYOUT_TOPUP_ENABLED: '1', ASSURANCE_FEE_PAYER_ENABLED: '1', [`ASSURANCE_POOL_V2_84532`]: POOL, PAYOUT_KEEPER_ENABLED: '1' };
-    const jobs = await autoJobs(db, { env, topUps: async () => null, keeper: () => null });
+    const env = { PAYOUT_TOPUP_ENABLED: '1', ASSURANCE_FEE_PAYER_ENABLED: '1', [`ASSURANCE_POOL_V2_84532`]: POOL, PAYOUT_KEEPER_ENABLED: '1', SETTLEMENT_FUNDING_ENABLED: '1' };
+    const jobs = await autoJobs(db, { env, topUps: async () => null, keeper: () => null, settlement: async () => null });
     expect(jobs.map((j) => [j.run[0], j.st])).toEqual([
+      ['Not run yet', 'wait'],
       ['Not run yet', 'wait'],
       ['Not run yet', 'wait'],
       ['Not run yet', 'wait'],

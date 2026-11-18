@@ -166,7 +166,8 @@ On the first run of each day the desk writes yesterday (`ops.settlement_funding_
 
   It shows what needs a person on top: **stopped** (the move, why, and the clear-halt command), **lane not set up** (what is missing, before the `SL` steps), **over the limit** (the two remainder batches, to download), or **short** (the shortfall, why the pool cannot give more, and the manual options in order). With no check recorded yet, the card says what it needs.
 - **Beside it, "Pool Tier principal"**: the posted value and the worksheet's figure, marked "suggested — the valuation signers post it", with each tier, the term plans, the Margin Advances, the Deployed Balance and the lane's ceiling. Read when the pane opens; read-only.
-- **Build, Security, "Automatic jobs"**: one row each for payout top-ups and settlement funding: the wallet, what it may call, its limit and how much is used, how it is stopped, and whether it is on, in dry run, stopped or waiting for the lane.
+- **Build, Security, "Automatic jobs"**: settlement funding is one row among the API's jobs (payout top-ups, the Assurance fee payer, the payout funding keeper): the desk wallet, the lane's limit per period and how much is used, its last check, and how it is stopped (`SETTLEMENT_FUNDING_ENABLED`, or `stopSettlementFunder()` on the Yield Pool). It reads "Not on yet" until the switch is set, then whether it ran, in dry run, stopped (a failed move, or stopped on chain) or waiting for the lane.
+- **Build, Signing**: the `SA`, `SR` and `SL` stages appear by name (State attester, Credit by state, Settlement lane) in the signing plan.
 
 ## Not automated yet
 

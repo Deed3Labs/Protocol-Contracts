@@ -5,14 +5,17 @@ import { allItems } from '../assuranceFees/store.js';
 import { lastKeeperRun, type KeeperRun } from '../payoutFunding/keeperRuns.js';
 import { topUpConfigFromEnv } from '../payoutFunding/topUp.js';
 import { topUpAccountName } from '../payoutFunding/topUpCdp.js';
+import { deskAccountName, deskConfigFromEnv, settlementFundingEnabled } from '../settlementFunding/config.js';
 import { payoutTopUpsLive, type TopUpsCard } from './payoutTopUps.js';
+import { settlementFundingLive, type SettlementCard } from './settlementFunding.js';
 
 /*
- * Build → Security, "Automatic jobs" (brief update 2, section 6; the reference's `AUTO`): the API's three jobs
+ * Build → Security, "Automatic jobs" (brief update 2, section 6; the reference's `AUTO`): the API's jobs
  * that move money or read for it. Each is read the way Money reads it: the payout top-ups from what the job
  * recorded (payoutTopUpsLive, migration 0078), the Assurance fee payer from its items and pool readings
  * (migration 0077), the payout funding keeper from its last pass in this server (keeperRuns.ts: it keeps
- * nothing else). Nothing here reads the chain.
+ * nothing else), and the settlement funding desk (decision 54) from what it recorded (settlementFundingLive,
+ * the same record as Money's "Card settlement funding" card). Nothing here reads the chain.
  *
  * A job whose switch isn't set is "Not on yet" and waits (st 'wait'), whatever it recorded before; on, it's
  * its last run, 'ok', or 'bad' when it stopped, failed or needs a person. Wallets are the configured
@@ -22,7 +25,7 @@ import { payoutTopUpsLive, type TopUpsCard } from './payoutTopUps.js';
 type Env = Record<string, string | undefined>;
 
 export interface AutoJob {
-  id: 'topup' | 'fees' | 'keeper';
+  id: 'topup' | 'fees' | 'keeper' | 'settlement';
   /** what it is, and what it does */
   t: string;
   d: string;
@@ -46,6 +49,8 @@ export interface AutoJobsDeps {
   topUps?: (db: Queryable) => Promise<TopUpsCard | null>;
   /** the keeper's last pass in this server (keeperRuns.ts unless given) */
   keeper?: () => KeeperRun | null;
+  /** the settlement funding desk's record (settlementFundingLive unless given) */
+  settlement?: (db: Queryable, env: Env) => Promise<SettlementCard | null>;
 }
 
 /** The same switch test the jobs use. */
@@ -160,7 +165,55 @@ function keeperJob(env: Env, last: () => KeeperRun | null): AutoJob {
   return { ...base, run: [`${r.result === 'RED' ? 'Red' : 'Amber'} · ${when(r.at)}`, 'Ops is emailed once a day'], st: 'bad', at: r.at };
 }
 
+const SETTLEMENT_OUTCOME: Record<string, [string, AutoJob['st']]> = {
+  idle: ['Nothing to fund', 'ok'],
+  waiting: ['Waiting for the funding window', 'ok'],
+  funded: ['Funded the Credit Settlement Account', 'ok'],
+  pending: ['A move is on its way to the CSA', 'ok'],
+  returned: ['Returned the surplus', 'ok'],
+  'returns-off': ['Surplus idle · Returns are off', 'ok'],
+  'dry-run': ['Dry run: decided, sent nothing', 'ok'],
+  setup: ['The settlement lane isn’t set up', 'wait'],
+  'needs-human': ['Over the limit or short: a person is needed', 'bad'],
+  unknown: ['Can’t read the CSA · nothing moved', 'bad'],
+  failed: ['A check failed', 'bad'],
+  halted: ['Stopped until a person clears it', 'bad'],
+};
+
+/** The settlement funding desk (decision 54): the CSA before each card cut-off, Collection Account first, then the Yield Pool's lane. */
+async function settlementJob(db: Queryable, env: Env, read: (db: Queryable, env: Env) => Promise<SettlementCard | null>): Promise<AutoJob> {
+  const enabled = settlementFundingEnabled(env);
+  const card = enabled ? await read(db, env).catch(() => null) : null;
+  const wallet = (env.SETTLEMENT_DESK_WALLET || '').trim() || card?.wallet || '';
+  const per = (sec: number) => (sec === 604_800 ? 'a week' : sec === 86_400 ? 'a day' : sec > 0 && sec % 86_400 === 0 ? `every ${sec / 86_400} days` : sec > 0 ? `every ${Math.round(sec / 60)} minutes` : 'a period');
+  const base = {
+    id: 'settlement' as const,
+    t: 'Settlement funding',
+    d: 'Decision 54 · the Credit Settlement Account before each card cut-off: Collection Account first, then the Yield Pool',
+    w: deskAccountName(card?.chainId ?? chainOf(env), env),
+    a: short(wallet),
+    off: ['SETTLEMENT_FUNDING_ENABLED', 'Or stopSettlementFunder() on the Yield Pool'] as [string, string],
+  };
+  const lim: [string, string] =
+    card && card.lane.upgraded && card.lane.cap
+      ? [`${usd(card.lane.cap)} ${per(card.lane.periodSeconds)}`, `The lane’s limit, set on chain by two deployers · ${usd(card.lane.used)} used this period`]
+      : ['The lane’s limit set on chain', 'By two DEPLOYER_ROLE signers · SL-funder-1/2'];
+  if (!enabled) return { ...base, lim, run: ['Not on yet', 'Turns on when SETTLEMENT_FUNDING_ENABLED is set'], st: 'wait', at: null };
+  if (!card || !card.lastCheck) return { ...base, lim, run: ['Not run yet', `Checks every ${deskConfigFromEnv(env).checkMinutes} minutes once started`], st: 'wait', at: null };
+  const at = card.lastCheck;
+  if (card.halted) return { ...base, lim, run: ['Stopped', `Move ${card.halted.id} failed: ${card.halted.error || 'see its record'}`], st: 'bad', at };
+  if (card.lane.stopped) return { ...base, lim, run: ['Stopped on chain', 'stopSettlementFunder was called · two deployers restart it (SL-funder-1/2)'], st: 'bad', at };
+  if (card.setup.length) return { ...base, lim, run: [`Checked ${when(at)}`, `The settlement lane isn’t set up: ${card.setup[0]}`], st: 'wait', at };
+  const [line, st] = SETTLEMENT_OUTCOME[card.outcome] ?? [card.outcome || 'Checked', 'ok'];
+  return { ...base, lim, run: [`Checked ${when(at)}`, card.dryRun && card.outcome !== 'dry-run' ? `Dry run · ${line}` : line], st, at };
+}
+
 export async function autoJobs(db: Queryable, deps: AutoJobsDeps = {}): Promise<AutoJob[]> {
   const env = deps.env ?? process.env;
-  return [await topUpJob(db, env, deps.topUps ?? payoutTopUpsLive), await feeJob(db, env), keeperJob(env, deps.keeper ?? lastKeeperRun)];
+  return [
+    await topUpJob(db, env, deps.topUps ?? payoutTopUpsLive),
+    await feeJob(db, env),
+    keeperJob(env, deps.keeper ?? lastKeeperRun),
+    await settlementJob(db, env, deps.settlement ?? ((d, e) => settlementFundingLive(d, e))),
+  ];
 }

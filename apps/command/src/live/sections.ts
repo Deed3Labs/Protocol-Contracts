@@ -301,6 +301,8 @@ const apply = {
     vars.depositRail = d.DEPOSIT_RAIL ?? null;
     // the automatic payout top-ups (decision 51); null until the job has checked
     vars.payoutTopUps = d.PAYOUT_TOPUPS ?? null;
+    // card settlement funding (decision 54); null until the funding desk has checked
+    vars.settlementFunding = d.SETTLEMENT_FUNDING ?? null;
   },
   shop(d) {
     replace(PR, d.PR);

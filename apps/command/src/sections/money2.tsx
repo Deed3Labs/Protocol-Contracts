@@ -8,6 +8,7 @@ import { CC } from './cc';
 import { LOG, S, vars } from './data';
 import { moneyLive, settleMove } from './moneyLive';
 import { demoTopUps, topUpsParts } from './payoutTopUps';
+import { demoSettlement, PoolTierPrincipal, settlementParts } from './settlementFunding';
 import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
@@ -1205,8 +1206,12 @@ function makeMoney() {
       const link = (out, back) => <div className="ny-ln"><div className="ny-o"><em>{out}</em><i /></div><div className="ny-b"><i /><em>{back}</em></div></div>;
       const V = lossVerdict();
       const flow = cell('s12', 'How the pool’s money moves', <span className="lbl">Lending order</span>, <><div className="ny-dg">{node('Holders', money(Y.principal), `${Y.depositors} members put in`)}{link('Subscribe', 'Redeem')}{node('Yield pool', money(Y.assets), `Share Value $${Y.price.toFixed(4)}`, 'me')}{link('Deploy · two signers', 'Return · interest, then principal')}{node('Clear Lending', money(Y.lent), 'Borrowed · owed back')}{link('Lend as credit', 'Repay')}{node('Members', money(M.unsecured), 'Owe on unsecured credit')}</div><div className="ny-ls"><span className="ny-lx">If a member doesn’t repay</span>{L && !ladderRead() ? <span>Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop. The pool is last.</span> : <span>{"Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop, "}<b>{money(V.ahead)}</b>{" in all. The pool is last."}</span>}<button className="lnk" data-ntab="pools" data-npool="yield" data-njump="loss">Loss order ↓</button></div></>, <><span>The pool and the bonds are the funding base · they lend only to Clear Lending, never to housing</span><span /></>);
+      // card settlement funding (decision 54): what the funding desk last saw and did, and the Pool Tier principal beside it
+      const SF = L ? vars.settlementFunding : demoSettlement(Date.now());
+      const sf = SF ? cell('s7', 'Card settlement funding', ...settlementParts(SF, money)) : notReal('s7', 'Card settlement funding', 'Needs the settlement funding desk (SETTLEMENT_FUNDING_ENABLED) to have checked: the next cut-off and what’s due, the Credit Settlement Account, the funder limit and each move it made.');
+      const settle = band(<>{sf}<PoolTierPrincipal demo={!L} money={money} /></>);
       // live, the 30-day projection (scheduled Returns and Deployments) and member payments (the month's carry by product, merchant fees) aren't read yet
-      if (L) return <>{band(flow)}{band(<>{a}{b}</>)}{band(tbl)}</>;
+      if (L) return <>{band(flow)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;
       /* one card: what holders put in, what the pool holds, and how that moves over 30 days, as a chart with its events beneath */
       const D = P.days,
         top = Math.ceil(Math.max(...D.map(d => d.cash + d.dep + d.owed)) * 1.16 / 500) * 500,
@@ -1263,7 +1268,7 @@ function makeMoney() {
       const bar = segs => <div className="wp-bar">{segs.map((x, __k) => <i key={__k} style={css(`width:${Wp(x.v)};background:${x.c}`)} title={`${x.k} · ${money(x.v)}`} />)}</div>;
       const legend = segs => <div className="wp-lg">{segs.map((x, __k) => <div key={__k}><i style={css(`background:${x.c}`)} /><span><b>{x.k}</b><em>{x.sub}</em></span><strong>{money(x.v)}</strong></div>)}</div>;
       const pay = cell('s12', 'Where member payments go', <span className="lbl">One month · the deployed rate schedule · demo balances</span>, <><div className="wp"><div className="wp-col"><div className="wp-h"><span>Comes in to Clear Lending</span><b>{money(MP.inc)}</b></div>{bar(inSeg)}{legend(inSeg)}</div><div className="wp-mid" aria-hidden="true"><svg viewBox="0 0 12 20"><path d="M2 2l8 8-8 8" /></svg></div><div className="wp-col"><div className="wp-h"><span>Goes out</span><b>{money(MP.inc)}</b></div>{bar(outSeg)}{legend(outSeg)}<p className="wp-n">{"Holders get "}{pct(MP.pool, MP.inc, 0)}{" of it. They don’t share in carry or fees: Clear Lending keeps the Spread and takes every loss before the pool does. Charged off this month: "}{money(MP.losses)}.</p></div></div><div className="wp-af"><span className="wp-afh">Then the Spread</span>{[['1', 'Bills and reserves first', 'Expenses, bonds due, pool interest, reserves, the Assurance fee · L-01 9.2'], ['2', 'Kept as capital', 'More member and merchant lending, and the fourth loss layer'], ['3', 'Or paid to Holdings', 'Only if reserves, coverage and licences pass · L-01 12.2'], ['4', 'Split by shares', 'The co-op’s Class A and investors’ Class B alike · Holdings funds Clear Building Co. for homes']].map(([n, k, t], i) => <div key={i} className="wp-as"><b><i>{n}</i>{k}</b><span>{t}</span></div>)}</div></>, <><span>Many members pay in full and owe no carry · savings-backed lines carry none</span><button data-npool="ap" data-ntab="pools">Loss order →</button></>);
-      return <>{band(flow)}{band(pay)}{band(proj)}{band(<>{a}{b}</>)}{band(tbl)}</>;
+      return <>{band(flow)}{band(pay)}{band(proj)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;
     }
     function poolBonds() {
       // live, the ten months from this one, each bond by when it matures
