@@ -425,7 +425,7 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
         const match = await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.amount), txRef: txHash, network });
         matchNotified = match.creditAwarded > 0 || match.duplicate;
       } else {
-        await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.clrusdAmount), network });
+        await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.clrusdAmount), network, txRef: txHash });
       }
     } catch (ledgerError) {
       console.error('[savings/gasless] equity ledger update failed:', ledgerError);
@@ -715,7 +715,7 @@ savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
       const match = await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros, txRef: body.txHash, network });
       matchNotified = match.creditAwarded > 0 || match.duplicate;
     } else {
-      await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros, network });
+      await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros, network, txRef: body.txHash });
     }
 
     // Make the savings back the credit line. This is the path a smart-account deposit takes -- the

@@ -40,6 +40,51 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Deposit-credit rows that still stand (pending, vested or minted) for a wallet on a network. */
+async function depositCreditsEarned(pool: NonNullable<ReturnType<typeof getPayPool>>, wallet: string, network: CreditNetwork): Promise<number> {
+  const r = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) AS s FROM pay_credits
+      WHERE wallet = $1 AND reason = 'deposit_match' AND status <> 'void' AND network = $2`,
+    [wallet, network],
+  );
+  return num(r.rows[0]?.s);
+}
+
+/**
+ * Records a deposit or redemption in whole dollars. A wallet's first recorded flow is preceded by a
+ * `seed` equal to the deposit credits it already holds, so savings from before this ledger count as
+ * still in. Idempotent per transaction: returns false when this transaction was already recorded.
+ */
+async function recordFlow(
+  pool: NonNullable<ReturnType<typeof getPayPool>>,
+  input: { wallet: string; network: CreditNetwork; kind: 'deposit' | 'redeem'; usd: number; txRef?: string },
+): Promise<boolean> {
+  const any = await pool.query(`SELECT 1 FROM pay_esa_flows WHERE wallet = $1 AND network = $2 LIMIT 1`, [input.wallet, input.network]);
+  if (any.rows.length === 0) {
+    const earned = await depositCreditsEarned(pool, input.wallet, input.network);
+    await pool.query(
+      `INSERT INTO pay_esa_flows (id, wallet, network, kind, usd, tx_ref) VALUES ($1,$2,$3,'seed',$4,NULL)`,
+      [crypto.randomUUID(), input.wallet, input.network, earned / DEPOSIT_MATCH_PER_USD],
+    );
+  }
+  const ins = await pool.query(
+    `INSERT INTO pay_esa_flows (id, wallet, network, kind, usd, tx_ref) VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT DO NOTHING RETURNING id`,
+    [crypto.randomUUID(), input.wallet, input.network, input.kind, input.usd, input.txRef ?? null],
+  );
+  return (ins.rowCount ?? 0) > 0;
+}
+
+/** Whole dollars in savings by this ledger's count: seed and deposits, less redemptions, never below zero. */
+async function netSavingsUsd(pool: NonNullable<ReturnType<typeof getPayPool>>, wallet: string, network: CreditNetwork): Promise<number> {
+  const r = await pool.query(
+    `SELECT COALESCE(SUM(CASE WHEN kind = 'redeem' THEN -usd ELSE usd END),0) AS s
+       FROM pay_esa_flows WHERE wallet = $1 AND network = $2`,
+    [wallet, network],
+  );
+  return Math.max(0, num(r.rows[0]?.s));
+}
+
 /**
  * Reward multiplier on the base credits. Accelerated-plan members (membershipPlan LIFETIME) get the full
  * 1.5×; standard members ramp toward it with their on-time streak (+0.25× every 6 on-time months, capped
@@ -134,6 +179,23 @@ async function ensureTables(): Promise<void> {
   // Tag each credit with the environment it was earned in ('mainnet' = live/real, 'testnet' = demo).
   // The demo's deposit-match credits (Base Sepolia) stay separate from mainnet credits that count.
   await pool.query(`ALTER TABLE pay_credits ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'mainnet';`);
+  // Savings moved in and out, in whole dollars, so a dollar earns a deposit credit only once (ESA Terms
+  // 6.2: Contributed Capital nets out redemptions). One row per deposit or redemption transaction.
+  // `seed` stands in for what a wallet held before this table existed: the dollars its credits were
+  // earned on, assumed still in savings.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pay_esa_flows (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL,
+      network TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      usd NUMERIC NOT NULL,
+      tx_ref TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS pay_esa_flows_tx_uidx ON pay_esa_flows (kind, tx_ref) WHERE tx_ref IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS pay_esa_flows_wallet_idx ON pay_esa_flows (wallet, network);
+  `);
   // Per-merchant metadata (portal link + address), keyed by a normalized merchant name so it's shared
   // across a merchant's transactions AND its matching biller. The bill/transaction detail view reads +
   // inline-edits this. One source of truth for merchant info.
@@ -566,6 +628,10 @@ export const payLedgerStore = {
    * DEPOSIT_MATCH_MONTHLY_CAP credits per calendar month. Pending for 30 days and clawed back (voided)
    * if the user redeems within that window — so only deposits that stay in ≥30 days vest. Idempotent
    * per deposit txRef.
+   *
+   * A dollar earns a credit only once (ESA Terms 6.2). Only dollars in savings that have not already
+   * earned a credit can earn one: the net savings after this deposit, less the deposit credits that
+   * still stand. A dollar withdrawn after it earned its credit and added back earns nothing new.
    */
   async recordDepositMatch(input: {
     wallet: string;
@@ -577,8 +643,17 @@ export const payLedgerStore = {
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
 
-    const usd = Math.floor(Number(BigInt(input.amountMicros)) / 1_000_000) * DEPOSIT_MATCH_PER_USD;
+    const dollars = Math.floor(Number(BigInt(input.amountMicros)) / 1_000_000);
+    const usd = dollars * DEPOSIT_MATCH_PER_USD;
     if (usd <= 0) return { creditAwarded: 0, duplicate: false };
+
+    const fresh = await recordFlow(pool, { wallet: input.wallet, network: input.network, kind: 'deposit', usd: dollars, txRef: input.txRef });
+    if (!fresh) {
+      const seen = await pool.query(`SELECT 1 FROM pay_credits WHERE payment_id = $1`, [`deposit:${input.txRef}`]);
+      return { creditAwarded: 0, duplicate: seen.rows.length > 0 };
+    }
+    // Credits, so the dollars not yet credited are scaled by the match rate.
+    const uncredited = Math.max(0, (await netSavingsUsd(pool, input.wallet, input.network)) * DEPOSIT_MATCH_PER_USD - (await depositCreditsEarned(pool, input.wallet, input.network)));
 
     // Month-to-date deposit-match credits already awarded for THIS network (excludes voided).
     const mtd = await pool.query(
@@ -588,7 +663,7 @@ export const payLedgerStore = {
       [input.wallet, input.network],
     );
     const remaining = Math.max(0, DEPOSIT_MATCH_MONTHLY_CAP - num(mtd.rows[0]?.s));
-    const award = Math.min(usd, remaining);
+    const award = Math.min(usd, remaining, uncredited);
     if (award <= 0) return { creditAwarded: 0, duplicate: false };
 
     const vestUntil = new Date();
@@ -615,10 +690,16 @@ export const payLedgerStore = {
    * most-recent PENDING deposit credits up to the redeemed USD amount (already-vested credits are
    * safe); a partial redeem splits the boundary row so the remainder keeps vesting.
    */
-  async clawbackDepositMatch(input: { wallet: string; amountMicros: string | bigint; network: CreditNetwork }): Promise<number> {
+  async clawbackDepositMatch(input: { wallet: string; amountMicros: string | bigint; network: CreditNetwork; txRef?: string }): Promise<number> {
     const pool = getPayPool();
     if (!pool) return 0;
     await ensureTables();
+    const redeemedUsd = Math.floor(Number(BigInt(input.amountMicros)) / 1_000_000);
+    if (redeemedUsd > 0) {
+      const fresh = await recordFlow(pool, { wallet: input.wallet, network: input.network, kind: 'redeem', usd: redeemedUsd, txRef: input.txRef });
+      // The same redemption reported twice is clawed back once.
+      if (!fresh) return 0;
+    }
     // Vest matured credits first so we never claw back credits that already cleared the 30-day window.
     await pool.query(
       `UPDATE pay_credits SET status = 'vested' WHERE wallet = $1 AND status = 'pending' AND vest_until <= now()`,
@@ -646,8 +727,8 @@ export const payLedgerStore = {
       } else {
         // Partial: keep the un-redeemed remainder vesting under a fresh row (same vest window).
         await pool.query(
-          `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until)
-           SELECT $1, wallet, $2, $3, reason, source, streak_at_award, 'pending', vest_until
+          `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until, network, created_at)
+           SELECT $1, wallet, $2, $3, reason, source, streak_at_award, 'pending', vest_until, network, created_at
              FROM pay_credits WHERE id = $4`,
           [crypto.randomUUID(), `rem:${crypto.randomUUID()}`, amt - toVoid, r.id],
         );
