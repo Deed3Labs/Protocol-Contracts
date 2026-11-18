@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { getContractAddress } from '../config/contracts.js';
 import { chainProvider } from '../services/chain/provider.js';
 import { alertOps } from '../services/opsAlert.js';
+import { recordKeeperRun } from '../services/payoutFunding/keeperRuns.js';
 import {
   BOND_VAULT_READ_ABI,
   PAYOUT_POOL_READ_ABI,
@@ -252,7 +253,12 @@ export function startPayoutFundingKeeper(): void {
     return;
   }
   const keeper = createPayoutFundingKeeper(deps);
-  setInterval(() => void keeper.tick(), HOUR_MS).unref?.();
-  void keeper.tick();
+  // each pass's outcome, for Build's automatic jobs (keeperRuns.ts)
+  const pass = async () => {
+    const result = await keeper.tick();
+    if (result !== 'busy') recordKeeperRun({ at: Date.now(), result });
+  };
+  setInterval(() => void pass(), HOUR_MS).unref?.();
+  void pass();
   console.log('[payout-keeper] started (hourly, read-only)');
 }

@@ -76,6 +76,9 @@ export async function canonical(page: Page, selector: string): Promise<string> {
       // an inline style the browser rejected entirely is no style at all
       const style = el.style.cssText ? `style="${el.style.cssText}"` : '';
       out.push(`${'  '.repeat(depth)}<${el.tagName.toLowerCase()}${[...attrs, style].filter(Boolean).map((a) => ' ' + a).join('')}>`);
+      // Build's map draws its flow (dots and arrowheads) in an overlay of its own on the frame clock, after layout:
+      // no two pages are at the same frame, so the overlay is compared as there, not by what it holds
+      if (el.classList.contains('bm-fx')) return;
       // adjacent text nodes are one piece of text
       let text = '';
       const flush = () => {

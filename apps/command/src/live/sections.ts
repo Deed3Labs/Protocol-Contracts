@@ -301,6 +301,8 @@ const apply = {
     vars.depositRail = d.DEPOSIT_RAIL ?? null;
     // the automatic payout top-ups (decision 51); null until the job has checked
     vars.payoutTopUps = d.PAYOUT_TOPUPS ?? null;
+    // card settlement funding (decision 54); null until the funding desk has checked
+    vars.settlementFunding = d.SETTLEMENT_FUNDING ?? null;
   },
   shop(d) {
     replace(PR, d.PR);
@@ -373,6 +375,13 @@ const apply = {
     vars.contractsDeployed = d.DEPLOYED ?? null;
     // where each app runs (the API's deploys.ts): Vercel's deploys and the API's Railway environments
     vars.contractsRunning = d.RUNNING ?? null;
+    // live, from the deployment records by name (brief update 2): the timelocks and helpers, the retired copies, the jobs
+    vars.contractsTimelocks = d.TIMELOCKS ?? null;
+    vars.contractsAux = d.CTR_AUX ?? null;
+    vars.contractsOld = d.CTR_OLD ?? null;
+    vars.contractsOldN = d.CTR_OLD_N ?? null;
+    vars.buildAuto = d.AUTO ?? null;
+    vars.contractsSigning = d.SIGNING ?? null;
     replace(SIGNERS, d.SIGNERS);
     // Build's own records (migration 0066): incidents, findings, audits, and who can be given an incident
     vars.buildRecords = { incidents: d.INCIDENTS ?? [], findings: d.FINDINGS ?? [], audits: d.AUDITS ?? [], team: d.TEAM ?? [] };

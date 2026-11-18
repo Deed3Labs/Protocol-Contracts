@@ -37,7 +37,9 @@ import { MAX_PHOTO_BYTES, PHOTO_TYPES, publicCatalog, revalidateSite, uploadPhot
 import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 import type { Deploys } from '../services/command/deploys.js';
+import { poolTierPrincipalFor, settlementFundingStatus } from '../services/settlementFunding/api.js';
 import { type Legal, totalsOnly } from '../services/command/legal.js';
+import type { Signing } from '../services/command/signing.js';
 
 /*
  * The Command Center's API (docs/command-center-plan.md, Phase 2): sign-in sessions, who you are and
@@ -66,12 +68,16 @@ export interface CommandDeps {
   indexer?: { catchUp(): void };
   /** The contracts' own reads, for Money and Contracts when they're live from the chain. */
   chain?: ChainReader;
+  /** The chain `chain` reads (Base Sepolia unless given), for the Pool Tier principal's Margin Advances. */
+  chainId?: number;
   /** The GitHub poller: a catch-up when someone opens Contracts. */
   code?: { catchUp(): void };
   /** Where each app runs, for Build (deploys.ts: Vercel's deploys, the API's Railway environments). */
   deploys?: () => Promise<Deploys>;
   /** Governance → Legal: the private clear-agreements repo, read with its own token (legal.ts). */
   legal?: { off(): string | null; read(): Promise<Legal> };
+  /** Build → Signing: the committed signing plan, read from the repo (signing.ts). */
+  signing?: { read(): Promise<Signing> };
   /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
   feeds?: Feed[];
   /** The member app's records, for Members when it's live (Phase 7b). */
@@ -575,6 +581,26 @@ export function commandRouter(deps: CommandDeps) {
    * Liquidator. A hold step is only ENCODED here: the HOLD_ROLE signer sends it from their own wallet,
    * and a second, different signer confirms, renews or finishes clearing it. No key is held for this.
    */
+  /*
+   * Settlement Funding (decision 54), read-only: the desk's last check, moves, halt and daily
+   * reconciliation, from what it recorded; and the Pool Tier principal the two VALUATION_ROLE
+   * signers should post, read from the chain now. Nothing here sends or posts anything.
+   */
+  router.get('/settlement-funding', need('money', SEE), async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ desk: await settlementFundingStatus(req.command!.db) });
+  });
+
+  router.get('/pool-tier-principal', need('money', SEE), async (req, res) => {
+    if (!deps.chain) return fail(res, 501, 'NOT_LIVE_YET', 'The chain cannot be read here');
+    try {
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json(await poolTierPrincipalFor(req.command!.db, deps.chain, deps.chainId ?? 84532));
+    } catch (e) {
+      return fail(res, 502, 'CHAIN_READ_FAILED', `The book could not be read: ${(e as Error)?.message ?? e}`);
+    }
+  });
+
   router.get('/liquidation-holds', need('money', SEE), async (_req, res) => {
     const read = await readEnforcement();
     if (!read) return fail(res, 501, 'NOT_LIVE_YET', 'The Liquidator could not be read on this network');
@@ -609,7 +635,7 @@ export function commandRouter(deps: CommandDeps) {
     deps.indexer?.catchUp();
     deps.code?.catchUp();
     try {
-      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now(), chain: deps.chain, deploys: deps.deploys }));
+      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now(), chain: deps.chain, deploys: deps.deploys, signing: deps.signing?.read }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
