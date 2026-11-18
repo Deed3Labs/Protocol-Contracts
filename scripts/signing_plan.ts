@@ -5,6 +5,7 @@ import { liveNetworkOf } from "../deploy/helpers";
 import { stateAttesterGrant } from "./state_attester_grant";
 import { RETIRED_SUFFIX } from "../deploy/retire_credit_stack";
 import { parseEnvFile } from "./rehearse_sepolia_fork";
+import { SETTLEMENT_LANE_RECORD } from "./upgrade_settlement_lane";
 import {
   assuranceSetupFromEnv, assuranceSetupProblems, governedCalls, approvalKey, CL_FEES_MASK, BOARD_ALLOCATION_MASK, AssuranceSetup,
 } from "../deploy/assurance_timelock_handover";
@@ -99,6 +100,8 @@ export interface PlanOptions {
   env: Record<string, string>;
   /** The pool's VALUATION_ROLE signers; default deploy/config/earn-roles.json for the network. */
   valuationSigners?: string[];
+  /** The pool's DEPLOYER_ROLE signers (the SL steps); default deploy/config/earn-roles.json for the network. */
+  deploymentSigners?: string[];
   earnRolesFile?: string;
   /** The chain to read (default the Hardhat runtime's provider). */
   provider?: any;
@@ -212,6 +215,16 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     }
   } catch (e: any) {
     notes.push(`No VALUATION_ROLE signers: ${String(e?.message ?? e)}`);
+  }
+  let deploymentSigners: string[] = [];
+  try {
+    if (o.deploymentSigners) deploymentSigners = o.deploymentSigners.map((a) => ethers.getAddress(a));
+    else {
+      const { loadEarnRoles, EARN_ROLES_FILE } = require("../deploy/earnWiring");
+      deploymentSigners = ((loadEarnRoles(network, o.earnRolesFile ?? EARN_ROLES_FILE).LendingPool.DEPLOYER_ROLE ?? []) as string[]).map((a) => ethers.getAddress(a));
+    }
+  } catch (e: any) {
+    notes.push(`No DEPLOYER_ROLE signers: ${String(e?.message ?? e)}`);
   }
 
   label(deployer, "the deployer");
@@ -1092,6 +1105,151 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
         "The spending limit is the most the automatic top-ups can move out of CL Operating in a period, whatever happens to the bot or its key. What a top-up needs beyond it is prepared for CL Operating's owners to sign. Change it the same way.",
         modHasCode ? moduleAddr : undefined, enc, st, ["TU-safe-delegate"]);
     }
+  }
+
+  // ================= Settlement Funding (SL, decision 54): the Yield Pool's automated lane =================
+  // The LendingPool upgrade that adds the lane is a NEW Earn timelock proposal, scheduled by the Clear
+  // Lending Safe only once the E8 batch has run (E8x-earn-execute); its implementation is what
+  // scripts/upgrade_settlement_lane.ts recorded. Then two DEPLOYER_ROLE signers register the funding
+  // desk's wallet with its cap per period (SL-funder) and set the Settlement Headroom (SL-headroom).
+  // Empty inputs make these steps wait; nothing else waits on them.
+  {
+    const poolAddress = await rec("LendingPool");
+    const impl = await rec(SETTLEMENT_LANE_RECORD);
+    label(impl, "the LendingPool implementation with the Settlement Funding lane");
+    const funder = addr(env.SETTLEMENT_FUNDER);
+    const cap = parseUsdc(env.SETTLEMENT_CAP_USDC);
+    const daysRaw = Number(env.SETTLEMENT_PERIOD_DAYS ?? "");
+    // The AllowanceModule's period is at most 65,535 minutes: about 45 days.
+    const days = env.SETTLEMENT_PERIOD_DAYS && Number.isInteger(daysRaw) && daysRaw > 0 && daysRaw <= 45 ? daysRaw : undefined;
+    const periodSeconds = days ? BigInt(days * 86400) : undefined;
+    const headroom = parseUsdc(env.SETTLEMENT_HEADROOM_USDC);
+    label(funder, "settlement funding desk wallet");
+    const { poolAbi } = require("../deploy/poolModules");
+    const pool = new ethers.Contract(poolAddress ?? ZERO_ADDRESS, await poolAbi(), provider);
+    const tl = earnTimelock ? await timelockOf(earnTimelock) : undefined;
+    const tlAddress = earnTimelock ?? ZERO_ADDRESS;
+    const salt = ethers.id("signing-plan: SL Earn timelock proposal (LendingPool upgrade: the Settlement Funding lane, decision 54)");
+    const upgradeData = impl ? pool.interface.encodeFunctionData("upgradeTo", [impl]) : "0x";
+    const delay: bigint = tl ? await tl.getMinDelay() : 604800n;
+    const opId: string = tl && impl && poolAddress ? await tl.hashOperation(poolAddress, 0n, upgradeData, ZERO_HASH, salt) : ZERO_HASH;
+    let running: string | undefined;
+    if (poolAddress) running = ethers.getAddress("0x" + (await provider.getStorage(poolAddress, IMPL_SLOT)).slice(-40));
+    const upgraded = !!impl && same(running, impl);
+    let sSt: { status: StepStatus; reason?: string };
+    let xSt: { status: StepStatus; reason?: string };
+    if (upgraded) sSt = xSt = { status: "done", reason: "The pool runs the implementation with the lane." };
+    else if (!poolAddress) sSt = xSt = waitingFor("No LendingPool record.");
+    else if (!impl) {
+      sSt = xSt = waitingFor(`Waits for the new LendingPool implementation: SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network ${network} validates it against the manifest, deploys it and writes deployments/${network}/${SETTLEMENT_LANE_RECORD}.json.`);
+    } else if (!tl || !lendingSafe) {
+      sSt = xSt = waitingFor(!lendingSafe ? "Waiting for input: CLEAR_LENDING_SAFE." : "No EarnTimelock record yet (deploy 26, E1).");
+    } else if (!(await tl.hasRole(await tl.PROPOSER_ROLE(), lendingSafe))) {
+      sSt = xSt = waitingFor(`CLEAR_LENDING_SAFE ${lendingSafe} is not a proposer on the Earn timelock ${earnTimelock}.`);
+    } else if (!(await pool.hasRole(ZERO_HASH, earnTimelock))) {
+      sSt = xSt = waitingFor("The Earn timelock does not hold the LendingPool's admin yet (the Earn handover, I4, gives it).");
+    } else {
+      sSt = (await tl.isOperation(opId)) ? { status: "done" } : { status: "ready" };
+      if (await tl.isOperationDone(opId)) xSt = { status: "done" };
+      else if (!(await tl.isOperation(opId))) xSt = waitingFor("Waits for SL-upgrade-schedule, then 7 days.");
+      else if (!(await tl.isOperationReady(opId))) xSt = waitingFor(`Not yet: the Earn timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(opId)) * 1000).toISOString()}.`);
+      else xSt = { status: "ready" };
+    }
+    const implNote = impl ? `upgradeTo(${impl}): the LendingPool implementation with the Settlement Funding lane` : "upgradeTo(the new implementation)";
+    push({
+      id: "SL-upgrade-schedule", stage: "SL", title: "Clear Lending Safe: schedule the Yield Pool upgrade that adds the Settlement Funding lane",
+      explanation: "A new Earn timelock proposal (decision 54), scheduled only after the E8 batch has run: it upgrades the LendingPool in place to the implementation scripts/upgrade_settlement_lane.ts validated and deployed. It adds the lane (one registered funder, a cap per period, a Settlement Headroom, an immediate stop) and changes nothing else. It can run 7 days later. Sign it in the Safe app.",
+      kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+      ...encode(timelockIface, "schedule", [poolAddress ?? ZERO_ADDRESS, 0n, upgradeData, ZERO_HASH, salt, delay], ["LendingPool (the Yield Pool)", undefined, implNote, "none", "a fixed label for this proposal", `${Number(delay) / 86400} days`]),
+      dependsOn: ["E8x-earn-execute"], ...sSt,
+    });
+    push({
+      id: "SLx-upgrade-execute", stage: "Day 7", title: "Clear Lending Safe: run the Yield Pool upgrade that adds the Settlement Funding lane (day 7)",
+      explanation: "After the Earn timelock's 7 days, the Safe runs the queued upgrade. The lane starts empty: no funder, no headroom, until the SL-funder and SL-headroom steps.",
+      kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+      ...encode(timelockIface, "execute", [poolAddress ?? ZERO_ADDRESS, 0n, upgradeData, ZERO_HASH, salt], ["LendingPool (the Yield Pool)", undefined, implNote, "none", "the same label"]),
+      dependsOn: ["SL-upgrade-schedule", "E8x-earn-execute"], ...xSt,
+    });
+
+    // The lane as the pool reports it (only once the pool runs the lane's implementation).
+    let lane: { funder: string; capPerPeriod: bigint; periodSeconds: bigint; stopped: boolean; epoch: bigint; headroom: bigint } | undefined;
+    if (upgraded) lane = await pool.settlementLane();
+    const deployers = deploymentSigners;
+    const DEPLOYER = ethers.id("DEPLOYER_ROLE");
+    if (deployers.length < 2) notes.push("Waiting for input: the pool's DEPLOYER_ROLE needs two signers in deploy/config/earn-roles.json (the SL steps).");
+    deployers.forEach((a, i) => label(a, `deployment signer ${ordinal(i)}`));
+    if (poolAddress) {
+      for (const [i, d] of deployers.slice(0, 2).entries()) {
+        if (!(await pool.hasRole(DEPLOYER, d))) notes.push(`Deployment signer ${i + 1} ${d} (deploy/config/earn-roles.json) does not hold the pool's DEPLOYER_ROLE on chain: the SL-funder and SL-headroom pairs need it first (a grant by the pool's admin, the Earn timelock).`);
+      }
+    }
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    const usd = (v: bigint | null | undefined) => (v === null || v === undefined ? "?" : formatUsdc(v));
+    const pairStep = async (
+      key: "funder" | "headroom", i: number, signer: string, inputs: string | undefined, applied: string | undefined,
+      action: string | undefined, enc: { data: string | null; functionSignature: string; args: PlanArg[] }, title: string, explanation: string,
+    ) => {
+      let st: { status: StepStatus; reason?: string };
+      if (inputs) st = waitingFor(inputs);
+      else if (!poolAddress) st = waitingFor("No LendingPool record.");
+      else if (!lane) st = waitingFor("Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation.");
+      else if (applied) st = { status: "done", reason: applied };
+      else if (action && same(await pool.proposerOf(action), signer)) st = { status: "done", reason: "Sent by this signer; waits for the other deployment signer." };
+      else if (!(await pool.hasRole(DEPLOYER, signer))) st = waitingFor(`This signer does not hold the pool's DEPLOYER_ROLE on chain (deploy/config/earn-roles.json lists it): the Earn timelock grants it first.`);
+      else st = { status: "ready" };
+      push({
+        id: `SL-${key}-${i + 1}`, stage: "SL", title: `${title}: deployment signer ${i + 1}`, explanation,
+        kind: "wallet", signer, signerLabel: `deployment signer ${i + 1}`, to: poolAddress ?? ZERO_ADDRESS, toLabel: "LendingPool (the Yield Pool)",
+        ...enc, dependsOn: ["SLx-upgrade-execute"], ...st,
+      });
+    };
+
+    // SL-funder: register the desk's wallet, its cap per period and the period.
+    {
+      const inputs: string[] = [];
+      if (!funder) inputs.push(env.SETTLEMENT_FUNDER ? `SETTLEMENT_FUNDER is not an address: ${env.SETTLEMENT_FUNDER}` : "SETTLEMENT_FUNDER (the funding desk's CDP wallet; the owner creates it)");
+      if (cap === null || cap === 0n) inputs.push("SETTLEMENT_CAP_USDC (dollars per period)");
+      if (!periodSeconds) inputs.push("SETTLEMENT_PERIOD_DAYS (1 to 45)");
+      const missing = inputs.length ? `Waiting for input: ${inputs.join(", ")}.` : undefined;
+      const action = lane && !missing
+        ? ethers.keccak256(coder.encode(["string", "address", "uint256", "uint64", "uint24"], ["settlementFunder", funder, cap, periodSeconds, lane.epoch]))
+        : undefined;
+      const applied = lane && !missing && same(lane.funder, funder) && BigInt(lane.capPerPeriod) === cap && BigInt(lane.periodSeconds) === periodSeconds && !lane.stopped
+        ? `Set: ${short(funder!)} may deploy up to ${usd(cap)} every ${days} day${days === 1 ? "" : "s"}.` : undefined;
+      if (lane?.stopped && !same(lane.funder, ZERO_ADDRESS)) notes.push(`The Settlement Funding lane is STOPPED (funder ${lane.funder}). SL-funder restarts it: two deployment signers.`);
+      const enc = missing
+        ? { data: null, functionSignature: "setSettlementFunder(address,uint256,uint64)", args: [] }
+        : encode(pool, "setSettlementFunder", [funder, cap, periodSeconds], [undefined, `${usd(cap)} per period (USDC base units)`, `${days} day${days === 1 ? "" : "s"}, in seconds`]);
+      for (const [i, d] of deployers.slice(0, 2).entries()) {
+        await pairStep("funder", i, d, missing, applied, action, enc, `Register the settlement funder (${usd(cap)} per ${days ?? "?"} days)`,
+          i === 0
+            ? "Registers the funding desk's wallet as the Yield Pool's settlement funder: it may then deploy, alone, up to the cap in each period, only to CL Operating, and only when a two-person Deployment could (no open queue request, no Suspension, no pending loss charge, Utilization at most 90% afterwards). Two different deployment signers send the same call; the second makes it count. It also restarts a stopped lane."
+            : "The same call from the other deployment signer; this one makes it count.");
+      }
+    }
+    // SL-headroom: how far above the posted Pool Tier principal the lane alone may go.
+    {
+      const missing = headroom === null ? "Waiting for input: SETTLEMENT_HEADROOM_USDC (dollars)." : undefined;
+      const action = !missing ? ethers.keccak256(coder.encode(["string", "uint256"], ["settlementHeadroom", headroom])) : undefined;
+      const applied = lane && !missing && BigInt(lane.headroom) === headroom ? `Set: ${usd(headroom)}.` : undefined;
+      const enc = missing
+        ? { data: null, functionSignature: "setSettlementHeadroom(uint256)", args: [] }
+        : encode(pool, "setSettlementHeadroom", [headroom], [`${usd(headroom)} (USDC base units)`]);
+      for (const [i, d] of deployers.slice(0, 2).entries()) {
+        await pairStep("headroom", i, d, missing, applied, action, enc, `Set the Settlement Headroom (${usd(headroom)})`,
+          i === 0
+            ? "Lets the settlement lane, and only the lane, take the Deployed Balance up to the posted Pool Tier principal plus this amount, to cover credit portions authorized and not yet settled. Two-person Deployments stay within the principal alone. Two different deployment signers send the same call."
+            : "The same call from the other deployment signer; this one makes it count.");
+      }
+    }
+    // CL Operating's batch for the SettlementForwarder (the AllowanceModule delegate that pushes USDC to the off-ramp).
+    push({
+      id: "SL-cl-operating", stage: "SL", title: "CL Operating: install the SettlementForwarder as its AllowanceModule delegate",
+      explanation: "CL Operating names the SettlementForwarder a spending-limit delegate and gives it an allowance, so the funding desk can push USDC from CL Operating only to the off-ramp. Its calls are added once the forwarder exists.",
+      kind: "safe", signer: addr(env.CLEAR_LENDING_ACCOUNT) ?? ZERO_ADDRESS, signerLabel: "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      to: ZERO_ADDRESS, toLabel: "AllowanceModule", data: null, functionSignature: "addDelegate(address)", args: [], dependsOn: [],
+      ...waitingFor("Waits for the SettlementForwarder (decision 54, part 2): not deployed yet."),
+    });
   }
 
   // ================= State attester (SA): the credit operator may attest members' states =================

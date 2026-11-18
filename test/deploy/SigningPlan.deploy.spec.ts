@@ -11,6 +11,7 @@ import { deployCreditCore } from "../../deploy/20_deploy_CreditCore";
 import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
 import { deployAssuranceTimelock, deployAssurancePool, CL_FEES_MASK, BOARD_ALLOCATION_MASK } from "../../deploy/assurance_timelock_handover";
 import { checkRolloutInputs, checkPayoutTopUpSetup } from "../../scripts/check_rollout_inputs";
+import { prepareSettlementLaneUpgrade } from "../../scripts/upgrade_settlement_lane";
 import {
   ALLOWANCE_MODULE_ABI, ERC20_ABI, PAYOUT_POOL_TOPUP_ABI, SAFE_MODULE_ABI, CANONICAL_ALLOWANCE_MODULE, topUpCalls, assertTopUpCall,
 } from "../../apps/api/src/services/payoutFunding/topUp";
@@ -47,13 +48,18 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   let lendingSafe: any, assurancePool: any, assuranceTimelock: any, collateralRegistry: any;
   let usdcToken: any;
   const PT_STEPS = ["TU-funder", "TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"];
+  // Settlement Funding (decision 54): the pool upgrade on the Earn timelock, then the lane's two-person settings.
+  const SL_STEPS = ["SL-upgrade-schedule", "SLx-upgrade-execute", "SL-funder-1", "SL-funder-2", "SL-headroom-1", "SL-headroom-2", "SL-cl-operating"];
+  // The pool's two DEPLOYER_ROLE signers (deploy 27 grants them; here the SL test does).
+  const deploymentSigners = [random(), random()];
+  let laneImpl: string;
   // The Assurance Pool's signers (Accounts 3 and 4 on Base Sepolia) and the addresses its setup names.
   const a3 = random(), a4 = random();
   const clFees = random(), disbursement = random(), clOperating = random(), clLossReserve = random();
   const retiredPayout = random();
 
   const record = (name: string, address: string) => fs.writeFileSync(path.join(DIR, `${name}.json`), JSON.stringify({ address, abi: [] }));
-  const plan = () => buildSigningPlan({ network: "hardhat", env, valuationSigners });
+  const plan = () => buildSigningPlan({ network: "hardhat", env, valuationSigners, deploymentSigners });
   const step = (p: SigningPlan, id: string) => {
     const found = p.steps.find((x) => x.id === id);
     if (!found) throw new Error(`no step ${id}: ${p.steps.map((x) => x.id).join(", ")}`);
@@ -138,6 +144,10 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     for (const v of [v1, v2]) await pool.grantRole(await pool.VALUATION_ROLE(), v.address);
     record("LendingPool", await pool.getAddress());
     valuationSigners = [v1.address, v2.address];
+    // I4: the Earn timelock holds the pool's admin (the deployer keeps it here, to grant the SL test's roles).
+    await pool.grantRole(ethers.ZeroHash, await earnTimelock.getAddress());
+    // Decision 54: scripts/upgrade_settlement_lane.ts validates and deploys the lane's implementation and records it.
+    laneImpl = (await prepareSettlementLaneUpgrade({ proxy: await pool.getAddress(), prepare: true, network: "hardhat", log: () => undefined })).implementation!;
 
     // C1: the savings vault and the batch C1c writes for its admin (the deployer).
     clrusd = await upgrades.deployProxy(await ethers.getContractFactory("ClearUSDUpgradeable"),
@@ -216,6 +226,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       ...ASSURANCE_KEYS.flatMap((k) => [`AS-${k}-approve-1`, `AS-${k}-approve-2`]), "AS-assurance-schedule", "ASx-assurance-execute",
       "AS-floor-1", "AS-floor-2",
       ...PT_STEPS,
+      ...SL_STEPS,
     ]);
     const ready = p.steps.filter((x) => x.status === "ready").map((x) => x.id);
     expect(ready).to.deep.equal([
@@ -269,6 +280,16 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "AS-payer-treasury-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [await safe.getAddress(), 12])));
     expect(step(p, "AS-exposure-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setExposureSources", [[await collateralRegistry.getAddress()]])));
     expect(step(p, "AS-assurance-schedule").reason).to.contain("AS-payer-clfees-approve-1");
+    // Settlement Funding (decision 54): the pool upgrade is a new Earn timelock proposal, scheduled only after E8x has run.
+    expect(step(p, "SL-upgrade-schedule").reason).to.equal("Waits for E8x-earn-execute first.");
+    expect(step(p, "SL-upgrade-schedule").dependsOn).to.deep.equal(["E8x-earn-execute"]);
+    expect(step(p, "SL-upgrade-schedule").signer).to.equal(await lendingSafe.getAddress());
+    expect(step(p, "SL-upgrade-schedule").to).to.equal(await earnTimelock.getAddress());
+    expect(step(p, "SL-upgrade-schedule").args[2].value).to.equal(pool.interface.encodeFunctionData("upgradeTo", [laneImpl]));
+    expect(step(p, "SLx-upgrade-execute").dependsOn).to.include("E8x-earn-execute");
+    expect(step(p, "SL-funder-1").reason).to.contain("Waiting for input: SETTLEMENT_FUNDER");
+    expect(step(p, "SL-funder-1").data).to.equal(null);
+    expect(step(p, "SL-cl-operating").reason).to.contain("SettlementForwarder");
     for (const x of p.steps) expect(x.chainId).to.equal(31337);
   });
 
@@ -327,7 +348,11 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(sent.indexOf("AS-payer-clfees-approve-2")).to.be.greaterThan(sent.indexOf("AS-payer-clfees-approve-1"));
     expect(sent.indexOf("AS-assurance-schedule")).to.be.greaterThan(sent.indexOf("AS-exposure-approve-2"));
     expect(sent.indexOf("ASx-assurance-execute")).to.be.greaterThan(sent.indexOf("AS-assurance-schedule"));
-    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator", ...PT_STEPS]);
+    // The lane's upgrade was scheduled only after the E8 batch ran; its own 7 days are still running.
+    expect(sent.indexOf("SL-upgrade-schedule")).to.be.greaterThan(sent.indexOf("E8x-earn-execute"));
+    expect(step(p, "SLx-upgrade-execute").reason).to.contain("the Earn timelock's 7 days end at");
+    const SL_LEFT = SL_STEPS.filter((id) => id !== "SL-upgrade-schedule");
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator", ...PT_STEPS, ...SL_LEFT]);
 
     // The chain shows each change made.
     expect(await agent.vault()).to.equal(await bondVault.getAddress());
@@ -381,15 +406,15 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "D4-operator").status).to.equal("ready");
     await send(step(p, "D4-operator"));
     p = await plan();
-    // Everything but the payout top-ups, which wait for their inputs (the last test walks them).
-    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(PT_STEPS);
+    // Everything but the payout top-ups and the settlement lane, which wait for their inputs (the last tests walk them).
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal([...PT_STEPS, ...SL_LEFT]);
     // Nothing left for a Safe to sign: no batch is written.
     expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
     expect(fs.readdirSync(path.join(DIR, "safe-batches")).filter((f) => f.startsWith("signing-"))).to.deep.equal([]);
   });
 
   it("refuses Assurance inputs that are empty, or that the pool would refuse", async function () {
-    const refused = (over: Record<string, string>) => failure(buildSigningPlan({ network: "hardhat", env: { ...env, ...over }, valuationSigners }));
+    const refused = (over: Record<string, string>) => failure(buildSigningPlan({ network: "hardhat", env: { ...env, ...over }, valuationSigners, deploymentSigners }));
     // Empty: no silent fallback to another address.
     expect(await refused({ ASSURANCE_CL_FEES_PAYER: "" })).to.contain("Refusing: ASSURANCE_CL_FEES_PAYER is empty");
     expect(await refused({ ASSURANCE_DISBURSEMENT: "", ASSURANCE_LOSS_RESERVE: "" })).to.contain("ASSURANCE_LOSS_RESERVE, ASSURANCE_DISBURSEMENT are empty");
@@ -411,7 +436,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
 
   it("follows the inputs: a new signer in a slot becomes the step's signer", async function () {
     const other = random();
-    const p = await buildSigningPlan({ network: "hardhat", env: { ...env, HOLD_SIGNERS: `${s.h1.address},${other}` }, valuationSigners });
+    const p = await buildSigningPlan({ network: "hardhat", env: { ...env, HOLD_SIGNERS: `${s.h1.address},${other}` }, valuationSigners, deploymentSigners });
     expect(step(p, "E8-hold-2").signer).to.equal(s.deployer.address);
     expect(step(p, "E8-hold-2").args[1].value).to.equal(other);
     expect(step(p, "E8-hold-2").status).to.equal("ready");
@@ -425,9 +450,9 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     } finally {
       fs.writeFileSync(path.join(DIR, "CollateralAgent.json"), JSON.stringify(real));
     }
-    expect(await failure(buildSigningPlan({ network: "base-sepolia", recordsDir: DIR, env, valuationSigners })))
+    expect(await failure(buildSigningPlan({ network: "base-sepolia", recordsDir: DIR, env, valuationSigners, deploymentSigners })))
       .to.contain("Refusing: base-sepolia must be chain 84532, and this node answers as chain 31337");
-    expect(await failure(buildSigningPlan({ network: "base-sepolia-fork", recordsDir: DIR, env, valuationSigners }))).to.contain("must be chain 84532");
+    expect(await failure(buildSigningPlan({ network: "base-sepolia-fork", recordsDir: DIR, env, valuationSigners, deploymentSigners }))).to.contain("must be chain 84532");
   });
 
   /*
@@ -460,7 +485,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     const base = { ...env, CLEAR_LENDING_ACCOUNT: clOp };
 
     // No top-up inputs yet: the steps wait, the plan is not refused, and CL Operating may already enable the module.
-    let p = await buildSigningPlan({ network: "hardhat", env: base, valuationSigners });
+    let p = await buildSigningPlan({ network: "hardhat", env: base, valuationSigners, deploymentSigners });
     expect(step(p, "TU-funder").reason).to.contain("Waiting for input: PAYOUT_TOPUP_WALLET");
     expect(step(p, "TU-safe-delegate").status).to.equal("waiting");
     expect(step(p, "TU-safe-allowance").reason).to.contain("PAYOUT_TOPUP_WALLET");
@@ -473,7 +498,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       ...base, PAYOUT_TOPUP_WALLET: wallet, PAYOUT_TOPUP_CAP_USDC: "5000", PAYOUT_TOPUP_RESET_MINUTES: "10080",
       PAYOUT_TOPUP_RESET_BASE_MINUTES: String(Math.floor((await ethers.provider.getBlock("latest"))!.timestamp / 60) - 60),
     };
-    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners, deploymentSigners });
     expect(PT_STEPS.map((id) => step(p, id).status)).to.deep.equal(["ready", "ready", "ready", "waiting"]);
     expect(step(p, "TU-safe-allowance").reason).to.equal("Waits for TU-safe-delegate first.");
     expect(step(p, "TU-funder").stage).to.equal("Payout top-ups");
@@ -501,21 +526,22 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     const creditTimelock = ethers.Wallet.createRandom().address;
     await (await payoutPool.grantRole(ethers.ZeroHash, creditTimelock)).wait();
     await (await payoutPool.renounceRole(ethers.ZeroHash, s.deployer.address)).wait();
-    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners, deploymentSigners });
     expect(step(p, "TU-funder").reason).to.contain("credit handover, I2");
     // Undo it for the rest of this test (the timelock gives the admin back).
     await ethers.provider.send("hardhat_impersonateAccount", [creditTimelock]);
     await ethers.provider.send("hardhat_setBalance", [creditTimelock, "0x" + ethers.parseEther("1").toString(16)]);
     await (await payoutPool.connect(await ethers.getSigner(creditTimelock)).grantRole(ethers.ZeroHash, s.deployer.address)).wait();
-    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners, deploymentSigners });
 
     // The deployer grants FUNDER_ROLE; CL Operating sends the batch's calls in order (as its Safe transaction would).
     await send(step(p, "TU-funder"));
     for (const t of batch.transactions) await send({ ...step(p, "TU-safe-module"), to: t.to, data: t.data });
-    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners, deploymentSigners });
     for (const id of PT_STEPS) expect(step(p, id).status, id).to.equal("done");
     expect(step(p, "TU-safe-allowance").reason).to.contain("$5,000.00 every 7 days");
-    expect(p.steps.every((x) => x.status === "done")).to.equal(true);
+    // Everything but the settlement lane (the next test).
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(SL_STEPS.filter((id) => id !== "SL-upgrade-schedule"));
     expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
 
     // The preflight: every line passes; a wallet with another PayoutPool role fails.
@@ -566,5 +592,73 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     const bad = await checkPayoutTopUpSetup(inputs, ethers.provider, { payoutPool: await payoutPool.getAddress() });
     expect(bad.filter((r) => r.status === "FAIL").map((r) => r.what).join("\n")).to.contain("OPERATOR_ROLE");
     await (await payoutPool.revokeRole(ethers.id("OPERATOR_ROLE"), wallet)).wait();
+  });
+  /*
+   * Settlement Funding (decision 54): the pool upgrade scheduled after E8x (the walk above), its 7 days, then the
+   * lane's two-person settings from the rollout inputs; a stop by one signer makes SL-funder a restart by two.
+   */
+  it("settlement funding: runs the pool upgrade, then the funder and headroom pairs, and a stop makes SL-funder a restart", async function () {
+    const [d1, d2] = deploymentSigners;
+    const funder = random();
+    const lane = { ...env, SETTLEMENT_CAP_USDC: "5000", SETTLEMENT_PERIOD_DAYS: "7", SETTLEMENT_HEADROOM_USDC: "1000" };
+    const planWith = (e: Record<string, string>) => buildSigningPlan({ network: "hardhat", env: e, valuationSigners, deploymentSigners });
+
+    let p = await planWith(lane);
+    expect(step(p, "SL-upgrade-schedule").status).to.equal("done");
+    expect(step(p, "SL-headroom-1").reason).to.contain("SLx-upgrade-execute");
+    // The payout test above already moved the clock a week on: the timelock's 7 days may be over.
+    if (step(p, "SLx-upgrade-execute").status !== "ready") {
+      await ethers.provider.send("evm_increaseTime", [7 * DAY + 60]);
+      await ethers.provider.send("evm_mine", []);
+      p = await planWith(lane);
+    }
+    expect(step(p, "SLx-upgrade-execute").status).to.equal("ready");
+    await send(step(p, "SLx-upgrade-execute"));
+    expect(await upgrades.erc1967.getImplementationAddress(await pool.getAddress())).to.equal(laneImpl);
+
+    // The signers do not hold DEPLOYER_ROLE yet: the steps say so. No funder yet: SL-funder waits for its input.
+    p = await planWith(lane);
+    expect(step(p, "SLx-upgrade-execute").status).to.equal("done");
+    expect(step(p, "SL-headroom-1").reason).to.contain("does not hold the pool's DEPLOYER_ROLE");
+    expect(step(p, "SL-funder-1").reason).to.contain("Waiting for input: SETTLEMENT_FUNDER");
+    for (const d of deploymentSigners) await pool.grantRole(await pool.DEPLOYER_ROLE(), d);
+
+    const inputs = { ...lane, SETTLEMENT_FUNDER: funder };
+    p = await planWith(inputs);
+    expect(["SL-funder-1", "SL-funder-2", "SL-headroom-1", "SL-headroom-2"].map((id) => step(p, id).status)).to.deep.equal(["ready", "ready", "ready", "ready"]);
+    expect(step(p, "SL-funder-1").signer).to.equal(d1);
+    expect(step(p, "SL-funder-2").signer).to.equal(d2);
+    expect(step(p, "SL-funder-1").data).to.equal(pool.interface.encodeFunctionData("setSettlementFunder", [funder, 5000n * 10n ** 6n, 7 * DAY]));
+    expect(step(p, "SL-headroom-1").data).to.equal(pool.interface.encodeFunctionData("setSettlementHeadroom", [1000n * 10n ** 6n]));
+    expect(step(p, "SL-funder-1").title).to.contain("$5,000.00 per 7 days");
+    await send(step(p, "SL-funder-1"));
+    await send(step(p, "SL-headroom-2"));
+    p = await planWith(inputs);
+    // The first signature is recorded on chain; the step is done and the pair's other half is what is left.
+    expect(step(p, "SL-funder-1").status).to.equal("done");
+    expect(step(p, "SL-funder-1").reason).to.contain("waits for the other deployment signer");
+    expect(step(p, "SL-headroom-2").status).to.equal("done");
+    expect(step(p, "SL-funder-2").status).to.equal("ready");
+    expect(step(p, "SL-headroom-1").status).to.equal("ready");
+    await send(step(p, "SL-funder-2"));
+    await send(step(p, "SL-headroom-1"));
+    p = await planWith(inputs);
+    for (const id of ["SL-funder-1", "SL-funder-2", "SL-headroom-1", "SL-headroom-2"]) expect(step(p, id).status, id).to.equal("done");
+    expect(step(p, "SL-funder-1").reason).to.contain("may deploy up to $5,000.00 every 7 days");
+    const l = await pool.settlementLane();
+    expect([l.funder, l.capPerPeriod, l.periodSeconds, l.stopped, l.headroom]).to.deep.equal([funder, 5000n * 10n ** 6n, BigInt(7 * DAY), false, 1000n * 10n ** 6n]);
+
+    // One deployer stops the lane: SL-funder is a restart, which takes both signers again.
+    await ethers.provider.send("hardhat_impersonateAccount", [d1]);
+    await (await pool.connect(await ethers.getSigner(d1)).stopSettlementFunder()).wait();
+    p = await planWith(inputs);
+    expect(step(p, "SL-funder-1").status).to.equal("ready");
+    expect(step(p, "SL-funder-2").status).to.equal("ready");
+    expect(p.notes.join("\n")).to.contain("Settlement Funding lane is STOPPED");
+    await send(step(p, "SL-funder-2"));
+    await send(step(p, "SL-funder-1"));
+    expect((await pool.settlementLane()).stopped).to.equal(false);
+    p = await planWith(inputs);
+    expect(p.steps.filter((x) => x.id.startsWith("SL") && x.status !== "done").map((x) => x.id)).to.deep.equal(["SL-cl-operating"]);
   });
 });
