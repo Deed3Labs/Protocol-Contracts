@@ -100,15 +100,18 @@ The funding desk funds the Credit Settlement Account before each card settlement
 3. **Fill in the bank's settings** (`docs/operators/settlement-funding.md`, "Owner checklist"): the cut-off time and zone, business days and holidays, whether a Collection Account to CSA book transfer is same-day, and the CSA minimum the bank requires. On Base Sepolia the off-ramp is the mock one (`SETTLEMENT_OFFRAMP=mock`).
 4. **A dry run on Railway first:** `SETTLEMENT_FUNDING_ENABLED=1` with `SETTLEMENT_FUNDING_DRY_RUN=1`. It decides, records and logs, and sends nothing. Until the lane exists the Command Center's "Card settlement funding" card says "lane not set up".
 
-**After the contracts PR merges:**
+**Open: choose a second deployment signer.** The SL pairs below need two different holders of the Yield Pool's `DEPLOYER_ROLE`. `deploy/config/earn-roles.json` lists the deployment signer `0x895d…7AAA` and Account 3 `0x608d…7c23`, but on chain only Account 3 holds the role (read Nov 18, 2026); `0x895d…7AAA` holds neither it nor `CCO_ROLE`, where it is also listed. Choose the second deployer, put it in `earn-roles.json`, and the Clear Lending Safe grants it through the Earn timelock (7 days). Until then `SL-funder-2` and `SL-headroom-2` cannot be signed. The signing plan says the same in its notes.
 
-5. **The SL Earn timelock proposal**, after E8x has executed on Nov 24: a **new** proposal from the Clear Lending Safe that adds the settlement lane to the Yield Pool. It executes 7 days later.
-6. **`SL-funder`**: two `DEPLOYER_ROLE` signers each send `setSettlementFunder(desk wallet, $5,000, 7 days)` (`SETTLEMENT_CAP_USDC=5000`, `SETTLEMENT_PERIOD_DAYS=7`). The second one sets it.
-7. **`SL-headroom`**: two `DEPLOYER_ROLE` signers each send `setSettlementHeadroom($1,000)` (`SETTLEMENT_HEADROOM_USDC=1000`).
-8. **Deploy the SettlementForwarder** (the desk wallet as its only caller, the off-ramp address as its only destination), then **CL Operating's batch**: in the Safe app, open CL Operating, load the batch, confirm it from the Clear Lending Safe (AAA and …698a), execute it. It names the forwarder as the AllowanceModule delegate with its weekly allowance, and sets the off-ramp address.
-9. **Then, still in dry run,** set `SETTLEMENT_FORWARDER` and `SETTLEMENT_OFFRAMP_ADDRESS` on the API and watch a few cut-offs. Only when they read as expected, remove `SETTLEMENT_FUNDING_DRY_RUN`. Leave `SETTLEMENT_RETURNS_ENABLED` off for now.
+**After the contracts PRs merge:**
 
-To stop it at any time: `stopSettlementFunder()` on the Yield Pool, one call from any `DEPLOYER_ROLE` or `CCO_ROLE` holder. Restarting it takes both deployers.
+5. **Prepare, nothing live:** the cloud session runs `SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts` (validates the upgrade and deploys the new implementation, record `LendingPoolSettlementLane`) and `deploy/28_deploy_SettlementForwarder.ts` (the SettlementForwarder, for CL Operating). Fill in `SETTLEMENT_OFFRAMP_ADDRESS` in the rollout env (the off-ramp's deposit address bound to the CSA; on Base Sepolia, the mock's).
+6. **`SL-upgrade-schedule`**, after E8x has executed on Nov 24: a **new** Earn timelock proposal from the Clear Lending Safe that adds the settlement lane to the Yield Pool. **`SLx-upgrade-execute`** runs it 7 days later.
+7. **`SL-funder-1` and `SL-funder-2`**: two different `DEPLOYER_ROLE` signers each send `setSettlementFunder(desk wallet, $5,000, 7 days)` (`SETTLEMENT_CAP_USDC=5000`, `SETTLEMENT_PERIOD_DAYS=7`). The second one sets it.
+8. **`SL-headroom-1` and `SL-headroom-2`**: the same two each send `setSettlementHeadroom($1,000)` (`SETTLEMENT_HEADROOM_USDC=1000`).
+9. **CL Operating's batch**, `signing-SL-cl-operating.json`: in the Safe app, open CL Operating, load the batch, confirm it from the Clear Lending Safe (AAA and …698a), execute it. Its four steps, `SL-cl-operating-delegate`, `-allowance`, `-offramp` and `-desk`, name the forwarder as the AllowanceModule delegate with its weekly allowance, and set its off-ramp and its desk (the desk wallet). Check it read-only: `npx hardhat run scripts/check_rollout_inputs.ts --network base-sepolia` (`checkSettlementForwarderSetup`).
+10. **Then, still in dry run,** set `SETTLEMENT_FORWARDER` and `SETTLEMENT_OFFRAMP_ADDRESS` on the API and watch a few cut-offs. Only when they read as expected, remove `SETTLEMENT_FUNDING_DRY_RUN`. Leave `SETTLEMENT_RETURNS_ENABLED` off for now.
+
+To stop it at any time: `stopSettlementFunder()` on the Yield Pool, one call from any `DEPLOYER_ROLE` or `CCO_ROLE` holder. Restarting it takes both deployers (`SL-funder-1/2` again).
 
 ## 5. The order
 
@@ -125,7 +128,7 @@ To stop it at any time: `stopSettlementFunder()` on the Yield Pool, one call fro
    - `PAYOUT_KEEPER_ENABLED=1`;
    - the Assurance fee payer, once the new pool is deployed: `ASSURANCE_POOL_V2_84532` (its address) the same day, then `ASSURANCE_FEE_PAYER_CDP_ACCOUNT_NAME=cl-fees-base-sepolia` and, once the pool's payers are set, `ASSURANCE_FEE_PAYER_ENABLED=1`. Each month Clear Lending's two signers sign CL Operating's funding transfer that Command proposes; the CL Fees wallet then pays the pool on its own. See [`assurance-fee-payer.md`](../operators/assurance-fee-payer.md).
    - once the two signatures in 4b are done and `PAYOUT_POOL_84532` names the fresh PayoutPool: `PAYOUT_TOPUP_WALLET=0xC0C4EC7875D1838C0AE610accC16AAdCDb475068`, `PAYOUT_TOPUP_CDP_ACCOUNT_NAME=payout-topup-base-sepolia`, then `PAYOUT_TOPUP_ENABLED=1`.
-   - card settlement funding, in dry run first (section 4c): `SETTLEMENT_DESK_WALLET`, `SETTLEMENT_DESK_CDP_ACCOUNT_NAME=settlement-desk-base-sepolia`, the Lithic account tokens, `SETTLEMENT_FUNDING_ENABLED=1` and `SETTLEMENT_FUNDING_DRY_RUN=1`. The dry run comes off only after the `SL` steps and the forwarder are done.
+   - card settlement funding, in dry run first (section 4c): `SETTLEMENT_DESK_WALLET`, `SETTLEMENT_DESK_CDP_ACCOUNT_NAME=settlement-desk-base-sepolia`, the Lithic account tokens, `SETTLEMENT_FUNDING_ENABLED=1` and `SETTLEMENT_FUNDING_DRY_RUN=1`. The dry run comes off only after the `SL` steps (CL Operating's batch included) are done.
 
 ## State attester grant (Nov 18, 2026)
 

@@ -76,7 +76,7 @@ Then `scripts/signing_plan.ts` lists these steps (stage `SL`):
 
 Nothing is scheduled until the owner says so.
 
-Their inputs are in `deploy/config/base-sepolia.rollout.env`: `SETTLEMENT_FUNDER` (the desk wallet), `SETTLEMENT_CAP_USDC` and `SETTLEMENT_PERIOD_DAYS` (the lane's cap, $5,000 every 7 days on Base Sepolia) and `SETTLEMENT_HEADROOM_USDC` ($1,000). Addresses and dollars only. While the funder is empty, `SL-funder` waits and nothing else does. The step-by-step for the owner is `docs/audit/SEPOLIA-OWNER-CHECKLIST.md` section 4c; the runbook is `docs/audit/DEPLOY-RUNBOOK.md` section 4.4.
+Their inputs are in `deploy/config/base-sepolia.rollout.env`: `SETTLEMENT_FUNDER` (the desk wallet), `SETTLEMENT_CAP_USDC` and `SETTLEMENT_PERIOD_DAYS` (the lane's cap, $5,000 every 7 days on Base Sepolia, and the forwarder's allowance, the same), `SETTLEMENT_HEADROOM_USDC` ($1,000) and `SETTLEMENT_OFFRAMP_ADDRESS` (the off-ramp's deposit address bound to the CSA). Addresses and dollars only. While the funder is empty, `SL-funder-1/2` and `SL-cl-operating-desk` wait; while the off-ramp is empty, `SL-cl-operating-offramp` waits; nothing else waits on them. The step-by-step for the owner is `docs/audit/SEPOLIA-OWNER-CHECKLIST.md` section 4c; the runbook is `docs/audit/DEPLOY-RUNBOOK.md` section 4.4.
 
 CL Operating is nested, so its batch is signed like the top-ups' setup batch:
 
@@ -85,9 +85,11 @@ CL Operating is nested, so its batch is signed like the top-ups' setup batch:
 3. Confirm it from the Clear Lending Safe. Both of its owners sign.
 4. Execute it.
 
-To check the setup read-only, run `npx hardhat run scripts/check_rollout_inputs.ts --network base-sepolia` once its forwarder check is in (it comes with the contracts change). The desk makes the same checks on every run and says which is missing ("lane not set up").
+To check the setup read-only, run `npx hardhat run scripts/check_rollout_inputs.ts --network base-sepolia`. Its `checkSettlementForwarderSetup` checks that the desk wallet is a plain account no other job uses, that the SettlementForwarder (deploy 28) serves CL Operating, Safe's AllowanceModule and USDC, that its off-ramp and desk are the rollout's, and that it is CL Operating's delegate with an allowance no larger than the lane's cap. A step not done yet is a WARN, a wrong one a FAIL. The desk makes the same checks on every run and says which is missing ("lane not set up").
 
-To change the limits later, two `DEPLOYER_ROLE` signers call `setSettlementFunder` or `setSettlementHeadroom` again, and CL Operating's owners call `setAllowance` for the forwarder. Restarting a stopped funder also takes both deployers.
+To change the limits later, two `DEPLOYER_ROLE` signers call `setSettlementFunder` or `setSettlementHeadroom` again, and CL Operating's owners call `setAllowance` for the forwarder. Setting the lane again never adds to the period running. Restarting a stopped funder also takes both deployers, both after the stop: a proposal made before it never applies.
+
+**Open: a second deployment signer.** `deploy/config/earn-roles.json` lists two `DEPLOYER_ROLE` signers for the pool, `0x895d…7AAA` and `0x608d…7c23`, but on Base Sepolia only `0x608d…7c23` holds the role (read Nov 18, 2026). `SL-funder-1/2` and `SL-headroom-1/2` need two different holders, so a second deployer has to hold the role first. The owner chooses who; the grant is the pool admin's, the Earn timelock (the Clear Lending Safe schedules it, 7 days). `0x895d…7AAA` is also listed for `CCO_ROLE` and holds neither, so today only `0x608d…7c23` can stop the lane.
 
 ## Owner checklist
 
