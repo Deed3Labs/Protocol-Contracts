@@ -38,7 +38,7 @@ describe('the loss order on Pools, live', () => {
 describe('the yield pool’s reference cards, live', () => {
   test('Where member payments go and the 30-day pool are drawn live, in the reference’s order', () => {
     expect(money).not.toContain('if (L) return <>{band(flow)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;');
-    expect(money).toContain('return <>{band(flow)}{band(pay)}{band(proj)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;');
+    expect(money).toContain('return <>{band(flow)}{band(pay)}{band(proj)}{settle}{band(<>{a}{b}</>)}{band(tbl)}</>;');
   });
   test('member payments come from the issuers’ tiers and the charges, not the demo balances', () => {
     const live = money.slice(money.indexOf('function memberPaymentsLive()'), money.indexOf('function memberPayments()'));
@@ -82,7 +82,7 @@ describe('Home, live', () => {
     expect(home).toContain('M.payout < due30 ? `Amber');
   });
   test('heads-up and the timeline come from what’s recorded', () => {
-    expect(home).toContain('heads: [...liveHeads(), ...ALERTS0');
+    expect(home).toContain('heads: [...settleHead(), ...liveHeads(), ...ALERTS0');
     expect(home).toContain('past: livePast()');
     expect(home).toContain('...liveDue(now)');
   });

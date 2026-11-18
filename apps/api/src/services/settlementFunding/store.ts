@@ -6,7 +6,7 @@ import type { Queryable } from '../../db/db.js';
  * as bigint.
  */
 
-export type MoveKind = 'book' | 'deploy' | 'return-margin' | 'return-pool' | 'margin-advance';
+export type MoveKind = 'book' | 'deploy' | 'return-margin' | 'return-pool' | 'margin-advance' | 'stop';
 export type MoveStatus =
   | 'planned'
   | 'booking'
@@ -289,7 +289,7 @@ export function deskStore(db: Queryable, chainId: number, pool: string): DeskSto
           WHERE ${where} AND status = 'done' AND finished_at >= $3 AND finished_at < $4 GROUP BY kind`,
         [chainId, p, from.toISOString(), to.toISOString()],
       );
-      const out: Record<MoveKind, bigint> = { book: 0n, deploy: 0n, 'return-margin': 0n, 'return-pool': 0n, 'margin-advance': 0n };
+      const out: Record<MoveKind, bigint> = { book: 0n, deploy: 0n, 'return-margin': 0n, 'return-pool': 0n, 'margin-advance': 0n, stop: 0n };
       for (const r of rows) out[r.kind] = BigInt(r.total);
       return out;
     },
@@ -337,6 +337,19 @@ export async function clearDeskHalt(db: Queryable, id: number, by: string): Prom
 export async function recordMarginAdvance(db: Queryable, chainId: number, pool: string, amount: bigint, by: string, note: string): Promise<MoveRow> {
   if (amount <= 0n) throw new Error('A Margin advance is a positive amount.');
   return deskStore(db, chainId, pool).create({ kind: 'margin-advance', cutoffAt: null, ref: null, due: 0n, need: 0n, amount, status: 'done', recordedBy: by, note });
+}
+
+/**
+ * A person stops the desk (Command's "Stop the desk"): a 'stop' move, failed at once, so the desk halts on it as it does on
+ * any failed move and moves nothing until two people restart it (which clears it). It moves no money.
+ */
+export async function stopDesk(db: Queryable, chainId: number, pool: string, by: string, why: string): Promise<number> {
+  const { rows } = await db.query<{ id: string }>(
+    `INSERT INTO ops.settlement_funding_moves (chain_id, pool, kind, amount, status, error, recorded_by, note, finished_at)
+     VALUES ($1, $2, 'stop', 0, 'failed', $3, $4, $5, now()) RETURNING id`,
+    [chainId, pool, `Stopped by ${by}: ${why}`, by, why],
+  );
+  return Number(rows[0].id);
 }
 
 /** Every pool's latest check, recent moves, halt and days, for the Command Center (no chain read). */

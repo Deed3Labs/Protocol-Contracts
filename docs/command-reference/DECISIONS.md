@@ -829,3 +829,33 @@ prototype in this folder). The page sheets are copied from it; the sections carr
   agreements register ("Partner Member Agreement (MR-02)", "Program Agreement (I-02)", the Holdings bylaws
   and others). Under brief update 2's section 0 none of those may land in this repo, so Records → Documents
   keeps its generic titles and differs from the reference there.
+
+## Card settlement redesign (2026-11-18, decision 54)
+
+The reference (`design/command-center-ui/command-center.html`, replaced by the Clear Command Center artifact of 18
+Nov) adds the card settlement card to Money → Overview, a slim card to Pools → Yield pool, a 5th tile to both
+strips and a row to both needs lists. Ported; where the app differs:
+
+- **The verdict is the API's, from the desk's own rule.** The reference's `SETTLE.calc()` books
+  `min(collection, need)` and draws `min(lane left, pool room, the rest)`. Live, the verdict uses `fundingPlan`
+  (desk.ts), which `decideFunding` also uses: the Collection Account's reserve, the forwarder's allowance, the
+  minimum move and the lane's setup all count, so Home, Money and the desk can't disagree. On the reference's
+  four states the two give the same figures.
+- **A dry run is a state of its own.** The desk in `SETTLEMENT_FUNDING_DRY_RUN` moves nothing, so its verdict
+  counts nothing as moving and the pill says "Dry run".
+- **A lane not set up yet** (before the SL upgrade, a funder or the forwarder) says so on its tile; only the
+  two-person deploy is offered.
+- **Every time is in the cut-off's zone.** The card carries `timeZone`; the stat band, the timeline, the tiles and
+  the needs rows all read in it. The timeline folds 20:00–06:00 in that zone when the night falls between now
+  and the cut-off, and is linear otherwise.
+- **"Settled with Visa"** (the last cut-off) is the demo's only. Live, the desk records its own moves, not the bank's
+  settlement, so the moves list shows what the desk did.
+- **Stop the desk** records a `stop` move (migration 0084), failed at once, so the desk halts on it as it does on
+  any failed move; it returns `stopSettlementFunder()` for the signer's own wallet. **Restart…** (two people)
+  clears that halt, and prepares `setSettlementFunder` only when the lane is stopped on chain.
+- **The CSS is its own sheet** (`styles/pages/sf.css`, in Money's chain), the reference's verbatim, so the
+  script-copied `n.css` stays a copy. Home's tile rules are in `command.css`, with the strip's 5 columns.
+- **Not shipped:** the reference's preview chips ("Reference only · preview a state") and its footer chips. The
+  visual check of Money → Overview differs from the reference by the chips' strip.
+- The Credit Settlement Account's copy follows the brief: "funded before each daily card cut-off" (migration
+  0085 updates the stored row), and its panel says what it is funded to.

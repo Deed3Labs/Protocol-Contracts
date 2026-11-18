@@ -228,6 +228,26 @@ export function figures(r: DeskReads, c: DeskConfig): DeskFigures {
 
 /* ========== THE DECISION ========== */
 
+/**
+ * What the desk moves on its own towards `need`, in the order L-01 §8.4A gives: a book transfer from
+ * the Collection Account (above its reserve), then the lane, within the pool's room, the period's cap
+ * and the forwarder's allowance, and only once the lane is set up. A move under `minMove` that doesn't
+ * close the gap is left for people. The one rule `decideFunding` and the card's verdict share.
+ */
+export function fundingPlan(
+  p: { need: bigint; collection: bigint | null; laneRoom: bigint; capLeft: bigint; forwardLeft: bigint; laneReady: boolean },
+  c: Pick<DeskConfig, 'collectionReserve' | 'minMove'>,
+): { book: bigint; deploy: bigint } {
+  const need = pos(p.need);
+  const collectionFree = p.collection === null ? 0n : pos(p.collection - c.collectionReserve);
+  let book = min(need, collectionFree);
+  if (book < c.minMove && book < need) book = 0n;
+  const rest = need - book;
+  let deploy = p.laneReady ? min(rest, pos(p.laneRoom), pos(p.capLeft), pos(p.forwardLeft)) : 0n;
+  if (deploy < c.minMove && deploy < rest) deploy = 0n;
+  return { book, deploy };
+}
+
 export type DeskDecision =
   /** A balance could not be read: nothing moves. */
   | { kind: 'unknown'; why: string; f: DeskFigures }
@@ -306,15 +326,10 @@ export function decideFunding(r: DeskReads, a: DeskAddresses, c: DeskConfig, opt
   }
   if (!opts.forced && r.now < f.windowOpensAt) return { kind: 'wait', f };
 
-  const collectionFree = r.collection === null ? 0n : pos(r.collection - c.collectionReserve);
-  let book = min(f.need, collectionFree);
-  if (book < c.minMove && book < f.need) book = 0n;
-  const rest = f.need - book;
-
   const setup = laneSetup(r, a);
   const lane = poolRoom(r.lane);
-  let deploy = setup.length ? 0n : min(rest, lane.room, f.capLeft, f.forwardLeft);
-  if (deploy < c.minMove && deploy < rest) deploy = 0n;
+  const { book, deploy } = fundingPlan({ need: f.need, collection: r.collection, laneRoom: lane.room, capLeft: f.capLeft, forwardLeft: f.forwardLeft, laneReady: !setup.length }, c);
+  const rest = f.need - book;
   // The rest is for two deployers, whose deploy has no Settlement Headroom: within the posted
   // principal alone, after what the lane sends first.
   const two = poolRoom(r.lane, { twoPerson: true, after: deploy });
@@ -393,7 +408,7 @@ export function assertDeskCall(a: DeskAddresses, tx: { to: string; data: string 
 
 /* ========== FOR PEOPLE ========== */
 
-function batch(chainId: number, createdAt: number, name: string, description: string, transactions: Array<{ to: string; value: string; data: string }>) {
+export function batch(chainId: number, createdAt: number, name: string, description: string, transactions: Array<{ to: string; value: string; data: string }>) {
   return { version: '1.0', chainId: String(chainId), createdAt, meta: { name, description }, transactions };
 }
 
