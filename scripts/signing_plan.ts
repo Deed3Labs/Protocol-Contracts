@@ -1141,7 +1141,9 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     if (upgraded) sSt = xSt = { status: "done", reason: "The pool runs the implementation with the lane." };
     else if (!poolAddress) sSt = xSt = waitingFor("No LendingPool record.");
     else if (!impl) {
-      sSt = xSt = waitingFor(`Waits for the new LendingPool implementation: SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network ${network} validates it against the manifest, deploys it and writes deployments/${network}/${SETTLEMENT_LANE_RECORD}.json.`);
+      const e8 = steps.find((x) => x.id === "E8x-earn-execute");
+      const first = e8 && e8.status !== "done" ? "Waits for E8x-earn-execute first (this is a new Earn timelock proposal, scheduled after the E8 batch has run), and " : "Waits ";
+      sSt = xSt = waitingFor(`${first}for the new LendingPool implementation: SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network ${network} validates it against the manifest, deploys it and writes deployments/${network}/${SETTLEMENT_LANE_RECORD}.json.`);
     } else if (!tl || !lendingSafe) {
       sSt = xSt = waitingFor(!lendingSafe ? "Waiting for input: CLEAR_LENDING_SAFE." : "No EarnTimelock record yet (deploy 26, E1).");
     } else if (!(await tl.hasRole(await tl.PROPOSER_ROLE(), lendingSafe))) {
