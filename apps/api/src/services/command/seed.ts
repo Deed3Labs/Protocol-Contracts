@@ -264,10 +264,10 @@ export async function seedCommand(db: Db): Promise<string[]> {
           [a.id, i, a.name, a.party, a.type, a.st, iso(a.a), iso(a.b), iso(a.sent), a.ver ?? null, a.note ?? '', !!a.roll, a.ev ? JSON.stringify(a.ev) : null],
         );
       }
-      for (const [i, [id, name, ver, layer, st, addr, what, x, y, band]] of (C.contracts as any[]).entries()) {
+      for (const [i, [id, name, ver, layer, st, addr, what, x, y, band, controller]] of (C.contracts as any[]).entries()) {
         await tx.query(
-          'INSERT INTO command.contracts (id, position, name, version, layer, status, address, purpose, map_x, map_y, band, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
-          [id, i, name, ver, layer, st, addr, what, x, y, band, C.notes[id] ?? null],
+          'INSERT INTO command.contracts (id, position, name, version, layer, status, address, purpose, map_x, map_y, band, controller, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
+          [id, i, name, ver, layer, st, addr, what, x, y, band, controller ?? '', C.notes[id] ?? null],
         );
       }
       for (const [i, [from, to, kind, verb, label, side]] of (C.links as any[]).entries()) {

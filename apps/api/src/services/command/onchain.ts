@@ -691,9 +691,15 @@ export async function releasesLive(db: Queryable): Promise<Map<string, Release[]
   return out;
 }
 
-/** The deployed contract a map entry stands for: ClearUSD is ClearUSDUpgradeable, SavingsIntent its factory. */
+/**
+ * The deployment record a map name stands for: its v2 first (the map's AssurancePool is AssurancePoolV2), then the
+ * upgradeable copy (ClearUSD is ClearUSDUpgradeable), the name itself, then its factory (SavingsIntent is
+ * SavingsIntentFactory, FractionToken FractionTokenFactory). A retired copy (`*PreAudit`, `*Pre2f`, `*Pre2d`,
+ * `*Legacy`, `*V1`) never stands for a map name: OffersIssuer has no record until its new one is pushed, and
+ * OffersIssuerPreAudit, the old one, doesn't count.
+ */
 export function deployedName(name: string, deployed: Set<string>): string | null {
-  return [`${name}Upgradeable`, name, `${name}Factory`].find((n) => deployed.has(n)) ?? null;
+  return [`${name}V2`, `${name}Upgradeable`, name, `${name}Factory`].find((n) => deployed.has(n)) ?? null;
 }
 
 /**

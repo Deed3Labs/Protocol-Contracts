@@ -523,11 +523,64 @@
    "v1.0",
    0,
    "live",
-   "0x19aB…f207",
+   "0x23aF…8DBe",
    "Role-based access for the protocol. Admin is the Ops Safe.",
    10,
-   13,
-   "c"
+   14,
+   "p",
+   "OPS"
+  ],
+  [
+   "rs",
+   "RateSchedule",
+   "v1.0",
+   1,
+   "live",
+   "0xdb73…8b97",
+   "What each credit product may charge, by state: the price Clear lists and the legal cap. RevolvingIssuer and TermIssuer read it before they charge. Changes wait on a timelock.",
+   30,
+   14,
+   "p",
+   "CL"
+  ],
+  [
+   "pc",
+   "PauseClock",
+   "v1.0",
+   2,
+   "live",
+   "0x794A…9959",
+   "Counts the seconds a pause on a member’s CLRUSD or ESA was in force, so grace and cure periods run longer by that much and a pause never causes a default.",
+   50,
+   14,
+   "p",
+   "R"
+  ],
+  [
+   "nr",
+   "NetworkRegistry",
+   "v1.0",
+   3,
+   "live",
+   "0xee10…1164",
+   "The parent registry every issuer is registered against, and the list of money paths the AssurancePool may pay. Its old AssuranceOracle field is retired.",
+   70,
+   14,
+   "p",
+   "OPS"
+  ],
+  [
+   "ec",
+   "EarnControls",
+   "v1.0",
+   4,
+   "live",
+   "0xe4a7…cD97",
+   "The one governed contract both Earn products share: eligibility attestations and exemption tags, the Funding Limit and offering cap, the Ladder, the Equity Cushion and Reserve Shortfall pauses, and the Successor path.",
+   90,
+   14,
+   "p",
+   "CL"
   ],
   [
    "ms",
@@ -536,22 +589,11 @@
    0,
    "live",
    "0xE700…4dE8",
-   "Member entitlements on-chain, no personal data.",
+   "Member entitlements on-chain, no personal data. CLRUSD moves only between members; de-listing stops receiving only, with a reason code.",
    10,
-   21,
-   "c"
-  ],
-  [
-   "nr",
-   "NetworkRegistry",
-   "v1.0",
-   0,
-   "live",
-   "0x0a9F…3D7f",
-   "The parent registry every issuer is registered against.",
-   10,
-   37,
-   "c"
+   27,
+   "c",
+   "CO"
   ],
   [
    "cr",
@@ -559,23 +601,12 @@
    "v1.0",
    0,
    "live",
-   "0x62fB…52Cf",
-   "What each member has pledged, and what the AssurancePool would pay.",
+   "0xfeDb…446A",
+   "What each member has pledged and what is locked. Reads bond values and the pool-share side of the pledge module; ClearUSD reads its locks.",
    10,
-   29,
-   "c"
-  ],
-  [
-   "mr",
-   "MerchantRegistry",
-   "v1.0",
-   0,
-   "live",
-   "0x4172…f1f5",
-   "What each shop was promised: payout schedule, cap, fee, status.",
-   10,
-   45,
-   "c"
+   33.5,
+   "c",
+   "CL"
   ],
   [
    "tr",
@@ -583,23 +614,38 @@
    "v1.0",
    0,
    "live",
-   "0x4B13…6a86",
+   "0x4B13…8a86",
    "Which tokens count, with fallback prices.",
    10,
-   53,
-   "c"
+   40,
+   "c",
+   "OPS"
   ],
   [
-   "lc",
-   "LimitCalculator",
+   "lcm",
+   "LegacyContactModule",
+   "—",
+   0,
+   "later",
+   "—",
+   "Optional recovery module a member installs on their own smart account. After a wait the member can cancel, a chosen contact can rotate the owner key, and nothing else. No Clear role.",
+   10,
+   46.5,
+   "c",
+   "M"
+  ],
+  [
+   "mr",
+   "MerchantRegistry",
    "v1.0",
-   1,
+   0,
    "live",
-   "0xbA98…c0a7",
-   "Turns pledges and attestations into a member’s ceiling.",
-   30,
-   21,
-   "c"
+   "0x8f4C…3c1b",
+   "What each shop was promised: payout schedule, cap, fee, status.",
+   10,
+   53,
+   "c",
+   "CF"
   ],
   [
    "ri",
@@ -607,23 +653,25 @@
    "v1.3",
    1,
    "live",
-   "0x7f15…6070",
-   "The tiered revolving line: savings-backed, asset-backed, income and Boost.",
+   "0xBec5…E2F0",
+   "The tiered revolving line: savings-backed, asset-backed, income and Boost. Calendar cycles, cure notices, Assurance and workouts run in its modules (Cycles, Terms, Workouts, Extension).",
    30,
-   29,
-   "c"
+   27,
+   "c",
+   "CL"
   ],
   [
-   "ti",
-   "TermIssuer",
+   "lc",
+   "LimitCalculator",
    "v1.0",
    1,
    "live",
-   "0xe467…3721",
-   "Term plans: partner credit and Clear Cash.",
+   "0x6C08…4a20",
+   "Turns pledges and attestations into a member’s ceiling.",
    30,
-   53,
-   "c"
+   33.5,
+   "c",
+   "CL"
   ],
   [
    "oi",
@@ -631,23 +679,51 @@
    "v1.0",
    1,
    "live",
-   "0x150E…841c",
-   "The co-op’s $10 to each new member, on a capped line of its own. The Safe pays it down.",
+   "—",
+   "The co-op’s $10 to each new member, on a capped line of its own. The Safe pays it down. Redeployed on 17 Nov; the old one is retired.",
    30,
-   37,
-   "c"
+   40,
+   "c",
+   "CO"
+  ],
+  [
+   "ti",
+   "TermIssuer",
+   "v1.0",
+   1,
+   "live",
+   "0x1b16…da57",
+   "Term plans: partner credit and Clear Cash. Origination prices each plan on-chain and pays the merchant fee leg to Clear Lending.",
+   30,
+   46.5,
+   "c",
+   "CL"
+  ],
+  [
+   "bvl",
+   "BondValuer",
+   "v1.0",
+   1,
+   "live",
+   "0x7f63…02C8",
+   "What a member’s pledged bonds are worth today, for CollateralRegistry.",
+   30,
+   59.5,
+   "c",
+   "R"
   ],
   [
    "lq",
    "Liquidator",
    "v1.0",
-   1,
+   3,
    "live",
-   "0x8E2E…9593",
-   "Turns a defaulted member’s pledged savings into repayment of their own debt.",
-   30,
-   69,
-   "c"
+   "0x6217…33f3",
+   "Enforces a member’s pledges after an objective default: Savings, pledged bonds and pledged Pool Shares. Never touches Ready to allocate USDC. Pauses lengthen its clock.",
+   70,
+   53,
+   "c",
+   "R"
   ],
   [
    "cc",
@@ -655,11 +731,25 @@
    "v1.1",
    2,
    "live",
-   "0x1d9f…928C",
-   "The co-op’s credit ledger, the deployable StableCredit. Only issuers mint.",
+   "0x5923…82Bc",
+   "The co-op’s credit ledger, the deployable StableCredit. Only issuers mint. A shop’s positive balance here is what the co-op owes it.",
    50,
-   39,
-   "c"
+   40,
+   "c",
+   "CL"
+  ],
+  [
+   "ccp",
+   "CLRUSDTokenPool",
+   "v1.0",
+   2,
+   "live",
+   "0xd8a1…CCc1",
+   "The CCIP pool that bridges CLRUSD between chains.",
+   50,
+   53,
+   "c",
+   "CF"
   ],
   [
    "cu",
@@ -668,46 +758,24 @@
    2,
    "live",
    "0x2a11…D6D1",
-   "CLRUSD, upgradeable. Settles savings and bridges by CCIP.",
+   "CLRUSD, upgradeable. Moves only between members; pledged balances stay locked. Bridges by CCIP.",
    50,
-   69,
-   "c"
-  ],
-  [
-   "ao",
-   "AssuranceOracle",
-   "v1.0",
-   3,
-   "live",
-   "0x2E52…Fe38",
-   "Prices reserve tokens.",
-   70,
-   13,
-   "c"
+   66,
+   "c",
+   "CF"
   ],
   [
    "ap",
    "AssurancePool",
-   "v1.2",
+   "v2.0",
    3,
    "live",
-   "0xf5E4…5840",
-   "Absorbs losses on unsecured credit. RTD reads it and nothing else.",
+   "0x3c33…BB15",
+   "The co-op’s Assurance contract, owned by Clear Collective: a Credit Backstop compartment and a Member Assurance compartment (Hardship Grants), each paid out by two people after a timelock. Never funds merchant payouts.",
    70,
-   21,
-   "c"
-  ],
-  [
-   "lp",
-   "LendingPool",
-   "v1.0",
-   3,
-   "live",
-   "0x5840…ce23",
-   "Member money funding the unsecured tiers. Takes first loss. Not funded yet.",
-   70,
-   29,
-   "c"
+   27,
+   "c",
+   "CO"
   ],
   [
    "cp",
@@ -718,32 +786,9 @@
    "—",
    "In the repo, not deployed. Members deposit credit for others to draw.",
    70,
-   37,
-   "c"
-  ],
-  [
-   "pp",
-   "PayoutPool",
-   "v0.9",
-   3,
-   "live",
-   "0xe9d1…7D66",
-   "Pays shops on the schedule they were promised, oldest claim first.",
-   70,
-   45,
-   "c"
-  ],
-  [
-   "esa",
-   "ESADepositVault",
-   "v1.1",
-   3,
-   "live",
-   "0x8364…413b",
-   "Member savings, CLRUSD backed 1:1 by USDC.",
-   70,
-   69,
-   "c"
+   33.5,
+   "c",
+   ""
   ],
   [
    "ce",
@@ -754,8 +799,35 @@
    "0x24DA…c37D",
    "Holds USDC sent by link until it’s claimed or refunded.",
    70,
-   53,
-   "c"
+   40,
+   "c",
+   "CF"
+  ],
+  [
+   "pp",
+   "PayoutPool",
+   "v0.9",
+   3,
+   "live",
+   "0xb470…F861",
+   "Pays shops what the co-op owes them, on the schedule they were promised, oldest claim first. The AssurancePool never funds it.",
+   70,
+   46.5,
+   "c",
+   "CF"
+  ],
+  [
+   "esa",
+   "ESADepositVault",
+   "v1.1",
+   3,
+   "live",
+   "0x8364…413b",
+   "Member savings: CLRUSD backed 1:1 by USDC, held for holders in the ESA Reserve Trust. Counts California mints for the pilot cap; two people can pause new CA mints.",
+   70,
+   66,
+   "c",
+   "CF"
   ],
   [
    "si",
@@ -763,11 +835,38 @@
    "v1.0",
    3,
    "live",
-   "0xee28…C8Bc",
+   "0xF807…b74B",
    "One-transfer escrows that turn a deposit into savings.",
    70,
-   61,
-   "c"
+   72.5,
+   "c",
+   "CF"
+  ],
+  [
+   "lp",
+   "LendingPool",
+   "v1.0",
+   4,
+   "live",
+   "0x5840…ce23",
+   "The Earn Yield Pool (ERC-4626). Pool Shares are limited-recourse demand notes: Share Value is principal plus interest less realized losses, with a Loss Holdback on redemptions. Deploys only to Clear Lending’s lending account. Holds $9,000.00 from 18 depositors.",
+   90,
+   27,
+   "c",
+   "CL"
+  ],
+  [
+   "pse",
+   "PoolShareEnforcer",
+   "v1.0",
+   4,
+   "live",
+   "0xEB6f…4fa1",
+   "The pledge module’s pool-share side: tells CollateralRegistry when pledged Pool Shares may be enforced, and queues their redemption for the Liquidator.",
+   90,
+   40,
+   "c",
+   "R"
   ],
   [
    "bb",
@@ -775,11 +874,12 @@
    "v1.0",
    4,
    "live",
-   "0x4d96…c148",
-   "Zero-coupon bonds, one token each, with their factory and deposit. 6 issued.",
+   "0xe7F6…cC2A",
+   "Zero-coupon bonds, one token each. A bond rolls only on its holder’s confirmation; a pledged bond pays its debt at no less than present value. 6 issued.",
    90,
-   21,
-   "c"
+   46.5,
+   "c",
+   "CL"
   ],
   [
    "bv",
@@ -788,22 +888,50 @@
    4,
    "live",
    "0x9f31…A855",
-   "Where bond proceeds live, behind a redemption reserve. Not funded yet.",
+   "Where bond proceeds live, behind a redemption reserve. Deployable excess goes only to Clear Lending’s treasury. Holds $25,000.00 for 6 bonds.",
    90,
-   29,
-   "c"
+   53,
+   "c",
+   "CL"
   ],
   [
-   "bvl",
-   "BondValuer",
+   "ca",
+   "CollateralAgent",
    "v1.0",
-   1,
+   4,
    "live",
-   "0x64d5…0d2C",
-   "What a member’s pledged bonds are worth today, for CollateralRegistry.",
-   30,
-   61,
-   "c"
+   "0x4884…2825",
+   "The Agent Role in the BondVault exactly as IV-10 Exhibit A states it: enforcement notices and distributions for bondholders, nothing else.",
+   90,
+   59.5,
+   "c",
+   "AG"
+  ],
+  [
+   "hd",
+   "HolderDirections",
+   "v1.0",
+   4,
+   "live",
+   "0x8ec3…5Cda",
+   "Directions bondholders sign themselves, counted on-chain by Accreted Value, that instruct the Collateral Agent.",
+   90,
+   66,
+   "c",
+   "H"
+  ],
+  [
+   "ao",
+   "AssuranceOracle",
+   "v1.0",
+   3,
+   "live",
+   "0x2E52…Fe38",
+   "Retired. Section 13 removed it from the money path; nothing reads it now.",
+   0,
+   0,
+   "x",
+   ""
   ],
   [
    "vr",
@@ -814,8 +942,22 @@
    "0x979E…bc91",
    "Which validators may approve deeds, and for what.",
    10,
-   84,
-   "d"
+   85,
+   "d",
+   "OPS"
+  ],
+  [
+   "fcr",
+   "FunctionalContractRegistry",
+   "—",
+   0,
+   "later",
+   "—",
+   "The functional contracts a trust deed may be deposited into under any transfer policy (trust agreement v5).",
+   10,
+   93,
+   "d",
+   "OPS"
   ],
   [
    "va",
@@ -826,8 +968,9 @@
    "0x18C5…79b9",
    "Checks a deed’s title and papers before it’s minted. Made by the ValidatorFactory.",
    30,
-   84,
-   "d"
+   85,
+   "d",
+   "OPS"
   ],
   [
    "mx",
@@ -839,7 +982,8 @@
    "Renders a deed’s features, condition and legal details.",
    30,
    93,
-   "d"
+   "d",
+   "OPS"
   ],
   [
    "dn",
@@ -848,10 +992,11 @@
    2,
    "live",
    "0x1a4e…21E6",
-   "One token per property deed, with its traits and validation.",
+   "One token per property deed, with its traits, validation and trust agreement terms.",
    50,
-   84,
-   "d"
+   85,
+   "d",
+   "OPS"
   ],
   [
    "sd",
@@ -863,7 +1008,8 @@
    "Splits a deed into units, like lots or rooms.",
    50,
    93,
-   "d"
+   "d",
+   "OPS"
   ],
   [
    "fz",
@@ -874,8 +1020,22 @@
    "0xeC46…9823",
    "Locks a deed or its units and issues shares against it.",
    70,
-   84,
-   "d"
+   85,
+   "d",
+   "OPS"
+  ],
+  [
+   "cta",
+   "CoopTransferAgent",
+   "—",
+   3,
+   "later",
+   "—",
+   "The only route by which a Coop-policy trust deed changes hands, including Clear’s right of first refusal (trust agreement v5).",
+   70,
+   93,
+   "d",
+   "R"
   ],
   [
    "ft",
@@ -886,8 +1046,9 @@
    "0x3E51…28dc",
    "Shares in one property, made by the FractionTokenFactory.",
    90,
-   84,
-   "d"
+   85,
+   "d",
+   ""
   ],
   [
    "fm",
@@ -899,7 +1060,8 @@
    "Money around deeds: commissions and payouts.",
    90,
    93,
-   "d"
+   "d",
+   "OPS"
   ]
  ],
  "notes": {
@@ -926,11 +1088,67 @@
    null
   ],
   [
+   "rs",
+   "ri",
+   "reads",
+   "prices and legal caps",
+   ""
+  ],
+  [
+   "rs",
+   "ti",
+   "reads",
+   "prices and legal caps",
+   null
+  ],
+  [
+   "pc",
+   "lq",
+   "reads",
+   "lengthens grace and cure by paused time",
+   null
+  ],
+  [
+   "pc",
+   "ri",
+   "reads",
+   "lengthens grace by paused time",
+   ""
+  ],
+  [
+   "pc",
+   "ti",
+   "reads",
+   "lengthens cure by paused time",
+   null
+  ],
+  [
+   "cu",
+   "pc",
+   "reads",
+   "pauses",
+   null
+  ],
+  [
+   "esa",
+   "pc",
+   "reads",
+   "pauses",
+   null
+  ],
+  [
+   "nr",
+   "ap",
+   "reads",
+   "lists the money paths it may pay",
+   ""
+  ],
+  [
    "nr",
    "cr",
    "reads",
    "lists issuers",
-   ""
+   null
   ],
   [
    "nr",
@@ -940,11 +1158,39 @@
    null
   ],
   [
+   "ec",
+   "lp",
+   "reads",
+   "eligibility, limits and pauses",
+   ""
+  ],
+  [
+   "ec",
+   "bb",
+   "reads",
+   "eligibility, Ladder and pauses",
+   null
+  ],
+  [
+   "ec",
+   "bv",
+   "reads",
+   "Reserve Shortfall and Equity Cushion",
+   null
+  ],
+  [
+   "ms",
+   "ec",
+   "reads",
+   "who is a member",
+   null
+  ],
+  [
    "cr",
    "lc",
    "reads",
    "pledges",
-   ""
+   "pledges"
   ],
   [
    "bvl",
@@ -961,11 +1207,11 @@
    ""
   ],
   [
-   "lp",
    "ri",
-   "money",
-   "funds unsecured credit",
-   "funds unsecured"
+   "ti",
+   "reads",
+   "share the Combined Ceiling",
+   null
   ],
   [
    "ri",
@@ -975,52 +1221,24 @@
    "mints"
   ],
   [
-   "ti",
-   "cc",
-   "mint",
-   "mints credit",
-   ""
-  ],
-  [
    "oi",
    "cc",
    "mint",
-   "gives $10 offers",
+   "mints the $10 offer",
    ""
   ],
   [
+   "ti",
    "cc",
-   "ap",
-   "money",
-   "claims on losses",
-   ""
-  ],
-  [
-   "ao",
-   "ap",
-   "reads",
-   "prices reserves",
-   ""
-  ],
-  [
-   "tr",
-   "ao",
-   "reads",
-   "token list",
-   null
-  ],
-  [
-   "lp",
-   "ap",
-   "money",
-   "takes first loss",
+   "mint",
+   "mints credit, with the fee leg to Clear Lending",
    ""
   ],
   [
    "cc",
    "pp",
    "money",
-   "pays merchant balances",
+   "pays what the co-op owes shops",
    ""
   ],
   [
@@ -1028,8 +1246,7 @@
    "pp",
    "reads",
    "payout terms",
-   "terms",
-   50
+   "terms"
   ],
   [
    "cc",
@@ -1053,11 +1270,32 @@
    ""
   ],
   [
+   "cu",
+   "ccp",
+   "money",
+   "bridges by CCIP",
+   ""
+  ],
+  [
+   "cr",
+   "cu",
+   "reads",
+   "locks pledged CLRUSD",
+   null
+  ],
+  [
+   "ms",
+   "cu",
+   "reads",
+   "members-only transfers",
+   null
+  ],
+  [
    "lq",
    "cu",
    "money",
-   "seizes pledged CLRUSD",
-   "seizes"
+   "enforces pledged CLRUSD",
+   ""
   ],
   [
    "lq",
@@ -1070,7 +1308,35 @@
    "lq",
    "cc",
    "reads",
-   "repays debt",
+   "repays the member’s debt",
+   null
+  ],
+  [
+   "lq",
+   "bb",
+   "money",
+   "pays pledged bonds at present value",
+   ""
+  ],
+  [
+   "lq",
+   "pse",
+   "money",
+   "queues pledged Pool Shares",
+   ""
+  ],
+  [
+   "pse",
+   "lp",
+   "money",
+   "queued redemption",
+   ""
+  ],
+  [
+   "pse",
+   "cr",
+   "reads",
+   "enforcement allowed",
    null
   ],
   [
@@ -1078,6 +1344,27 @@
    "bv",
    "money",
    "bond proceeds",
+   ""
+  ],
+  [
+   "bvl",
+   "bb",
+   "reads",
+   "present value",
+   null
+  ],
+  [
+   "ca",
+   "bv",
+   "reads",
+   "enforces for bondholders",
+   ""
+  ],
+  [
+   "hd",
+   "ca",
+   "reads",
+   "holder directions",
    ""
   ],
   [
@@ -1134,6 +1421,20 @@
    "dn",
    "reads",
    "commissions",
+   null
+  ],
+  [
+   "cta",
+   "dn",
+   "money",
+   "moves Coop-policy deeds",
+   "transfers"
+  ],
+  [
+   "fcr",
+   "dn",
+   "reads",
+   "functional contracts",
    null
   ]
  ],
