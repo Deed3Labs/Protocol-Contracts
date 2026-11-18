@@ -81,7 +81,7 @@ mechanism. The contracts are built for it:
 |---|---|---|
 | Arises from | A sale the co-op stands behind | Members trading with each other |
 | Who owes it | The co-op, on a schedule | Nobody in particular |
-| Exit | `PayoutPool`, at par | AssurancePool, **capped by lost debt** |
+| Exit | `PayoutPool`, at par | None: lost debt is not redeemable |
 | Created by partner purchases? | **Yes, all of them** | **No** |
 
 **On partner purchases, only the co-op extends credit.** A merchant selling on credit is not taking
@@ -89,8 +89,9 @@ risk on that customer; they hold a receivable from the co-op. Members appear onl
 So every positive balance a partner purchase creates is owed by a known party on a known schedule,
 which is why a payables pool can cover all of it.
 
-The inherited exit, redemption against lost debt, lets a holder cash out only to the extent someone
-else has defaulted. That is the right mechanism for a peer claim and the wrong one for a payable.
+The inherited exit, redemption against lost debt, let a holder cash out only to the extent someone
+else had defaulted. That was wrong for a payable, and section 13 retired it for every claim:
+`burnLostDebt` reverts (`StableCreditLostDebtNotRedeemable`).
 
 ### Carry accrues into the balance, per position
 
@@ -119,16 +120,17 @@ A member draws $1,000.00 and spends it; those credits are now in someone else's 
 defaults and the obligation is written off, **the credits still exist**. That orphaned supply is lost
 debt: claims in circulation with no matching promise.
 
-Redemption against lost debt is how it is deleted: a holder gives up credits, receives reserve
-tokens from the AssurancePool, and lost debt falls by that amount (`burnLostDebt`). **Redemption
-capacity equals lost debt outstanding.** It is a clean-up mechanism, not an exit door; free
-redemption would drain a fractional pool.
+**Lost debt is recorded, not redeemed.** `writeOffCreditLine` adds the write-off to `lostDebt()`. In
+the inherited design a holder could give up credits for reserve tokens from the AssurancePool
+(`burnLostDebt`); section 13 retired that, and no member path reaches the Assurance contracts. The
+loss is Clear Lending's charge-off, recovered through its own draw on the co-op's Credit Backstop
+(§3).
 
 **There is far less lost debt than in the inherited design.** A revolving write-off covers only the
 member's pool exposure (`CollateralRegistry.exposureOf`): savings-backed debt is left drawn and
 recovered by seizing the pledged CLRUSD, at par. Lost debt arises only where collateral does not
 reach — the unsecured tiers, term plans, and the shortfall on asset-backed debt after haircut. That
-is why the reserve ratio counts only that exposure (§3).
+is why the Credit Backstop's floor counts only that exposure (§3).
 
 ---
 
@@ -137,7 +139,7 @@ is why the reserve ratio counts only that exposure (§3).
 | Contract | Job |
 |---|---|
 | `StableCredit` (`ClearCredit`) | The ledger: positions, the three-party mint, repayment routing, lost debt |
-| `NetworkRegistry` | Issuer → (ledger, AssurancePool, oracle), and member → **issuers** (plural) |
+| `NetworkRegistry` | Issuer → ledger, member → **issuers** (plural), and the money-path list the AssurancePool refuses deposits from. The old AssurancePool and oracle fields stay zero |
 | `RevolvingIssuer` | The tiered revolving line: savings, bonds, pool shares, income, Clear Boost™. Cheapest-first draw, one carry index per tier, card settlement |
 | `TermIssuer` | Term plans (merchant splits, Clear Cash™). Per-plan rate, clock and split schedule, under its own term limit |
 | `OffersIssuer` | A capped line the co-op draws to give new members a one-time offer |
@@ -146,9 +148,9 @@ is why the reserve ratio counts only that exposure (§3).
 | `Liquidator` | Seizes pledged CLRUSD or pool shares on default and settles the tier they backed |
 | `MerchantRegistry` | Per-merchant terms: payout window, approval cap, discount, active flag |
 | `PayoutPool` | Turns merchants' positive balances into USDC. Separate from the AssurancePool, and reports its own shortfall |
-| `LendingPool` | ERC-4626 vault. Lends cash to approved borrowers and takes it back |
-| `AssurancePool` | The reserve that makes a default survivable |
-| `AssuranceOracle` | Prices accepted tokens and serves the target reserve ratio |
+| `LendingPool` | The lending pool on Earn, an ERC-4626 vault. Deploys only to Clear Lending, and takes it back |
+| `AssurancePool` | The co-op's Assurance contract (v2, Phase 2c): the Credit Backstop for Clear Lending's charged-off principal, and Member Assurance for member grants. Lends nothing |
+| `AssuranceOracle` | Retired with the Phase 1 reserve. It priced accepted tokens and served the target reserve ratio |
 | `BurnerBond`, `BurnerBondFactory`, `BurnerBondDeposit` | Zero-coupon ERC-1155 bonds |
 | `BondVault` | Bond proceeds, per-bond accounting and a redemption reserve the code enforces |
 | `ESADepositVault`, `ClearUSDUpgradeable` | Member savings: USDC in, CLRUSD out, and the lock on CLRUSD backing drawn credit |
@@ -164,8 +166,8 @@ storage doing two jobs badly. `OffersIssuer` is a third rule set: a capped line 
 itself.
 
 **A second issuer does not mean a second reserve.** Every issuer writes to **one StableCredit** and
-draws on **one AssurancePool**. Each issuer contributes its own part of a member's ceiling, and the
-ledger's ceiling is the sum (`_syncCreditLimit`).
+feeds **one Credit Backstop floor**. Each issuer contributes its own part of a member's ceiling, and
+the ledger's ceiling is the sum (`_syncCreditLimit`).
 
 **The registry is the extension point.** New issuers register in `NetworkRegistry` rather than being
 special-cased, and no code assumes a member has exactly one issuer.
@@ -194,38 +196,42 @@ credit issuers.
 
 ## 3. The reserve and what it stands behind
 
-### Nobody withdraws from the AssurancePool directly
+### The reserve is compartments, and nothing withdraws from it
 
 In the inherited code, `withdraw` and `withdrawToken` were public with no access control, and any
-address could drain the excess reserve. Every outflow now goes through a named instrument:
+address could drain the excess reserve. Phase 1 replaced them with named outflows from primary,
+buffer and excess tiers, and Phase 2c (compliance section 13) replaced that pool with a new
+contract, **AssurancePool v2**, owned by the co-op rather than Clear Lending. Its full behaviour is
+in [The reserve](./reserve.md).
 
-| Outflow | Who may call it | Takes from |
+| Compartment | What it is for | The only way out |
 |---|---|---|
-| `reimburse` | The ledger, during `burnLostDebt` | Buffer, then primary; never excess |
-| `withdraw`, `withdrawToken` | Addresses on the `withdrawalCallers` allowlist (empty by default) | Excess only |
-| `lendToPayoutPool`, `lendToBondVault` | The configured PayoutPool / BondVault | Excess, then buffer while the reserve ratio holds; never primary |
+| `CREDIT_BACKSTOP` | Clear Lending's charged-off principal | `releaseDraw`, to Clear Lending's loss-reserve address, after its `requestDraw` and two co-op signers |
+| `MEMBER_ASSURANCE` | Member Assurance grants | `releaseAssurance`, to the co-op's disbursement address, two signers |
 
-### The reserve ratio counts pool exposure
+There is no sweep, rescue, withdraw or approve, and the pool lends, stakes and pledges nothing. No
+credit, savings, payout or bond contract holds its address.
 
-**RTD (the reserve-to-debt ratio) answers one question: if every member defaulted tomorrow, what
-would the AssurancePool actually pay?** The inherited formula divided reserves by all credits in
-circulation, which over-reserves heavily against fully collateralised credit. Counting "unsecured
-only" is also wrong: it under-reserves, because asset-backed collateral has to be sold at an
-uncertain price.
+### The backstop's floor counts pool exposure
+
+**The floor answers one question: if members defaulted, what would Clear Lending actually lose?** The
+inherited reserve ratio divided reserves by all credits in circulation, which over-reserves heavily
+against fully collateralised credit. Counting "unsecured only" is also wrong: it under-reserves,
+because asset-backed collateral has to be sold at an uncertain price.
 
 | Backing | Counted | Why |
 |---|---|---|
-| Savings | **Excluded** | Collateral is liquid, already in the network and seizable at par. Seizure clears the debt; the pool pays nothing |
-| Asset (bonds, pool shares, external assets) | **Shortfall only**: `debt − collateral × haircut`, floored at zero | Collateral must be realised; the pool covers the gap |
-| Unsecured (income, Clear Boost™, term plans) | **Full value** | No collateral. The pool covers all of it |
+| Savings | **Excluded** | Collateral is liquid, already in the network and seizable at par. Seizure clears the debt |
+| Asset (bonds, pool shares, external assets) | **Shortfall only**: `debt − collateral × haircut`, floored at zero | Collateral must be realised; only the gap is a loss |
+| Unsecured (income, Clear Boost™, term plans) | **Full value** | No collateral |
 
-`CollateralRegistry` implements this as the exposure source, and
-`RTD = primary reserve ÷ (exposure + the bond vault's uncovered near-term gap)`. See
-[RTD](./reserve.md#rtd).
+`CollateralRegistry` is the exposure source. `coveredBookPrincipal()` is that exposure (or the
+attested covered book, if higher), and `backstopFloor()` is the larger of the timing-buffer shortfall
+and `floorBps` (500, 5%) of the covered book. See [The floor](./reserve.md#the-floor).
 
-**Worked example.** Four members owing $7,140.00 in total, primary reserve $900.00:
+**Worked example.** Four members owing $7,140.00 in total:
 
-| Member | Debt | Backing | Collateral | Pool pays on default |
+| Member | Debt | Backing | Collateral | Lost on default |
 |---|---|---|---|---|
 | A | $3,000.00 | Savings | $3,000.00 | **$0.00** |
 | B | $1,200.00 | Income (unsecured) | — | $1,200.00 |
@@ -233,17 +239,16 @@ uncertain price.
 | D | $940.00 | Term plan (unsecured) | — | $940.00 |
 | | **$7,140.00** | | | **$2,320.00** |
 
-- Counting all debt: $900.00 ÷ $7,140.00 = **12.6%**, which treats A's fully covered position as
-  exposure.
-- Counting unsecured only: $900.00 ÷ $2,140.00 = **42.1%**, which misses C's $180.00.
-- Counting pool exposure: $900.00 ÷ $2,320.00 = **38.8%**.
+- Counting all debt would cover $7,140.00, treating A's fully covered position as exposure.
+- Counting unsecured only would cover $2,140.00, missing C's $180.00.
+- Counting pool exposure covers **$2,320.00**, so at 5% the floor is $116.00 (unless the
+  timing-buffer shortfall is larger).
 
 **Why savings-backed debt is excluded rather than offset.** The member does owe on the ledger;
 StableCredit holds one number and knows nothing about backing. But putting that debt in the
 denominator and the savings in the numerator would count the same collateral twice: the savings are
 consumed by the very debt being counted. Excluding both is the same answer with fewer places to be
-wrong. With only savings-backed credit outstanding, exposure is zero and `hasValidRTD()` is true at
-any reserve.
+wrong. With only savings-backed credit outstanding, the covered book is zero and so is the floor.
 
 ### Internal collateral is its own category
 
@@ -257,7 +262,7 @@ the co-op itself**, and behaves differently from a tokenized deed:
 | Seizure on default | Sell it into a market | **Cancel the co-op's own obligation to the member** |
 | Haircut driver | Market price uncertainty | Redemption terms, largely known |
 
-This is not circular in a harmful sense: the bond is senior, the debt is the member's, and RTD still
+This is not circular in a harmful sense: the bond is senior, the debt is the member's, and the floor still
 counts the shortfall. On default the co-op seizes a bond it would otherwise have had to redeem, so
 **the seizure cancels a liability rather than realising an asset.**
 
@@ -269,12 +274,12 @@ kind, conservatively, and lowered only with evidence.
 The same CLRUSD cannot be counted twice. A member's CLRUSD backing drawn credit is locked in the
 token (§4), so it cannot be moved into a bond or the lending pool to be pledged again.
 
-### Pricing and the target ratio
+### Retired: pricing and the target ratio
 
-`AssuranceOracle` prices accepted tokens from a Uniswap V3 time-weighted average (`observe`), never
-from spot (`slot0` can be moved by a flash loan), and falls back to the
-[token registry](./token-registry.md). The target RTD is a static value (`0.8e18` at deployment)
-unless a risk model is registered as `ITargetRTDSource`; see [Target RTD](./reserve.md#target-rtd).
+The Phase 1 `AssuranceOracle` priced accepted tokens from a Uniswap V3 time-weighted average and
+served a target reserve ratio. Both retired with the Phase 1 pool; `floorBps` and the monthly floor
+inputs (`setFloorInputs`, two signers) replace them. See
+[Retired: the Phase 1 reserve](./reserve.md#retired-the-phase-1-reserve).
 
 ---
 
@@ -422,7 +427,7 @@ credit, and the shop redeems through the PayoutPool.
   gives the contract. The repayment is routed like any other, so it reaches the PayoutPool first.
 - An offer unspent after the expiry window (90 days by default) comes back off the member and off
   the line (`expire`, permissionless).
-- `debtByKind` reports nothing, so the AssurancePool does not reserve against the co-op owing itself.
+- `debtByKind` reports nothing, so the Credit Backstop's floor does not count the co-op owing itself.
 - The API's hourly offers job (`AUTO_OFFERS`) grants, expires and settles offers.
 
 ---
@@ -505,22 +510,17 @@ matching claim to the tier's carry recipient.
 
 ## 8. Merchant payouts
 
-### The AssurancePool lends to a payout only as a last resort
+### The AssurancePool never funds or lends to a payout
 
-Redemption from the AssurancePool is capped by lost debt outstanding. Paying merchants from it would
-mean **a merchant could be paid only when a member had defaulted**, at a rate set by how badly the book
-was performing, and it would spend the fund that makes losses survivable on ordinary operations.
+Paying merchants from a loss reserve would mean **a merchant could be paid only when a member had
+defaulted**, at a rate set by how badly the book was performing, and it would spend the fund that
+makes losses survivable on ordinary operations.
 
-**A merchant's positive balance is a payable** — certain, owed, due on a schedule. **The AssurancePool
-covers a contingency** — a loss that may never happen. So the AssurancePool never funds a payout. A
-merchant is paid from members' repayments and from cash lent by the lending pool, the bond vault and
-the treasury.
-
-**What it may do is lend across a timing gap, last.** When a claim is past its terms and every other
-source is short, `PayoutPool.drawForDueClaim` borrows from the AssurancePool — excess first, then the
-buffer while the RTD holds, never the primary reserve — and repays it, with carry, out of the next
-repayments. Covering a gap that comes back is one of the things a reserve is for; spending its cover
-is not.
+**A merchant's positive balance is a payable** — certain, owed, due on a schedule. **The Credit
+Backstop covers a contingency** — a loss that may never happen. So the AssurancePool never funds a
+payout, and since section 13 it does not lend across a timing gap either: `PayoutPool` holds no
+address for it. A merchant is paid from members' repayments, Clear Lending's payout top-ups and the
+treasury allowance. A due claim none of them covers waits for funding (`dueWithin` says how much).
 
 ### The pool is a timing buffer, not a subsidy
 
@@ -556,7 +556,7 @@ merchant's payout window is set in `MerchantRegistry`, in their agreement, not i
 | Members' repayments | **Automatically**, through `_routeRepayment` |
 | Merchant drawdown netting | **Automatically**, on transfer; costs no reserve at all |
 | Capital (`fund`) | A `FUNDER_ROLE` holder puts it in, and holds the positions it pays for |
-| Lenders, for a due claim | `drawForDueClaim` (permissionless): lending pool, bond vault, treasury allowance, AssurancePool |
+| The treasury, for a due claim | `drawForDueClaim` (permissionless): the treasury allowance. Its lending-pool and bond-vault legs are inert (direct borrowing is retired and the vault lends nothing) |
 | Fiat top-ups | A multisig action |
 
 **The rule:** the pool takes value that is already on chain automatically; anything crossing the fiat
@@ -574,26 +574,25 @@ visible on chain.
 
 ---
 
-## 9. Reserve sources: one pool, no registry
+## 9. Reserve sources: one backstop
 
-**RTD reads the AssurancePool and nothing else.** There is no registry of reserve sources, no claim
-tags and no configuration. A registry whose correct configuration has exactly one entry would be a
-lookup table, a governance surface and a way to get the tags wrong. Hard-coding is safer here, not
-merely simpler: nothing can enter RTD by accident because nothing else is wired to it.
+**The Credit Backstop is the only loss reserve.** Its floor reads the exposure sources governance
+names (`setExposureSources`, today the `CollateralRegistry`) and nothing else, so no other pool can
+count toward it by accident.
 
 **The other pools are not reserves:**
 
-| Source | Why it is not in RTD |
+| Source | Why it is not a loss reserve |
 |---|---|
-| `LendingPool` | Its depositors' capital, lent at their risk |
+| `LendingPool` | Its holders' capital, deployed to Clear Lending at their risk |
 | `BondVault` | Bondholders' money behind a code-enforced redemption reserve. It cannot absorb losses by construction |
 | `PayoutPool` | Merchants' money |
+| Member Assurance | The co-op's member grants. Never moves into the Credit Backstop except by a two-signer transfer |
 | Member savings | Locked against that member's own debt. Never pooled, never available for anyone else's loss |
 
 ### Two numbers, not one
 
-**RTD is the gate.** Pool exposure against the AssurancePool's primary reserve. It stays narrow on
-purpose.
+**The backstop against its floor is the reserve figure.** It stays narrow on purpose.
 
 **Network position is a reporting view**: total obligations against total assets, **with claim
 priority kept rather than summed.** It gates nothing, so it needs no on-chain authority; it is read
@@ -616,13 +615,11 @@ redeemable.
 **Unmaterialised carry is derived, never stored.** A position stores an amount against an index;
 accrued carry is read through the index and reaches the ledger only through `accrueCarry`.
 
-**RTD's numerator is the AssurancePool's primary reserve.** Its denominator is member exposure plus the
-bond vault's uncovered near-term gap (`bondExposure()`), so a bond the vault cannot cover counts
-against the cover.
+**The Credit Backstop's floor is the larger of the timing-buffer shortfall and 5% of the covered
+book.** A transfer out of the backstop executes only if it keeps that floor plus every pending draw.
 
-**`PayoutPool` and `AssurancePool` meet only as borrower and last-resort lender.** No payout is funded
-out of loss absorption: the AssurancePool lends excess, then buffer while the RTD holds, never
-primary, and is repaid with carry.
+**`PayoutPool` and `AssurancePool` never meet.** No payout, redemption, refund, liquidation or force
+settlement reaches the AssurancePool, and its `deposit` refuses any money-path contract.
 
 **The AssurancePool holds no bond principal.** Bond proceeds go to `BondVault`.
 
@@ -644,9 +641,9 @@ The API's hourly reconciler compares, and alerts on drift without correcting it:
 | Credit issuance | Card credit drawn on chain against what the off-chain ledger says is owed and settled |
 | Float adequacy | The settlement float against savings-backed credit drawn but not yet reconciled |
 
-On chain, `BondVault.coversNearTermMaturities()` and `AssurancePool.hasValidRTD()` report bond
-coverage by maturity window and the reserve ratio. A system can be solvent in aggregate and short on
-timing, which is why bond coverage is measured inside a window.
+On chain, `BondVault.coversNearTermMaturities()` reports bond coverage by maturity window, and
+`AssurancePool.backstopBalance()` against `backstopFloor()` the Credit Backstop. A system can be
+solvent in aggregate and short on timing, which is why bond coverage is measured inside a window.
 
 ---
 
@@ -655,8 +652,8 @@ timing, which is why bond coverage is measured inside a window.
 - **Exposure is gross, per position.** Lending-pool depositors are paid out of other members' carry.
   A member who is both a large depositor and a large unsecured borrower has largely netted their own
   risk, but exposure still counts both positions in full.
-- **Losses and reserve requirements are not attributed per issuer.** Every issuer draws on one
-  AssurancePool, and exposure is summed across issuers.
+- **Losses and reserve requirements are not attributed per issuer.** Every issuer's exposure feeds
+  one Credit Backstop floor, summed across issuers.
 - **Term debt is one exposure bucket.** `TermIssuer.debtByKind` reports all term debt under a single
   `TERM` kind, which exposure counts as unsecured. There is no way to mark a term plan as secured by
   an asset.
