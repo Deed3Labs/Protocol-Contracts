@@ -2218,6 +2218,41 @@ export interface CardTransaction {
   /** What it drew on credit, and how much of that has been repaid (oldest purchase first). */
   creditCents?: number;
   creditRepaidCents?: number;
+  /**
+   * The card credit fee on this purchase (decision 55), in cents; 0 or absent when it carried none.
+   * Never part of `amountCents`, which is the merchant's figure.
+   */
+  creditFeeCents?: number;
+  /** `charged` while owed, `returned` after a full refund; `released` and `waived` were never charged. */
+  creditFeeState?: 'charged' | 'returned' | 'released' | 'waived' | null;
+  creditFeeReturned?: boolean;
+  /** How much of the fee has been given back so far, in cents. */
+  creditFeeReturnedCents?: number;
+}
+
+/** Card credit fees over a window: what was charged, and what of it was given back, in cents. */
+export interface CreditFeeWindow {
+  chargedCents: number;
+  returnedCents: number;
+}
+
+export interface CardCreditFees {
+  /** Whether the fee is charged now, and its amount in cents (0 while it is not set). */
+  fee: { cents: number; on: boolean };
+  /** This cycle, when a cycle start was given. */
+  cycle: CreditFeeWindow | null;
+  /** January 1 to now. */
+  yearToDate: CreditFeeWindow;
+}
+
+/**
+ * The card credit fee for the statement view: this cycle's total and the year to date (Reg Z
+ * §1026.7(b)(6)). Null when it could not be read.
+ */
+export async function getCardCreditFees(cycleStartSeconds?: number): Promise<CardCreditFees | null> {
+  const query = cycleStartSeconds && cycleStartSeconds > 0 ? `?cycleStart=${Math.floor(cycleStartSeconds)}` : '';
+  const r = await apiRequest<CardCreditFees>(`/api/lithic/cards/credit-fees${query}`);
+  return r.error || !r.data ? null : r.data;
 }
 
 /**
@@ -2969,6 +3004,8 @@ export interface AutoRepayState {
   owedInScopeCents?: number | null;
   /** What card spending may still draw against Savings; -1 = no limit. Null when unread. */
   savingsDrawAllowanceCents?: number | null;
+  /** The card credit fee, for the disclosure before card spending from Savings is allowed. */
+  cardCreditFee?: { cents: number; on: boolean };
 }
 
 export async function getAutoRepay(wallet: string): Promise<AutoRepayState | null> {

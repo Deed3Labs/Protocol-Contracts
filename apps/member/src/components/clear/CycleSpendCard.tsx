@@ -45,6 +45,18 @@ export default function CycleSpendCard({ cycle }: { cycle: CycleSpend }) {
           <span className="tabular-nums">{money(cycle.fromCredit)}</span>
         </div>
 
+        {/* Card credit fees (decision 55) as their own line, with the year to date beside them,
+            only when there are some. */}
+        {cycle.creditFees && (
+          <div className="flex items-center justify-between gap-3 leading-[1.9]">
+            <span>Card credit fees</span>
+            <span className="tabular-nums">
+              {money(cycle.creditFees.cycle, { cents: true })}
+              <span className="ml-1 text-[11px]">· {money(cycle.creditFees.yearToDate, { cents: true })} this year</span>
+            </span>
+          </div>
+        )}
+
         {/* Mobile keeps carry cost in the same list — a rule for one row costs
             more height than the separation is worth on a phone. */}
         <div className="flex items-baseline justify-between gap-3 leading-[1.9] lg:hidden">

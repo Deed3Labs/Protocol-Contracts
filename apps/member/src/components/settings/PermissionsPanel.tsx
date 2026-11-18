@@ -5,6 +5,7 @@ import Switch from '@/components/clear/brand/Switch';
 import type { Permission } from '@/lib/clearModel';
 import type { AutoRepay } from '@/hooks/useAutoRepay';
 import type { AutoPledgeSetting } from '@/hooks/useAutoPledge';
+import { cardCreditCostLine } from '@/lib/cardCreditFee';
 
 /**
  * What Clear can do without asking each time.
@@ -158,6 +159,8 @@ export default function PermissionsPanel({
                   ) : null
                 }
               />
+              {/* What card spending on credit costs, shown before it is allowed (MB-07 §4.3(c)). */}
+              <TwoLineRow title="What it costs" detail={cardCreditCostLine(autoRepay.cardCreditFee)} />
               <TwoLineRow
                 title={
                   <input

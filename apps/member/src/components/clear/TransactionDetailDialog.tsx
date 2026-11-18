@@ -6,6 +6,7 @@ import { TIER_TEXT_CLASS } from './ClearCreditCard';
 import { signedMoney } from '@clear/domain';
 import { capitalise, TIER_SHORT_LABEL, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
+import { feeLabel } from '@/lib/activityMapping';
 
 /**
  * One transaction, opened from any list that shows them.
@@ -49,6 +50,14 @@ export default function TransactionDetailDialog({
       value: row.paidFromLabel ?? (row.paidFromTier ? `${TIER_SHORT_LABEL[row.paidFromTier]} credit` : capitalise(row.source)),
       className: row.paidFromTier ? TIER_TEXT_CLASS[row.paidFromTier] : undefined,
     });
+  }
+  // Under the purchase it rode on (decision 55): the flat fee for a purchase that used credit, and,
+  // after a full refund, that it was given back.
+  if (row.creditFee) {
+    details.push({ label: 'Card credit fee', value: feeLabel(row.creditFee.amount) });
+    if (row.creditFee.returnedAmount > 0) {
+      details.push({ label: 'Card credit fee returned', value: feeLabel(row.creditFee.returnedAmount) });
+    }
   }
   if (row.rate) details.push({ label: 'Rate on this draw', value: row.rate });
   if (row.cardLast4) details.push({ label: 'Card', value: `•••• ${row.cardLast4}`, className: 'c-mono' });

@@ -24,6 +24,11 @@ export interface AutoRepay {
   clearNow?: { amount: number; onClear: () => void; done: string | null } | null;
   /** Card spending against Savings (12.7): what may still be drawn, in dollars; null when unread. */
   savingsAllowance?: { amount: number | null; unlimited: boolean; busy: boolean; onSet: (dollars: number) => void };
+  /**
+   * The card credit fee (decision 55), for the disclosure shown before card spending from Savings is
+   * allowed (MB-07 §4.3(c)): its amount in cents (0 while unset) and whether it is charged now.
+   */
+  cardCreditFee?: { cents: number; on: boolean };
 }
 
 /**
@@ -53,6 +58,7 @@ export function useAutoRepay(): AutoRepay {
   const [paused, setPaused] = useState(false);
   const [owedCents, setOwedCents] = useState<number | null>(null);
   const [allowanceCents, setAllowanceCents] = useState<number | null>(null);
+  const [cardCreditFee, setCardCreditFee] = useState<{ cents: number; on: boolean } | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [allowanceBusy, setAllowanceBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +73,7 @@ export function useAutoRepay(): AutoRepay {
       setPaused(Boolean(status.pausedForEveryone));
       setOwedCents(status.owedInScopeCents ?? null);
       setAllowanceCents(status.savingsDrawAllowanceCents ?? null);
+      setCardCreditFee(status.cardCreditFee);
     });
   }, [address]);
 
@@ -152,5 +159,6 @@ export function useAutoRepay(): AutoRepay {
       busy: allowanceBusy,
       onSet: onSetAllowance,
     },
+    cardCreditFee,
   };
 }
