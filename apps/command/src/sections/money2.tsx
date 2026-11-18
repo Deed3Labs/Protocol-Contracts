@@ -140,7 +140,8 @@ function makeMoney() {
       members: 124,
       autopay: 98
     };
-    /* the yield pool (LendingPool, ERC-4626): funds unsecured credit, takes its first loss. Rates follow the contract's curve. */
+    /* the Yield Pool (LendingPool, ERC-4626): deploys only to Clear Lending's lending account, by two signers, and earns Pool Interest on the Deployed Balance.
+       It stands behind the whole credit book, fifth in the loss order (IV-02 5.1). */
     const Y = L ? L.Y : {
       assets: 9000.00,
       principal: 8962.10,
@@ -151,29 +152,56 @@ function makeMoney() {
       opened: '15 Oct',
       cycleDays: 30,
       curve: {
-        base: 25,
-        s1: 75,
-        s2: 900,
-        kink: 0.80
+        r0: 0.02,
+        s1: 0.03,
+        k: 0.80,
+        s2: 0.05
       }
-    };
+    }; /* the deployed rate model: LendingPool.rateModel(), annual */
     // live, the API works these out (the rates are the contract's own reads): the reference's formulas only run on its figures
     if (!L) {
-    Y.cash = Y.assets - Y.lent;
+    Y.accrued = 14.62; /* Pool Interest owed since Clear Lending's last Return, accruing per second */
+    Y.cash = Y.assets - Y.lent - Y.accrued;
     Y.util = Y.lent / Y.assets;
     Y.earned = Y.assets - Y.principal;
     Y.price = Y.assets / Y.principal;
     }
-    const yBorrowBps = u => u <= Y.curve.kink ? Y.curve.base + Y.curve.s1 * u / Y.curve.kink : Y.curve.base + Y.curve.s1 + Y.curve.s2 * (u - Y.curve.kink) / (1 - Y.curve.kink);
-    const yApr = bps => bps / 10000 * 365 / Y.cycleDays;
-    const yApy = bps => Math.pow(1 + bps / 10000, 365 / Y.cycleDays) - 1;
+    /* Funding Rate (annual, YieldPoolLedger._rate): r0 + s1·u/k up to the kink, then + s2·(u−k)/(1−k). Returned in annual basis points.
+       Live it's never worked out here: the API reads fundingRateAt(u) for each utilization the page draws (Y.rateAt, by basis points). */
+    const yBorrowBps = u => {
+      if (L) return Y.rateAt ? Y.rateAt[Math.round(Math.min(1, u) * 1e4)] ?? null : null;
+      const c = Y.curve,
+        x = Math.min(1, u);
+      return 1e4 * (x <= c.k ? c.r0 + c.s1 * x / c.k : c.r0 + c.s1 + c.s2 * (x - c.k) / (1 - c.k));
+    };
+    const yApr = bps => bps / 10000;
+    const yApy = bps => bps / 10000; /* holder yield ≈ Funding Rate × Utilization, before losses (IV-02 Schedule 2 §3) */
     if (!L) {
     Y.borrowBps = yBorrowBps(Y.util);
     Y.supplyBps = Y.borrowBps * Y.util;
     Y.apy = yApy(Y.supplyBps);
     Y.apr = yApr(Y.borrowBps);
-    M.rtd = M.assurance / M.unsecured;
-    M.room = M.assurance / M.floor - M.unsecured;
+    /* the AssurancePool: the co-op's, two compartments. The Credit Backstop pays Clear Lending's charged-off principal under I-11, up to the coverage cap posted each month;
+       Member Assurance funds members' Assurance grants. Clear Lending's own Spread, Loss Reserve and capital come first. */
+    M.apBack = 1120.00;
+    M.apMem = M.assurance - M.apBack;
+    M.cap = 10000;
+    M.cover = Math.min(M.apBack, M.cap);
+    M.drawn = 0;
+    M.lr = 1850.00;
+    M.spread = 312.40;
+    M.resid = 5000.00;
+    M.memberCash = 6240.18;
+    M.clOp = 2723.16;
+    M.clSettle = 2000.00;
+    M.clSettlePeak = 1240.00;
+    M.treasury = 1963.30;
+    /* the payout pool: Clear Lending funds each financed charge by its Funding Deadline, two business days before the claim is due (I-09). Member repayments reach the pool first (ClearCredit pays it what it is owed, the rest goes to Clear Lending); short is what Clear Lending still owes by Mon 2 Nov.
+       The payout funding keeper (apps/api jobs/payoutFundingKeeper.ts) reads this hourly: RED if a deadline is breached, AMBER if the payable balance is under what's due within 30 days (decision 49). */
+    M.due30 = 13980.05;
+    M.standShort = Math.max(0, M.due30 - M.payout);
+    Y.headroom = Math.max(0, (Y.lent + Y.cash) * 0.9 - Y.lent);
+    M.treasuryAllow = 0;
     M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
     Y.toPayout = Math.min(M.short, Y.cash);
     Y.utilAfter = (Y.lent + Y.toPayout) / Y.assets;
@@ -184,20 +212,20 @@ function makeMoney() {
     const NW = L ? L.NW : ['8 Sep', '15 Sep', '22 Sep', '29 Sep', '6 Oct', '13 Oct', '20 Oct'];
     const AP_BAL = L ? L.AP_BAL : [0, 400, 520, 690, 860, 1110, M.assurance],
       UNSEC = L ? L.UNSEC : [0, 900, 2050, 3450, 4400, 5100, M.unsecured];
-    const RTD_W = L ? L.RTD_W : AP_BAL.map((v, i) => UNSEC[i] ? v / UNSEC[i] : null);
     const COOP_W = L ? L.COOP_W : [22.40, 39.40, 78.40, 109.20, 126.80, 100.00];
 
     /* the next 30 days, day 0 = 21 Oct: [day, in|out, amount, what, detail, from|to] */
-    const FLOWS = L ? L.FLOWS : [[1, 'out', 412.60, 'Rosa’s Panadería', 'NET-14 payout'], [3, 'in', 592.94, 'Member repayments', 'Autopay batch'], [9, 'in', 889.42, 'Member repayments', 'Autopay batch'], [12, 'out', 9510.65, 'Monthly run', '11 shops · NET-30'], [14, 'out', 732.00, 'Arrowhead Nails', 'NET-14 payout'], [14, 'out', 2184.00, 'Cajon Phone Repair', 'NET-14 payout'], [16, 'in', 2310.20, 'Member repayments', 'Autopay batch'], [28, 'out', 1140.80, 'NET-14 shops', 'Next NET-14 round · estimate']];
+    const FLOWS = L ? L.FLOWS : [[1, 'out', 412.60, 'Rosa’s Panadería', 'NET-14 payout'], [3, 'in', 592.94, 'Member repayments', 'Autopay · the ledger pays the pool first'], [9, 'in', 889.42, 'Member repayments', 'Autopay · the ledger pays the pool first'], [9, 'in', 3840.05, 'Automatic top-up', 'From CL Operating, once the Deployment lands'], [12, 'out', 9510.65, 'Monthly run', '11 shops · NET-30'], [14, 'out', 732.00, 'Arrowhead Nails', 'NET-14 payout'], [14, 'out', 2184.00, 'Cajon Phone Repair', 'NET-14 payout'], [16, 'in', 2310.20, 'Member repayments', 'Autopay · the ledger pays the pool first'], [28, 'out', 1140.80, 'NET-14 shops', 'Next NET-14 round · estimate']];
     const BONDS = L ? L.BONDS : [/* id, face, issued, matures, months to maturity from today, term in months, internal rate, holder */
     ['BB-0001', 2500, '14 Aug', '14 Dec', 54, 4, 6.0, 'Member'], ['BB-0002', 5000, '21 Aug', '21 Jan', 92, 5, 6.5, 'Founding lender'], ['BB-0003', 2500, '2 Sep', '2 Mar', 132, 6, 7.0, 'Member'], ['BB-0004', 2500, '9 Sep', '9 Mar', 139, 6, 7.0, 'Member'], ['BB-0005', 7500, '1 Oct', '1 Jun', 223, 8, 7.5, 'Founding lender'], ['BB-0006', 5000, '15 Oct', '15 Sep', 329, 11, 8.0, 'Member']];
     /* every account, in the order the bar draws them: whose money it is decides the bracket */
     const ACCTS = L ? L.ACCTS : [/* id, name, what it's for, group, source, balance, 7 weeks, colour */
-    ['sav', 'Member savings', 'CLRUSD, backed 1:1 by USDC at Bridge', 'members', 'bridge', M.savings, [0, 2100, 6400, 13900, 22800, 31200, M.savings], 'var(--fg)'], ['yld', 'Yield pool', 'Members’ deposits not lent out yet', 'members', 'protocol', Y.cash, [0, 0, 0, 0, 0, 2180, Y.cash], 'color-mix(in srgb,var(--live) 60%,transparent)'], ['pay', 'Payout pool', 'Pays shops for financed sales, oldest first', 'set', 'protocol', M.payout, [0, 1200, 3900, 5200, 7800, 9600, M.payout], 'color-mix(in srgb,var(--fg) 45%,transparent)'], ['ap', 'AssurancePool', 'Covers unsecured losses after the yield pool', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'], ['bv', 'BondVault', 'Bond buyers’ money · paid back at maturity', 'set', 'protocol', M.bv, [10000, 12500, 12500, 12500, 20000, 20000, M.bv], 'color-mix(in srgb,var(--fg) 28%,transparent)'], ['ops', 'Operating cash', 'Business checking · the co-op’s own money', 'coop', 'plaid', M.cash, [16800, 17900, 18600, 19800, 20400, 21100, M.cash], 'var(--land)'], ['coop', 'Co-op balance', 'Discounts on member purchases, held for a vote', 'coop', 'protocol', M.coop, [0, 22.40, 61.80, 140.20, 249.40, 376.20, M.coop], 'color-mix(in srgb,var(--land) 45%,transparent)']];
+    ['sav', 'Member savings', 'CLRUSD, backed 1:1 by USDC in the ESA vault', 'members', 'protocol', M.savings, [0, 2100, 6400, 13900, 22800, 31200, M.savings], 'var(--fg)'], ['cash', 'Member cash', 'Spendable at the Bank Partner, through Lithic · the card spends it', 'members', 'lithic', M.memberCash, [0, 1180, 2460, 3520, 4310, 5390, M.memberCash], 'color-mix(in srgb,var(--fg) 72%,transparent)'], ['yld', 'Yield pool', 'Members’ deposits not lent out yet', 'members', 'protocol', Y.cash, [0, 0, 0, 0, 0, 2180, Y.cash], 'color-mix(in srgb,var(--live) 60%,transparent)'], ['pay', 'Payout pool', 'Pays shops for financed sales, deadline first', 'set', 'protocol', M.payout, [0, 1200, 3900, 5200, 7800, 9600, M.payout], 'color-mix(in srgb,var(--fg) 45%,transparent)'], ['ap', 'AssurancePool', 'The co-op’s · Credit Backstop and Member Assurance', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'], ['bv', 'BondVault', 'Bond buyers’ money · paid back at maturity', 'set', 'protocol', M.bv, [10000, 12500, 12500, 12500, 20000, 20000, M.bv], 'color-mix(in srgb,var(--fg) 28%,transparent)'], ['ops', 'Operating cash', 'Business checking · the co-op’s own money', 'coop', 'plaid', M.cash, [16800, 17900, 18600, 19800, 20400, 21100, M.cash], 'var(--land)'], ['trs', 'Clear Treasury Safe', 'USDC on chain · pays the co-op’s interchange share into the AssurancePool', 'coop', 'protocol', M.treasury, [0, 0, 480, 960, 1420, 1780, M.treasury], 'color-mix(in srgb,var(--land) 70%,transparent)'], ['coop', 'Co-op balance', 'Discounts on member purchases, held for a vote', 'coop', 'protocol', M.coop, [0, 22.40, 61.80, 140.20, 249.40, 376.20, M.coop], 'color-mix(in srgb,var(--land) 45%,transparent)'], ['clop', 'CL Operating', 'Safe · Deployments land here; top-ups and fees leave from here', 'cl', 'protocol', M.clOp, [0, 0, 0, 0, 0, 1220.00, M.clOp], 'color-mix(in srgb,var(--land) 60%,var(--fg) 25%)'], ['clset', 'Credit Settlement Account', 'At the Bank Partner · prefunded so card credit swipes settle', 'cl', 'lithic', M.clSettle, [0, 0, 0, 1500, 2000, 2000, M.clSettle], 'color-mix(in srgb,var(--land) 40%,var(--fg) 15%)'], ['cllr', 'CL Loss Reserve', 'Safe · takes credit losses right after the Spread', 'cl', 'protocol', M.lr, [0, 0, 500, 900, 1300, 1600, M.lr], 'color-mix(in srgb,var(--fg) 58%,transparent)'], ['clfee', 'CL Fees wallet', 'CDP · pays the Assurance fee into the pool, once funded', 'cl', 'protocol', 0, [0, 0, 0, 0, 0, 0, 0], 'color-mix(in srgb,var(--underway) 45%,transparent)']];
     const GROUPS = {
       members: ['Members’ money', 'Owed back to members on request'],
       set: ['Set aside', 'Only for shops, losses and bondholders'],
-      coop: ['The co-op’s', 'Ours to run on']
+      coop: ['The co-op’s', 'Ours to run on'],
+      cl: ['Clear Lending’s', 'A separate company · it lends to members']
     };
     const ASIDE = L ? L.ASIDE : [['Sales tax held', 351.58, 'Shop · paid with the quarterly return'], ['Pre-order deposits', 460.00, 'Hardware · refundable until made']];
     const SRC = L ? L.SRC : {
@@ -295,26 +323,26 @@ function makeMoney() {
     }, {
       id: 'mv-top',
       kind: 'topup',
-      t: 'Top up the payout pool',
-      from: 'ops',
-      to: 'Payout pool',
+      t: 'Deploy to Clear Lending',
+      from: 'yld',
+      to: 'CL Operating',
       amt: 1116.89,
       by: 'kai',
       d: 0,
-      why: 'Covers the 4 Nov gap from operating cash, so the co-op earns the interest instead of the yield pool.',
+      why: 'Clear Lending funds the 4 Nov payouts by Mon 2 Nov. The top-up job found CL Operating short of its refill, so two Deployment signers move this from the pool’s cash.',
       due: 9,
       st: 'waiting',
       wait: 'dana'
     }, {
       id: 'mv-rosa',
       kind: 'payout',
-      t: 'Rosa’s Panadería · NET-14 payout',
+      t: 'Release Rosa’s held payout',
       from: 'pay',
       to: 'Rosa’s Panadería',
       amt: 412.60,
       by: 'dana',
       d: -1,
-      why: 'September sales on NET-14 terms.',
+      why: 'Held for a customer dispute that closed 20 Oct in her favour. Releasing a hold needs a second person; the queue then pays it in its turn.',
       due: 1,
       st: 'merchants'
     }];
@@ -338,16 +366,16 @@ function makeMoney() {
     }, {
       d: -7,
       t: 'Loss absorbed · Cajon Phone Repair',
-      from: 'AssurancePool',
+      from: 'CL Loss Reserve',
       to: 'Credit ledger',
       amt: 204.00,
-      auto: 'Member 90 days late',
+      auto: 'Charged off at 90 days · the Spread, then the Loss Reserve',
       tx: '0x77d0…0e3c'
     }, {
       d: -8,
-      t: 'Top up the payout pool',
-      from: 'Operating cash',
-      to: 'Payout pool',
+      t: 'Yield Pool Deployment',
+      from: 'Yield pool',
+      to: 'CL Operating',
       amt: 2600.00,
       by: 'dana',
       ok: 'kai',
@@ -355,10 +383,10 @@ function makeMoney() {
     }, {
       d: -15,
       t: 'Loss absorbed · Citrus Bowl Café',
-      from: 'AssurancePool',
+      from: 'CL Loss Reserve',
       to: 'Credit ledger',
       amt: 204.00,
-      auto: 'Member 90 days late',
+      auto: 'Charged off at 90 days · the Spread, then the Loss Reserve',
       tx: '0xe41b…7d20'
     }, {
       d: -19,
@@ -380,9 +408,9 @@ function makeMoney() {
       tx: '0xc8a0…3f55'
     }, {
       d: -21,
-      t: 'Top up the payout pool',
-      from: 'Operating cash',
-      to: 'Payout pool',
+      t: 'Yield Pool Deployment',
+      from: 'Yield pool',
+      to: 'CL Operating',
       amt: 3000.00,
       by: 'kai',
       ok: 'dana',
@@ -400,16 +428,16 @@ function makeMoney() {
     }, {
       d: -29,
       t: 'Loss absorbed · Redlands Tire & Lube',
-      from: 'AssurancePool',
+      from: 'CL Loss Reserve',
       to: 'Credit ledger',
       amt: 204.00,
-      auto: 'Member 90 days late',
+      auto: 'Charged off at 90 days · the Spread, then the Loss Reserve',
       tx: '0x60fd…e2a1'
     }, {
       d: -30,
-      t: 'Top up the payout pool',
-      from: 'Operating cash',
-      to: 'Payout pool',
+      t: 'Yield Pool Deployment',
+      from: 'Yield pool',
+      to: 'CL Operating',
       amt: 2500.00,
       by: 'dana',
       ok: 'kai',
@@ -427,18 +455,18 @@ function makeMoney() {
       }
     } : {
       topup: {
-        t: 'Top up the payout pool',
-        from: 'ops',
-        to: 'pay',
+        t: 'Deploy to Clear Lending',
+        from: 'yld',
+        to: 'clop',
         amt: () => M.short,
-        why: 'Cover the 4 Nov gap from operating cash instead of borrowing it from the yield pool.'
+        why: 'Clear Lending funds the 4 Nov payouts by their Funding Deadline, Mon 2 Nov. Two Deployment signers; it goes only to Clear Lending’s lending account.'
       },
       bondvault: {
-        t: 'Use spare bond money',
+        t: 'Withdraw BondVault’s excess',
         from: 'bv',
-        to: 'pay',
+        to: 'clop',
         amt: () => Math.min(5000, Math.max(0, M.bv - BV_NEED())),
-        why: 'Spare bond money, above what BondVault keeps for bondholders.'
+        why: 'Above the Redemption Reserve. It goes only to Clear Lending’s registered multisig, through the Collateral Agent.'
       },
       bill: {
         t: 'Pay a bill from operating cash',
@@ -463,13 +491,15 @@ function makeMoney() {
       pay: 'Payout pool',
       bv: 'BondVault',
       out: 'Someone outside the co-op',
-      ap: 'AssurancePool'
+      ap: 'AssurancePool',
+      yld: 'Yield pool',
+      clop: 'CL Operating · Clear Lending'
     };
 
     /* ══ Money — is everything covered, where it sits, and the moves that need two people ══════════════════════
        Tabs answer one question each: Overview (covered?), Cash flow (what moves in the next 30 days), Credit (the book),
        Pools (AssurancePool, Payout, Yield, Bonds), Moves (propose, approve, history). The two checks stay apart on purpose:
-       RTD gates credit; claims-in-order only reports and is never summed. */
+       The Credit Backstop stands behind Clear Lending’s own reserve; claims-in-order only reports and is never summed. */
     const N = keep('money.N', {
       tab: 'overview',
       pool: 'yield',
@@ -516,29 +546,28 @@ function makeMoney() {
         mine = forMe(),
         tier3 = M.bonds ? Math.min(1, M.bv / M.bonds) : 1;
       const B = {
-        overview: <>{"Member savings, shops and bondholders are "}{tier3 >= 1 ? 'all' : 'mostly'}{" covered. "}{L ? M.short ? <>{"In the next 14 days the payout pool borrows "}{money(M.short)}{" from the yield pool"}{w.some(m => m.kind === 'topup') ? <>{" unless "}<a data-ntab="moves">the top-up</a>{" is signed"}</> : ''}.</> : 'Nothing borrows from the yield pool in the next 14 days.' : w.some(m => m.kind === 'topup' || m.kind === 'bondvault') ? <>{"On 4 Nov the payout pool borrows "}{money(M.short)}{" from the yield pool unless "}<a data-ntab="moves">the top-up</a>{" is signed."}</> : 'Nothing borrows from the yield pool on 4 Nov.'}</>,
-        cash: L && !L.flowsReal ? <>{"The next 30 days’ payments aren’t recorded yet. "}<span className="q">Shop payouts due and member repayments on autopay come once the schedule is read.</span></> : L ? <>{money(OUT30)}{" goes to shops in the next 30 days and "}{money(IN30)}{" comes in."}{M.short ? <>{" In the next 14 days the payout pool "}<a data-ntab="cash" data-njump="ngap">{"borrows "}{money(M.short)}</a>{" from the yield pool."}</> : ''}</> : <>{money(13980.05)}{" goes to shops in the next 30 days and "}{money(3792.56)}{" comes in. On 4 Nov the payout pool "}<a data-ntab="cash" data-njump="ngap">{"borrows "}{money(M.short)}</a>{" from the yield pool."}</>,
+        overview: <>{"Member savings, shops and bondholders are "}{tier3 >= 1 ? 'all' : 'mostly'}{" covered. "}{L ? M.short ? <>{"Clear Lending still owes "}{money(M.short)}{" of funding for the payouts due in the next 14 days"}{w.some(m => m.kind === 'topup') ? <>{", once "}<a data-ntab="moves">the Deployment</a>{" is signed"}</> : ''}.</> : 'Every payout due in the next 14 days is funded.' : w.some(m => m.kind === 'topup' || m.kind === 'bondvault') ? <>{"Clear Lending funds "}{money(M.short)}{" of the 4 Nov payouts by Mon 2 Nov, once "}<a data-ntab="moves">the Deployment</a>{" is signed."}</> : 'Every 4 Nov payout is funded.'}</>,
+        cash: L && !L.flowsReal ? <>{"The next 30 days’ payments aren’t recorded yet. "}<span className="q">Shop payouts due and member repayments on autopay come once the schedule is read.</span></> : L ? <>{money(OUT30)}{" goes to shops in the next 30 days and "}{money(IN30)}{" comes in."}{M.short ? <>{" Clear Lending still owes "}<a data-ntab="cash" data-njump="ngap">{money(M.short)}</a>{" of funding for the next 14 days."}</> : ''}</> : <>{money(13980.05)}{" goes to shops in the next 30 days and "}{money(7632.61)}{" comes in. Clear Lending still owes "}<a data-ntab="cash" data-njump="ngap">{money(M.short)}</a>{" of funding by Mon 2 Nov."}</>,
         credit: L && L.creditReal ? M.credit ? `${money(M.credit)} is owed by ${CR.owing} ${CR.owing === 1 ? 'member' : 'members'}. ${pct(M.savingsBacked, M.credit, 0)} is backed by their own savings and ${pct(CR.aging[0][1], M.credit, 0)} is current.` : `No member owes anything right now. ${money(M.limits)} in limits is open to ${CR.limits.reduce((a, x) => a + x[1], 0)} ${CR.limits.reduce((a, x) => a + x[1], 0) === 1 ? 'member' : 'members'}.` : `${money(M.credit)} is owed by ${M.members} members. ${pct(M.savingsBacked, M.credit, 0)} is backed by their own savings${L ? '.' : ` and ${pct(CR.aging[0][1], M.credit, 0)} is current.`}`,
-        pools: <>{"The yield pool is "}{pct(Y.lent, Y.assets, 0)}{" lent out and pays depositors "}{(Y.apy * 100).toFixed(2)}{"% a year. "}<a data-npool="bonds">BondVault</a>{" holds "}{money(M.bv)}{" for "}{BONDS.length}{" bonds and keeps "}{money(BV_NEED())}{" of it back."}</>,
+        pools: <>{"The yield pool has "}{pct(Y.lent, Y.assets, 0)}{" deployed to Clear Lending and pays "}{(Y.apy * 100).toFixed(2)}{"% a year. "}{M.cover != null ? <>{"The Credit Backstop can cover "}{money(M.cover)}{". "}</> : ''}<a data-npool="bonds">BondVault</a>{" holds "}{money(M.bv)}{" for "}{BONDS.length}{" bonds and keeps "}{money(BV_NEED())}{" of it back."}</>,
         moves: w.length ? <>{w.length === 1 ? 'One move waits' : `${['', 'One', 'Two', 'Three', 'Four', 'Five'][w.length] || w.length} moves wait`}{" for a second person."}{mine.length ? <>{" "}<a data-nopen={mine[0].id}>{mine[0].t}</a>{" needs you."}</> : ''}</> : 'Nothing is waiting for a second person.'
       }[N.tab];
-      const rtdW = Math.min(1, M.rtd / gateMax()) * 100,
-        flr = Math.min(100, M.floor / gateMax() * 100);
-      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{L ? `Money · ${WD(0)} ${dayD(0)}` : 'Money · Wed 21 Oct · Demo data'}</span><p className="brief">{B}</p><div className="strip">{L ? apStrip() : <><div className="sc"><span className="lbl">{L ? 'Loss cover' : 'Credit gate'}</span><div className="sc-v">{L && !M.unsecured ? '—' : (M.rtd * 100).toFixed(1) + '%'}{" "}<small>{L && !M.unsecured ? 'nothing exposed' : 'RTD'}</small></div><div className="mb"><i style={css(`width:${rtdW}%;background:var(--live)`)} /><s className="nflr" style={css(`left:${flr}%`)} /></div><div className="sc-s">{L ? `Target ${Math.round(M.floor * 100)}% · covers ${money(M.room)} more unsecured` : <>{"Floor 20% · "}{money(M.room)}{" can still issue"}</>}</div></div></>}<div className="sc"><span className="lbl">Member savings</span><div className="sc-v">{money(M.savings).replace(/\.\d+$/, '')}<small className="ct">{money(M.savings).match(/\.\d+$/)[0]}</small></div><div className="mb"><i style={css("width:100%")} /></div><div className="sc-s">{L ? L.reserve ? `Reserved ${L.reserve.ratio} · checked ${L.reserve.checked}` : 'The reserve isn’t read yet' : 'Reserved 1 : 1 · checked 2 min ago'}</div></div>{L && !L.flowsReal ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · the schedule isn’t recorded</div></div> : L ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(OUT30).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${OUT30 ? Math.min(100, IN30 / OUT30 * 100) : 0}%;background:var(--land)`)} /></div><div className="sc-s">{money(IN30)}{" in · "}{M.short ? `${money(M.short)} short in 14 days` : 'nothing short'}</div></div> : <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(13980.05).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${3792.56 / 13980.05 * 100}%;background:var(--land)`)} /><span className="hroom" style={css(`left:${(M.payout + 3792.56) / 13980.05 * 100}%;right:0;box-shadow:inset 0 0 0 1px var(--underway);background:repeating-linear-gradient(45deg,var(--underway) 0 1.5px,transparent 1.5px 5px)`)} /></div><div className="sc-s">{money(3792.56)}{" in · "}{money(M.short)}{" short on 4 Nov"}</div></div>}<div className="sc"><span className="lbl">Moves</span><div className="sc-v">{w.length}{" "}<small>waiting</small></div><div className="mb">{w.map((m, i) => <i key={i} style={css(`left:${i / Math.max(3, w.length) * 100}%;width:calc(${100 / Math.max(3, w.length)}% - 2px);background:${forMe().includes(m) ? 'var(--underway)' : m.st === 'merchants' ? 'var(--live)' : 'color-mix(in srgb,var(--fg) 40%,transparent)'}`)} />)}</div><div className="sc-s">{mine.length ? `${mine.length} for you` : 'None for you'}{w.some(m => m.st === 'merchants') ? ` · ${w.filter(m => m.st === 'merchants').length} shop payout` : ''}</div></div></div></>);
+      // the Credit Backstop behind Clear Lending's reserve: the reserve dark, what the backstop can still cover amber
+      const lrv = M.lr ?? 0,
+        cov = M.cover ?? 0,
+        bk = lrv + cov || 1;
+      const backstop = <div className="sc" data-npool="ap" data-ntab="pools"><span className="lbl">Credit backstop</span><div className="sc-v">{money(cov).replace(/\.\d+$/, '')}<small>available</small></div><div className="mb"><i style={css(`width:${lrv / bk * 100}%;background:var(--fg)`)} /><i style={css(`left:${lrv / bk * 100}%;width:${cov / bk * 100}%;background:var(--underway)`)} /></div><div className="sc-s">{M.lr != null ? <>{"Behind Clear Lending’s "}{money0(lrv)}{" reserve"}</> : 'Clear Lending’s reserve isn’t read yet'}</div></div>;
+      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{L ? `Money · ${WD(0)} ${dayD(0)}` : 'Money · Wed 21 Oct · Demo data'}</span><p className="brief">{B}</p><div className="strip">{!L || M.cover != null ? backstop : apStrip()}<div className="sc"><span className="lbl">Member savings</span><div className="sc-v">{money(M.savings).replace(/\.\d+$/, '')}<small className="ct">{money(M.savings).match(/\.\d+$/)[0]}</small></div><div className="mb"><i style={css("width:100%")} /></div><div className="sc-s">{L ? L.reserve ? `Reserved ${L.reserve.ratio} · checked ${L.reserve.checked}` : 'The reserve isn’t read yet' : 'Reserved 1 : 1 · checked 2 min ago'}</div></div>{L && !L.flowsReal ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · the schedule isn’t recorded</div></div> : L ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(OUT30).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${OUT30 ? Math.min(100, IN30 / OUT30 * 100) : 0}%;background:var(--land)`)} /></div><div className="sc-s">{money(IN30)}{" in · "}{M.short ? `${money(M.short)} short in 14 days` : 'nothing short'}</div></div> : <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(13980.05).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${7632.61 / 13980.05 * 100}%;background:var(--land)`)} /></div><div className="sc-s">{money(7632.61)}{" in · top-up included"}</div></div>}<div className="sc"><span className="lbl">Moves</span><div className="sc-v">{w.length}{" "}<small>waiting</small></div><div className="mb">{w.map((m, i) => <i key={i} style={css(`left:${i / Math.max(3, w.length) * 100}%;width:calc(${100 / Math.max(3, w.length)}% - 2px);background:${forMe().includes(m) ? 'var(--underway)' : m.st === 'merchants' ? 'var(--live)' : 'color-mix(in srgb,var(--fg) 40%,transparent)'}`)} />)}</div><div className="sc-s">{mine.length ? `${mine.length} for you` : 'None for you'}{w.some(m => m.st === 'merchants') ? ` · ${w.filter(m => m.st === 'merchants').length} shop payout` : ''}</div></div></div></>);
     }
 
     /* ══ Overview: is everything covered? ══════════════════════════════════════════════ */
     function claimsCell() {
-      const C = [['Member savings', L ? 'USDC in the savings vault' : 'USDC reserve at Bridge', M.savings, M.savings], [L ? 'Shops, 14 days' : 'Shops, by 4 Nov', 'Payout pool, then the yield pool', M.owed14, M.payout + M.dueMembers + Y.toPayout], ['Bondholders', 'BondVault', M.bonds, Math.min(M.bonds, M.bv)], ['Yield pool deposits', 'Pool cash, then loans out', Y.assets, Y.assets, Y.cash - Y.toPayout]];
+      const C = L ? [['Member savings', 'USDC in the savings vault', M.savings, M.savings], ['Shops, 14 days', 'Payout pool, then Clear Lending’s funding', M.owed14, M.payout + M.dueMembers + Y.toPayout], ['Bondholders', 'BondVault', M.bonds, Math.min(M.bonds, M.bv)], ['Yield pool deposits', 'Pool cash, then deployed', Y.assets, Y.assets, Y.cash - Y.toPayout]] : [['Member savings', 'USDC in the ESA vault', M.savings, M.savings], ['Shops, by 4 Nov', 'Payout pool, then top-ups', M.owed14, M.owed14, M.payout], ['Bondholders', 'BondVault', M.bonds, Math.min(M.bonds, M.bv)], ['Yield pool deposits', 'Vault Cash, then Deployments', Y.assets, Y.assets, Y.cash]];
       return cell('s7', 'Claims in order', <span className="lbl">Who gets paid first</span>, <div className="ncl">{C.map(([k, by, owed, held, liq], i) => {
           const c = owed ? Math.min(1, held / owed) : 1,
             gap = Math.max(0, owed - held);
           return <div key={i} className={`ncl-r ${c < 1 ? 'part' : ''}`}><span className="ncl-n">{i + 1}</span><span className="ncl-k"><b>{k}</b><span>{by}</span></span><span className="ncl-b">{liq != null ? <><i style={css(`width:${owed ? liq / owed * 100 : 0}%`)} /><i style={css(`width:${owed ? (held - liq) / owed * 100 : 0}%;background:var(--land)`)} /></> : <><i style={css(`width:${c * 100}%`)} />{c < 1 ? <em style={css(`left:${c * 100}%;right:0`)} /> : ''}</>}</span><span className="ncl-p"><b>{c >= 1 ? '100%' : pct(held, owed)}</b><span>{gap ? money(gap) + ' short' : 'covered'}</span></span><b className="ncl-v">{money(owed)}</b></div>;
-        })}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Cash or reserve</span><span><i style={css("background:var(--land)")} />Out on loan</span><span><i className="hatch" />Not covered yet</span></span><button data-ntab="pools">Pools →</button></>);
-    }
-    // the gate's scale: 40% as the reference draws it, wider live when the floor sits above that (dev's is 80%)
-    function gateMax() {
-      return L ? Math.max(.4, Math.ceil(M.floor * 1.25 / .2) * .2) : .4;
+        })}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Cash or reserve</span><span><i style={css("background:var(--land)")} />Deployed, or due in by a deadline</span><span><i className="hatch" />Not covered yet</span></span><button data-ntab="pools">Pools →</button></>);
     }
     /* live, Phase 2c: the AssurancePool is two compartments, not an RTD gate. The Credit Backstop keeps a floor
        and the coverage above it is what Lending Co. may draw; Member Assurance pays grants. Read only: every pool
@@ -557,25 +586,95 @@ function makeMoney() {
       const open = A.draws.filter(d => d.status === 'Requested' || d.status === 'Approved');
       return cell('s5', 'AssurancePool', <span className="lbl">{`${srcTxt('protocol')} · read only`}</span>, <div className="ngt"><div className="ngt-top"><div className="m-big">{money(A.total)}{" "}<small>in two compartments</small></div><span className={`fst ${A.paused ? 'warn' : A.backstop >= A.floor ? 'ok' : 'warn'}`}>{A.paused ? 'Paused' : A.backstop >= A.floor ? 'Above floor' : 'Under floor'}</span></div><div className="led ngt-wf" aria-label="Compartments">{A.compartments.map(c => <div key={c.key}><span>{`${label(c.key)} · ${(c.allocationBps / 100).toFixed(0)}% of inflows`}</span><b>{money(c.balance)}</b></div>)}</div><div className="led ngt-wf" aria-label="Backstop"><div><span>Backstop floor</span><b>{money(A.floor)}</b></div><div><span>Available coverage</span><b>{money(A.coverage)}</b></div><div><span>Draws requested · approved, unpaid</span><b>{`${money(A.pendingDraws)} · ${money(A.approvedUnpaid)}`}</b></div></div>{open.length ? <div className="ngt-h"><span>{open.map(d => `Draw #${d.id} ${d.status.toLowerCase()} ${money(d.approved || d.requested)}`).join(' · ')}</span></div> : ''}</div>, <><span>Draws, grants and transfers need two signers, from their own wallets</span><span /></>);
     }
+    /* ── Loss ladder: the one component that shows who takes a loss, in order (IV-02 5.1, L-01 10.1) ──
+       Each layer is a bar on one shared dollar scale, starting where the layer before it ends, so you read straight down how deep
+       a loss has to go before it reaches the next layer. The dashed line is today's whole unsecured book: the worst case, if every
+       unsecured member stopped paying at once. Savings-backed credit never enters the ladder: the member's own pledge pays it.
+       lossLadder({compact}) is used on Overview (compact) and Pools (full, with what never takes a loss). */
+    function lossLayers() {
+      return L ? lossLayersLive() : [['Spread', 'Clear Lending’s margin this month', M.spread, 'var(--fg)'], ['Loss Reserve', 'Clear Lending’s CL Loss Reserve', M.lr, 'color-mix(in srgb,var(--fg) 58%,transparent)'], ['Credit Backstop', 'AssurancePool, up to the coverage cap', M.cover, 'var(--underway)'], ['Clear Lending’s capital', 'Its Residual Capital', M.resid, 'color-mix(in srgb,var(--fg) 32%,transparent)'], ['Yield pool', 'Pool Loss Charge · Holdbacks first', Y.assets, 'var(--live)']];
+    }
+    function lossLadder({
+      compact = false
+    } = {}) {
+      const L = lossLayers(),
+        ahead = L.slice(0, 4).reduce((a, x) => a + x[2], 0),
+        total = ahead + L[4][2];
+      const step = compact ? total > 12000 ? 10000 : 5000 : total > 12000 ? 5000 : 2500,
+        max = Math.ceil(total / step) * step,
+        pc = v => (v / max * 100).toFixed(3) + '%';
+      const worst = M.unsecured,
+        reach = L.findIndex((_, i) => L.slice(0, i + 1).reduce((a, x) => a + x[2], 0) >= worst);
+      let at = 0;
+      const rows = L.map(([k, sub, v, c], i) => {
+        const a = at;
+        at += v;
+        const hit = i === reach,
+          used = Math.max(0, Math.min(v, worst - a));
+        const note = used >= v ? 'All used' : used > 0 ? `${money0(used)}${compact ? '' : ' of it'} used` : 'Untouched';
+        return <div key={i} className={`lw-r${i === 4 ? ' pool' : ''}${hit ? ' hit' : ''}`}><span className="lw-n" style={css(`--c:${c}`)}>{i + 1}</span><span className="lw-k"><b>{compact && k === 'Clear Lending’s capital' ? 'Residual Capital' : k}</b>{compact ? '' : <em>{sub}</em>}</span><span className="lw-t"><i className="lw-bar" style={css(`left:${pc(a)};width:${pc(v)};--c:${c}`)} />{used ? <i className="lw-used" style={css(`left:${pc(a)};width:${pc(used)};--c:${c}`)} /> : ''}{compact ? '' : <i className="lw-wc" style={css(`left:${pc(worst)}`)} />}</span><span className="lw-v"><b>{money(v)}</b><em className={used ? 'u' : ''}>{note}</em></span></div>;
+      });
+      const ticks = Array.from({
+        length: max / step + 1
+      }, (_, i) => <s key={i} style={css(`left:${pc(i * step)}`)}>{i ? '$' + i * step / 1000 + 'k' : '$0'}</s>);
+      const axis = <div className="lw-r lw-ax"><span /><span className="lw-k"><em>Loss so far</em></span><span className="lw-t">{ticks}{compact ? '' : <i className="lw-wc ax" style={css(`left:${pc(worst)}`)} />}<b className="lw-wl" style={css(`left:${pc(worst)}`)}>{compact ? 'Worst case' : 'Worst case: all unsecured credit'}{" · "}{money0(worst)}</b></span><span /></div>;
+      return <div className={`lw${compact ? ' sm' : ''}`}>{axis}{rows}{compact ? <i className="lw-wcl" style={css(`--f:${worst / max}`)} /> : ''}</div>;
+    }
+    function lossVerdict() {
+      const L = lossLayers(),
+        ahead = L.slice(0, 4).reduce((a, x) => a + x[2], 0),
+        worst = M.unsecured,
+        hit = Math.max(0, worst - ahead);
+      return {
+        ahead,
+        hit,
+        line: hit ? `If every unsecured member stopped paying at once, the yield pool would bear ${money(hit)}` : `Even if every unsecured member stopped paying at once, the yield pool loses nothing`
+      };
+    }
+    /* live, the ladder's layers as Money reads them: Clear Lending's Spread and capital aren't read yet (the credit book's
+       monthly figures), so until they are the ladder isn't drawn (a ladder missing rungs would say a loss stops too soon) */
+    function lossLayersLive() {
+      return [['Spread', 'Clear Lending’s margin this month', M.spread, 'var(--fg)'], ['Loss Reserve', 'Clear Lending’s CL Loss Reserve', M.lr, 'color-mix(in srgb,var(--fg) 58%,transparent)'], ['Credit Backstop', 'AssurancePool · coverage available', M.cover ?? (L.assurance ? L.assurance.coverage : null), 'var(--underway)'], ['Clear Lending’s capital', 'Its own money, behind its lenders', M.resid, 'var(--land)'], ['Yield pool', 'Holders’ deposits, last', Y.assets, 'var(--live)']];
+    }
+    const ladderRead = () => !L || lossLayersLive().every(l => l[2] != null);
     function gateCell() {
-      if (L) return assuranceCell();
-      const W = 100,
-        H = 36,
-        mx = gateMax(),
-        pts = RTD_W.map((v, i) => v == null ? null : [RTD_W.length > 1 ? i / (RTD_W.length - 1) * W : W, H - (L ? Math.min(v, mx) : v) / mx * H]).filter(Boolean),
-        dip = RTD_W.findIndex(v => v != null && v < M.floor);
-      // with no weeks to draw, the target line has nothing to sit against, so it centres on the line beside it
-      const fy = pts.length ? H - M.floor / mx * H : H / 2;
-      const spark = <svg className="ngs" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2={W} y1={fy} y2={fy} className="fl" />{pts.length ? <path d={`M${pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' L')}`} /> : ''}</svg>;
-      // live, it's loss cover, not a gate: nothing stops credit issuing on it. The AssurancePool is the last of
-      // three to take a loss (the member's own collateral, then the yield pool's share price, then this), and
-      // it's covered while its primary reserve is at target against what could reach it, or nothing could
-      const open = !L || !M.unsecured || M.rtd >= M.floor,
-        fl = L ? `${Math.round(M.floor * 100)}% target` : '20% floor';
-      const order = L ? [['Member’s own collateral', M.savingsBacked ? `${money(M.savingsBacked)} backed by savings` : 'Savings and asset lines'], ['Yield pool', `${money(Y.assets)} · in its share price`], ['AssurancePool', `${money(L.pool ? L.pool.primary : M.assurance)} · last resort`]] : null;
-      return cell('s5', L ? 'Loss cover' : 'Credit gate', <span className="lbl">{L ? srcTxt('protocol') : 'Protocol · 12 s'}</span>, <div className="ngt"><div className="ngt-top"><div className="m-big">{L && !M.unsecured ? '—' : (M.rtd * 100).toFixed(1) + '%'}{" "}<small>{L && !M.unsecured ? 'RTD · nothing exposed' : 'RTD'}</small></div><span className={`fst ${open ? 'ok' : 'warn'}`}>{L ? open ? 'Covered' : 'Short' : open ? 'Open' : 'Paused'}</span></div><div className="ngt-eq"><span><b>{money(L && L.pool ? L.pool.primary : M.assurance)}</b>{L && L.pool ? 'Primary reserve' : 'AssurancePool'}</span><i>÷</i><span><b>{money(M.unsecured)}</b>Unsecured credit</span></div><div className="ngt-m"><div className="ngt-t"><i style={css(`width:${L ? Math.min(1, M.rtd / mx) * 100 : M.rtd / mx * 100}%`)} /><s style={css(`left:${Math.min(1, M.floor / mx) * 100}%`)}><em>{fl}</em></s></div><div className="ngt-ax"><span>0</span><span>{Math.round(mx * 100)}%</span></div></div>{order ? <div className="led ngt-wf" aria-label="Who takes a loss, in order">{order.map(([k, v], i) => <div key={i}><span>{`${i + 1}. ${k}`}</span><b>{v}</b></div>)}</div> : ''}<div className="ngt-h">{spark}{L && dip < 0 ? <span>{!UNSEC.some(v => v > 0) ? 'No unsecured credit out yet' : pts.length > 1 ? 'Never under the floor in these weeks' : 'No weeks recorded yet'}</span> : <span><b>{NW[dip]}</b>{" fell to "}{(RTD_W[dip] * 100).toFixed(1)}{L ? '%, under its target' : '% and paused new credit for a week'}</span>}</div></div>, <><span>{L ? `Covers ${money(M.room)} more unsecured exposure at target` : <>{money(M.room)}{" more unsecured credit can issue"}</>}{L && L.pool && L.pool.buffer ? ` · ${money(L.pool.buffer)} in the buffer isn’t counted` : ''}</span><button data-npool="ap" data-ntab="pools">AssurancePool →</button></>);
+      if (L && !ladderRead()) return assuranceCell();
+      const V = lossVerdict();
+      return cell('s5', 'Who takes a loss first', <span className="lbl">If a member stops paying</span>, <div className="ngt lw-c">{lossLadder({
+          compact: true
+        })}</div>, <><span><b>{money(V.ahead)}</b>{" stands ahead of the yield pool · in the worst case it loses "}{V.hit ? money(V.hit) : 'nothing'}</span><button data-npool="ap" data-ntab="pools">Full order →</button></>);
+    }
+    // the demo draws the reference's chart; live, the one below, scaled to the schedule with its gap marked
+    function runwayChartRef(h = 200) {
+      let b = M.payout;
+      const pts = [[0, b]];
+      for (let d = 1; d <= 30; d++) {
+        FLOWS.filter(f => f[0] === d).forEach(f => {
+          pts.push([d, b]);
+          b += f[1] === 'in' ? f[2] : -f[2];
+          pts.push([d, b]);
+        });
+      }
+      pts.push([30, b]);
+      const lo = Math.min(...pts.map(p => p[1])),
+        hi = Math.max(...pts.map(p => p[1])),
+        g0 = 14,
+        g1 = 16;
+      /* the scale fits the projection: room above the peak, and below zero only when the balance goes under it */
+      const mx = Math.max(12000, Math.ceil(hi * 1.08 / 1000) * 1000),
+        mn = lo < 0 ? Math.floor(lo * 1.3 / 1000) * 1000 : -mx * 0.04,
+        W = 1000,
+        x = d => d / 30 * W,
+        y = v => (mx - v) / (mx - mn) * h,
+        z = y(0),
+        pc = v => (y(v) / h * 100).toFixed(2) + '%';
+      const line = 'M' + pts.map(([d, v]) => `${x(d).toFixed(1)},${y(v).toFixed(1)}`).join(' L');
+      const area = `M0,${z} L` + pts.map(([d, v]) => `${x(d).toFixed(1)},${y(Math.max(0, v)).toFixed(1)}`).join(' L') + ` L${W},${z} Z`;
+      const marks = FLOWS.map(([d, k, v], __k) => <i key={__k} className={k} style={css(`left:${d / 30 * 100}%`)} title={`${dayD(d)} · ${k === 'in' ? '+' : '−'}${money(v)}`} />);
+      return <div className="nrw"><div className="nrw-p"><svg viewBox={`0 0 ${W} ${h}`} preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="nhu" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" className="hxu" /></pattern></defs>{[5000, 10000].map((v, __k) => <line key={__k} x1="0" x2={W} y1={y(v)} y2={y(v)} className="grid" />)}<path d={area} className="ar" />{lo < 0 ? <rect x={x(g0)} y={z} width={x(g1) - x(g0)} height={y(lo) - z} className="gap" /> : ''}<line x1="0" x2={W} y1={z} y2={z} className="zero" /><path d={line} className="ln" /></svg>{[[10000, '$10k'], [5000, '$5k'], [0, '$0']].map(([v, t], __k) => <span key={__k} className="nrw-y" style={css(`top:${pc(v)}`)}>{t}</span>)}{lo < 0 ? <span className="nrw-c" style={css(`left:${(x(g0) + x(g1)) / 2 / W * 100}%;top:calc(${pc(lo)} + 8px)`)}><b>{"Short "}{money(-lo)}</b><span>{dayD(g0)}{" → "}{dayD(g1)}{" · claims queue"}</span></span> : ''}<span className="nrw-e" style={css(`top:${pc(b)}`)}><b>{money(b)}</b></span></div><div className="nrw-x"><div className="nrw-m">{marks}</div>{[0, 7, 14, 21, 28].map((d, __k) => <span key={__k} style={css(`left:${d / 30 * 100}%`)}>{dayD(d)}</span>)}</div></div>;
     }
     function runwayChart(h = 200) {
+      if (!L) return runwayChartRef(h);
       let b = M.payout;
       const pts = [[0, b]];
       for (let d = L ? 0 : 1; d <= 30; d++) {
@@ -586,7 +685,7 @@ function makeMoney() {
         });
       }
       pts.push([30, b]);
-      // live, the scale and the gap are worked out from the schedule (the reference's are fixed to its figures)
+      // live, the scale and the gap are worked out from the schedule; the reference's scale fits its own projection
       const nice = v => {
           const st = Math.pow(10, Math.floor(Math.log10(Math.max(v, 1))));
           return Math.ceil(v / st) * st;
@@ -595,15 +694,15 @@ function makeMoney() {
         lo0 = Math.min(...pts.map(p => p[1])),
         neg = pts.findIndex(p => p[1] < 0),
         back = neg < 0 ? -1 : pts.findIndex((p, i) => i > neg && p[1] >= 0);
-      const mx = L ? nice(Math.max(hi, 1000) * 1.1) : 12000,
-        mn = L ? lo0 < 0 ? -nice(-lo0 * 1.3) : -mx / 4 : -4000,
+      const mx = L ? nice(Math.max(hi, 1000) * 1.1) : Math.max(12000, Math.ceil(hi * 1.08 / 1000) * 1000),
+        mn = L ? lo0 < 0 ? -nice(-lo0 * 1.3) : -mx / 4 : lo0 < 0 ? Math.floor(lo0 * 1.3 / 1000) * 1000 : -mx * 0.04,
         W = 1000,
         x = d => d / 30 * W,
         y = v => (mx - v) / (mx - mn) * h,
         z = y(0),
         pc = v => (y(v) / h * 100).toFixed(2) + '%';
       const line = 'M' + pts.map(([d, v]) => `${x(d).toFixed(1)},${y(v).toFixed(1)}`).join(' L');
-      const lo = Math.min(...pts.map(p => p[1])),
+      const lo = lo0,
         g0 = L ? neg < 0 ? 0 : pts[neg][0] : 14,
         g1 = L ? neg < 0 ? 0 : back < 0 ? 30 : pts[back][0] : 16,
         grid = L ? [mx / 2, mx] : [5000, 10000],
@@ -624,10 +723,10 @@ function makeMoney() {
       return out;
     }
     function renderOverview() {
-      const run = L && !L.flowsReal ? notReal('s8', 'The payout pool, next 30 days', NEED_FLOWS) : cell('s8', 'The payout pool, next 30 days', <span className="lbl">Projected from the schedule</span>, <div className="nrun"><div className="nrun-h"><div className="m-big">{L ? money(M.payout + IN30 - OUT30) : money(52.51)}{" "}<small>{L ? `left on ${dayD(30)}${FLOWS.some((f, i) => M.payout + FLOWS.slice(0, i + 1).reduce((a, g) => a + (g[1] === 'in' ? g[2] : -g[2]), 0) < 0) ? ', after it borrows and pays back' : ''}` : 'left on 20 Nov, after it borrows and pays back'}</small></div></div>{runwayChart()}<div className="f-key nrun-k"><span><i style={css("background:var(--land)")} />Repayments in</span><span><i style={css("background:var(--fg)")} />Payouts to shops</span><span><i className="hatch" />Borrowed from the yield pool</span><span><i style={css("background:color-mix(in srgb,var(--fg) 12%,transparent);box-shadow:inset 0 0 0 1px var(--fg-50)")} />In the pool</span></div></div>, <><span>{money(L ? OUT30 : 13980.05)}{" out · "}{money(L ? IN30 : 3792.56)}{" in"}</span><button data-ntab="cash">Cash flow →</button></>);
+      const run = L && !L.flowsReal ? notReal('s8', 'The payout pool, next 30 days', NEED_FLOWS) : cell('s8', 'The payout pool, next 30 days', <span className="lbl">Projected from the schedule</span>, <div className="nrun"><div className="nrun-h"><div className="m-big">{L ? money(M.payout + IN30 - OUT30) : money(3892.56)}{" "}<small>{L ? `left on ${dayD(30)}${FLOWS.some((f, i) => M.payout + FLOWS.slice(0, i + 1).reduce((a, g) => a + (g[1] === 'in' ? g[2] : -g[2]), 0) < 0) ? ', once Clear Lending funds what’s due' : ''}` : 'left on 20 Nov · Clear Lending funds each charge before it’s due'}</small></div></div>{runwayChart()}<div className="f-key nrun-k"><span><i style={css("background:var(--land)")} />Repayments and top-ups</span><span><i style={css("background:var(--fg)")} />Payouts to shops</span>{L ? <span><i className="hatch" />Funding Clear Lending owes</span> : ''}<span><i style={css("background:color-mix(in srgb,var(--fg) 12%,transparent);box-shadow:inset 0 0 0 1px var(--fg-50)")} />In the pool</span></div></div>, <><span>{money(L ? OUT30 : 13980.05)}{" out · "}{money(L ? IN30 : 7632.61)}{" in"}</span><button data-ntab="cash">Cash flow →</button></>);
       const w = pend(),
         mine = forMe();
-      const NEED = [...mine.map((m, __k) => ['underway', `Approve: ${m.t}`, `${money(m.amt)} · ${firstN(m.by)} proposed ${rel(m.d)}${m.due != null ? ' · due ' + dayD(m.due) : ''}`, rel(m.d) === 'today' ? 'Today' : WD(m.d), <><span className="who">Needs you</span><button className="lnk" data-nopen={m.id}>Review →</button></>]), ...w.filter(m => m.st === 'waiting' && m.by === N.me).map((m, __k) => ['line', m.t, `${money(m.amt)} · you proposed ${rel(m.d)}`, WD(m.d), <><span className="who">{"Waiting on "}{waitOn(m)}</span><button className="lnk" data-ntab="moves">Moves →</button></>]), ...w.filter(m => m.st === 'merchants').map((m, __k) => ['live', m.t, `${money(m.amt)} · ${firstN(m.by)} proposed · goes ${rel(m.due)}`, 'Tomorrow', <><span className="who">Needs a second person</span><button className="lnk" data-nrosa="">Review →</button></>]), ...(L ? liveNeeds() : [['absent', 'Operating cash is 3 hours old', 'Plaid last synced at 08:12 · the bank feed is behind', '3 h', <><span className="who none">Not synced</span><button className="lnk" data-nsync="">Sync now →</button></>], ['line', 'The first bond matures 14 Dec', `BB-0001 · ${money(2500)} · paid from what BondVault keeps back`, '54 d', <button className="lnk" data-npool="bonds">Bonds →</button>]])];
+      const NEED = L ? [...mine.map((m, __k) => ['underway', `Approve: ${m.t}`, `${money(m.amt)} · ${firstN(m.by)} proposed ${rel(m.d)}${m.due != null ? ' · due ' + dayD(m.due) : ''}`, rel(m.d) === 'today' ? 'Today' : WD(m.d), <><span className="who">Needs you</span><button className="lnk" data-nopen={m.id}>Review →</button></>]), ...w.filter(m => m.st === 'waiting' && m.by === N.me).map((m, __k) => ['line', m.t, `${money(m.amt)} · you proposed ${rel(m.d)}`, WD(m.d), <><span className="who">{"Waiting on "}{waitOn(m)}</span><button className="lnk" data-ntab="moves">Moves →</button></>]), ...w.filter(m => m.st === 'merchants').map((m, __k) => ['live', m.t, `${money(m.amt)} · ${firstN(m.by)} proposed · goes ${rel(m.due)}`, 'Tomorrow', <><span className="who">Needs a second person</span><button className="lnk" data-nrosa="">Review →</button></>]), ...(L ? liveNeeds() : [['absent', 'Operating cash is 3 hours old', 'Plaid last synced at 08:12 · the bank feed is behind', '3 h', <><span className="who none">Not synced</span><button className="lnk" data-nsync="">Sync now →</button></>], ['line', 'The first bond matures 14 Dec', `BB-0001 · ${money(2500)} · paid from what BondVault keeps back`, '54 d', <button className="lnk" data-npool="bonds">Bonds →</button>]])] : [...mine.map((m, __k) => ['underway', `Approve: ${m.t}`, `${money(m.amt)} · ${firstN(m.by)} proposed ${rel(m.d)}${m.due != null ? ' · due ' + dayD(m.due) : ''}`, rel(m.d) === 'today' ? 'Today' : WD(m.d), <><span className="who">Needs you</span><button className="lnk" data-nopen={m.id}>Review →</button></>]), ...w.filter(m => m.st === 'waiting' && m.by === N.me).map((m, __k) => ['line', m.t, `${money(m.amt)} · you proposed ${rel(m.d)}`, WD(m.d), <><span className="who">{"Waiting on "}{firstN(m.wait || 'dana')}</span><button className="lnk" data-ntab="moves">Moves →</button></>]), ...w.filter(m => m.st === 'merchants').map((m, __k) => ['live', m.t, `${money(m.amt)} · ${firstN(m.by)} proposed · goes ${rel(m.due)}`, 'Tomorrow', <><span className="who">Needs a second person</span><button className="lnk" data-nrosa="">Review →</button></>]), ...(M.standShort && TU.op < TU.refill() ? [['underway', 'Top-up waits on CL Operating', `It needs ${money(TU.refill())}, CL Operating holds ${money(TU.op)} · the keeper is Amber, nothing is late`, '6 min', <><span className="who">Clear Lending</span><button className="lnk" data-npool="pay" data-ntab="pools">Payout pool →</button></>]] : []), ...AFD.items.filter(it => it.st === 0).map((it, __k) => ['underway', `Fund ${it.month.split(' ')[0]}’s Assurance fee`, `${money(it.amt)} · CL Operating to the CL Fees wallet · Clear Lending’s two signers sign`, '20 d', <><span className="who">Needs you</span><button className="lnk" data-npool="ap" data-ntab="pools">AssurancePool →</button></>]), ['absent', 'Operating cash is 3 hours old', 'Plaid last synced at 08:12 · the bank feed is behind', '3 h', <><span className="who none">Not synced</span><button className="lnk" data-nsync="">Sync now →</button></>], ['line', 'The first bond matures 14 Dec', `BB-0001 · ${money(2500)} · paid from BondVault’s Redemption Reserve`, '54 d', <button className="lnk" data-npool="bonds">Bonds →</button>]];
       const need = cell('s4', 'Needs you', <span className="lbl">{NEED.length}{NEED.length === 1 ? ' thing' : " things"}</span>, <div className="al">{L && !NEED.length ? <p className="nmv-e">Nothing needs you.</p> : ''}{NEED.map(([sv, t, m, age, own], __k) => <div key={__k} className="alr"><div className="al-m"><div className="al-t"><i className="sv" style={css(`background:${{
                 underway: 'var(--underway)',
                 live: 'var(--live)',
@@ -645,7 +744,7 @@ function makeMoney() {
       const bv = M.bv || 0,
         kept = Math.min(bv, BV_NEED()),
         use = Math.max(0, bv - BV_NEED());
-      return [['Kept for bondholders', L ? L.bvRule : 'Due within 90 days, or 30% of all owed', bv >= BV_NEED() ? 'Kept back' : `Needs ${money(BV_NEED())}`, money(kept)], ['The Safe can take', 'For operations, growth or the pools', 'Usable', money(use)]].map(([k, s, t, v], __k) => <div key={__k} className="nh-r sub"><span /><span className="nh-k"><b>{k}</b><span>{s}</span></span><span /><span /><span className="nh-ch">{t}</span><b className="nh-v">{v}</b></div>);
+      return [['Redemption Reserve', L ? L.bvRule : 'Due within 90 days, or 30% of all owed', bv >= BV_NEED() ? 'Kept back' : `Needs ${money(BV_NEED())}`, money(kept)], ['Excess', 'Clear Lending can withdraw it, through the Collateral Agent', 'Usable', money(use)]].map(([k, s, t, v], __k) => <div key={__k} className="nh-r sub"><span /><span className="nh-k"><b>{k}</b><span>{s}</span></span><span /><span /><span className="nh-ch">{t}</span><b className="nh-v">{v}</b></div>);
     };
     /* live, the ClearCredit the Ops Safe holds: the co-op's claim still to be cashed, from the PayoutPool as members repay or from the AssurancePool's excess above its RTD target, so shown but not counted until it arrives as USDC */
     const coopSub = () => <div className="nh-r sub"><span /><span className="nh-k"><b>ClearCredit claim</b><span>From the PayoutPool, or AssurancePool excess</span></span><span /><span /><span className="nh-ch">Not counted</span><b className="nh-v">{money(L.COOP.credit)}</b></div>;
@@ -684,15 +783,16 @@ function makeMoney() {
       return cell('s12', 'Where it sits', <span className="lbl">{ACCTS.length}{" accounts · "}{money(tot)}</span>, <><div className="nh"><div className="nh-bar">{seg.map(({
               a,
               w
-            }, __k) => <button key={__k} data-nacct={a[0]} className={w ? '' : 'z'} style={css(`flex:${w || '0 0 2px'};--c:${a[7]}`)} title={`${a[1]} · ${money(a[5])}`}>{w > 13 ? <><span>{a[1]}</span><b>{pct(a[5], tot, 0)}</b></> : ''}</button>)}</div><div className="nh-br">{grp.map(({
+            }, __k) => !a[5] ? <button key={__k} className="z" data-nacct={a[0]} style={css(`flex:0 0 2px;--c:${a[7]}`)} title={`${a[1]} · ${money(a[5])}`} /> : <button key={__k} className={seg.find(x => x.a[3] === a[3]) === seg.find(x => x.a === a) ? 'g0' : ''} data-nacct={a[0]} style={css(`width:${w}%;--c:${a[7]}${w > 13 ? '' : ';padding:0'}`)} title={`${a[1]} · ${money(a[5])} · ${pct(a[5], tot, 1)}`}>{w > 13 ? <><span>{a[1]}</span><b>{pct(a[5], tot, 0)}</b></> : ''}</button>)}</div><div className="nh-br">{grp.map(({
               g,
               l,
               w,
               v
-            }, __k) => <span key={__k} style={css(`left:${l}%;width:${w}%`)}><i /><b>{GROUPS[g][0]}</b><em>{money(v)}</em></span>)}</div></div><div className="nh-l"><div className="nh-r nh-hd"><span />{lbl('Account')}{lbl('Source')}{lbl('7 weeks')}{lbl('This week')}{lbl('Balance')}</div>{ACCTS.map((a, __k) => {
+            }, __k) => <span key={__k} style={css(`left:${l}%;width:${w}%`)}><i /><b>{GROUPS[g][0]}</b><em>{money(v)}{" "}<small>{Math.round(w)}%</small></em></span>)}</div></div><div className="nh-l"><div className="nh-r nh-hd"><span />{lbl('Account')}{lbl('Source')}{lbl('7 weeks')}{lbl('This week')}{lbl('Balance')}</div>{ACCTS.map((a, ai) => {
             const [id, n, why, g, src, bal, wk, col] = a,
               ch = wk[wk.length - 1] - wk[wk.length - 2];
-            return <Fragment key={__k}><button className={`nh-r ${N.panel && N.panel.acct === id ? 'on' : ''}`} data-nacct={id}><i className="nh-sw" style={css(`background:${col}`)} /><span className="nh-k"><b>{n}</b><span>{why}</span></span><span className={`nh-src ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span>{sp(wk)}<span className={`nh-ch ${ch > 0 ? 'up' : ''}`}>{ch > 0 ? '+' : ''}{money(ch)}</span><b className="nh-v">{money(bal)}</b></button>{id === 'bv' ? bvSub() : ''}{id === 'coop' && L && L.COOP && L.COOP.credit > 0 ? coopSub() : ''}{id === 'coop' && L && L.OFFERS ? offersSub() : ''}{id === 'ops' ? ASIDE.map(([k, v, s], __k) => <div key={__k} className="nh-r sub"><span /><span className="nh-k"><b>{k}</b><span>{s}</span></span><span /><span /><span className="nh-ch">Set aside</span><b className="nh-v">{money(v)}</b></div>) : ''}</Fragment>;
+            const gh = !ai || ACCTS[ai - 1][3] !== g ? <div className="nh-g"><b>{GROUPS[g][0]}</b><span>{GROUPS[g][1]}</span><em>{money(ACCTS.filter(x => x[3] === g).reduce((t, x) => t + x[5], 0))}</em></div> : '';
+            return <Fragment key={ai}>{gh}<button className={`nh-r ${N.panel && N.panel.acct === id ? 'on' : ''}`} data-nacct={id}><i className="nh-sw" style={css(`background:${col}`)} /><span className="nh-k"><b>{n}</b><span>{why}</span></span><span className={`nh-src ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span>{sp(wk)}<span className={`nh-ch ${ch > 0 ? 'up' : ''}`}>{ch > 0 ? '+' : ''}{money(ch)}</span><b className="nh-v">{money(bal)}</b></button>{id === 'bv' ? bvSub() : ''}{id === 'coop' && L && L.COOP && L.COOP.credit > 0 ? coopSub() : ''}{id === 'coop' && L && L.OFFERS ? offersSub() : ''}{id === 'ops' ? ASIDE.map(([k, v, s], __k) => <div key={__k} className="nh-r sub"><span /><span className="nh-k"><b>{k}</b><span>{s}</span></span><span /><span /><span className="nh-ch">Set aside</span><b className="nh-v">{money(v)}</b></div>) : ''}</Fragment>;
           })}</div></>, <><span>{money(freeCash())}{" of operating cash is free to spend, after tax and deposits"}</span><button data-nacct="ops">Operating cash →</button></>);
     }
 
@@ -710,13 +810,13 @@ function makeMoney() {
         const mt = FLOWS.filter(f => MON(f[0]) === MON(d)),
           mIn = mt.filter(f => f[1] === 'in').reduce((a, f) => a + f[2], 0),
           mOut = mt.filter(f => f[1] === 'out').reduce((a, f) => a + f[2], 0);
-        return <Fragment key={__k}>{newM ? <div className="nfw-m"><span className="lbl">{MONL(d)}</span><span>{money(mOut)}{" out · "}{money(mIn)}{" in"}</span></div> : ''}<div className={`nfw-r ${same ? 'same' : ''} ${grp ? 'grp' : ''} ${d === (L ? 0 : 1) ? 'soon' : ''}`}><span className="nfw-d">{same ? <i className="tie" /> : <span className="leaf"><span>{WD(d)}</span><b>{DD(d)}</b></span>}</span><span className="nfw-k"><b>{n}</b><span>{s}{" · "}{same ? 'same day' : rel(d)}</span></span><b className={`nfw-v ${k}`}>{k === 'in' ? '+' : '−'}{money(v)}</b><span className={`nfw-b ${bal < 0 ? 'neg' : ''}`}>{bal < 0 ? <><b>{money(bal)}</b><span>yield pool lends it</span></> : <><b>{money(bal)}</b><span>in the pool after</span></>}</span></div></Fragment>;
+        return <Fragment key={__k}>{newM ? <div className="nfw-m"><span className="lbl">{MONL(d)}</span><span>{money(mOut)}{" out · "}{money(mIn)}{" in"}</span></div> : ''}<div className={`nfw-r ${same ? 'same' : ''} ${grp ? 'grp' : ''} ${d === (L ? 0 : 1) ? 'soon' : ''}`}><span className="nfw-d">{same ? <i className="tie" /> : <span className="leaf"><span>{WD(d)}</span><b>{DD(d)}</b></span>}</span><span className="nfw-k"><b>{n}</b><span>{s}{" · "}{same ? 'same day' : rel(d)}</span></span><b className={`nfw-v ${k}`}>{k === 'in' ? '+' : '−'}{money(v)}</b><span className={`nfw-b ${bal < 0 ? 'neg' : ''}`}>{bal < 0 ? <><b>{money(bal)}</b><span>claims queue</span></> : <><b>{money(bal)}</b><span>in the pool after</span></>}</span></div></Fragment>;
       });
       const list = cell('s7', 'Every movement', <span className="lbl">Next 30 days</span>, L && !LR.length ? <div className="lv-e"><span>Nothing moves in or out in the next 30 days</span></div> : <div className="nfw">{LR}</div>, <><span>NET-14 shops are paid every other Wednesday</span><button data-ngo="merchants/payouts">Payouts · Merchants →</button></>);
       const term = (k, v, n, cls = '') => <div className={cls}>{lbl(k)}<b>{v}</b><span>{n}</span></div>;
       const tot = M.owed14,
-        seg = [['In the pool', M.payout, ''], ['Coming in', M.dueMembers, 'in'], ['Borrowed', M.short, 'gap']];
-      // live, when the pool goes short and when repayments bring it back, from the schedule's rows
+        seg = [['In the pool', M.payout, ''], ['Member repayments', M.dueMembers, 'in'], ['Clear Lending, by Mon 2 Nov', M.short, 'gap']];
+      // live, when the schedule first goes short: Clear Lending funds it by its Funding Deadline (I-09), before shops are due
       const G = (() => {
         let bb = M.payout,
           g0 = -1,
@@ -732,20 +832,20 @@ function makeMoney() {
         return [...(g0 >= 0 ? [[g0, 'Yield pool lends it', 'Shops are paid on time', '+' + money(Y.toPayout), 'in']] : []), ...(g1 >= 0 ? [[g1, 'Repayments pay it back', 'Pool left at ' + money(left), '−' + money(Y.toPayout), '']] : [])];
       })();
       const topW = N.moves.find(m => m.kind === 'topup' && m.st === 'waiting');
-      const gap = L && !L.flowsReal ? notReal('s5', 'The 14-day gap', NEED_FLOWS, 'ngap') : L ? cell('s5', 'The 14-day gap', <span className="lbl">PayoutPool</span>, <div className="ngp"><div className="m-big">{money(M.short)}{" "}<small>{M.short ? 'short in 14 days · the yield pool covers it' : 'short in 14 days'}</small></div><div className="ngb"><div className="ngb-bar">{seg.map(([k, v, c], __k) => <i key={__k} className={c} style={css(`flex:${v}`)} />)}</div><div className="ngb-o"><span>Owed to shops, 14 days</span><b>{money(tot)}</b></div><div className="ngb-k">{seg.map(([k, v, c], __k) => <div key={__k} className={c}><i /><span>{k}</span><b>{money(v)}</b></div>)}</div></div><div className="ngp-l">{G.map(([d, t, sub, v, k], __k) => <div key={__k} className="ngp-r">{leaf(d)}<span><b>{t}</b><span>{sub}</span></span><b className={k}>{v}</b></div>)}</div></div>, topW ? <><span>{firstN(topW.by)}{" proposed a top-up · waiting on "}{waitOn(topW)}</span><button className="btn sm-b" data-ntab="moves">See it</button></> : <><span>{M.short ? 'Nothing proposed yet' : 'No top-up needed'}</span>{CAN() ? <button className="btn sm-b" data-npropose="topup">Top up instead</button> : <span />}</>, 'ngap') : cell('s5', 'The 4 Nov gap', <span className="lbl">PayoutPool</span>, <div className="ngp"><div className="m-big">{money(M.short)}{" "}<small>short on 4 Nov · the yield pool covers it</small></div><div className="ngb"><div className="ngb-bar">{seg.map(([k, v, c], __k) => <i key={__k} className={c} style={css(`flex:${v}`)} />)}</div><div className="ngb-o"><span>Owed to shops by 4 Nov</span><b>{money(tot)}</b></div><div className="ngb-k">{seg.map(([k, v, c], __k) => <div key={__k} className={c}><i /><span>{k}</span><b>{money(v)}</b></div>)}</div></div><div className="ngp-l">{[[14, 'Yield pool lends it', 'Shops are paid on time', '+' + money(Y.toPayout), 'in'], [16, 'Repayments pay it back', 'Pool left at ' + money(1193.31), '−' + money(Y.toPayout), '']].map(([d, t, sub, v, k], __k) => <div key={__k} className="ngp-r">{leaf(d)}<span><b>{t}</b><span>{sub}</span></span><b className={k}>{v}</b></div>)}</div></div>, N.moves.some(m => m.kind === 'topup' && m.st === 'waiting') ? <><span>{firstN(N.moves.find(m => m.kind === 'topup').by)}{" proposed a top-up · waiting on "}{firstN(N.moves.find(m => m.kind === 'topup').wait || 'dana')}</span><button className="btn sm-b" data-ntab="moves">See it</button></> : <><span>No top-up needed</span><button className="btn sm-b" data-npropose="topup">Top up instead</button></>, 'ngap');
+      const gap = L && !L.flowsReal ? notReal('s5', 'Clear Lending’s funding', NEED_FLOWS, 'ngap') : L ? cell('s5', 'Clear Lending’s funding', <span className="lbl">PayoutPool · I-09</span>, <div className="ngp" id="ngap"><div className="m-big">{money(M.short)}{" "}<small>{M.short ? 'still to fund in the next 14 days' : 'nothing to fund in the next 14 days'}</small></div><div className="ngb"><div className="ngb-bar">{seg.map(([k, v, c], __k) => <i key={__k} className={c} style={css(`flex:${v}`)} />)}</div><div className="ngb-o"><span>Owed to shops, 14 days</span><b>{money(tot)}</b></div><div className="ngb-k">{seg.map(([k, v, c], __k) => <div key={__k} className={c}><i /><span>{k}</span><b>{money(v)}</b></div>)}</div></div><div className="ngp-l">{G.map(([d, t, sub, v, k], __k) => <div key={__k} className="ngp-r">{leaf(d)}<span><b>{t}</b><span>{sub}</span></span><b className={k}>{v}</b></div>)}</div></div>, topW ? <><span>{firstN(topW.by)}{" proposed a top-up · waiting on "}{waitOn(topW)}</span><button className="btn sm-b" data-ntab="moves">See it</button></> : <><span>{M.short ? 'Nothing proposed yet' : 'No top-up needed'}</span>{CAN() ? <button className="btn sm-b" data-npropose="topup">Top up instead</button> : <span />}</>, 'ngap') : cell('s5', 'Clear Lending’s funding', <span className="lbl">4 Nov payouts · I-09</span>, <div className="ngp" id="ngap"><div className="m-big">{money(M.short)}{" "}<small>still to fund by its deadline, Mon 2 Nov</small></div><div className="ngb"><div className="ngb-bar">{seg.map(([k, v, c], __k) => <i key={__k} className={c} style={css(`flex:${v}`)} />)}</div><div className="ngb-o"><span>Owed to shops by 4 Nov</span><b>{money(tot)}</b></div><div className="ngb-k">{seg.map(([k, v, c], __k) => <div key={__k} className={c}><i /><span>{k}</span><b>{money(v)}</b></div>)}</div></div><div className="ngp-l">{[[12, 'Funding Deadline', 'Two business days before the claims are due', '+' + money(M.short), 'in'], [14, 'Shops are paid', 'Funded beats queued: nothing waits', '−' + money(2916.00), '']].map(([d, t, sub, v, k], __k) => <div key={__k} className="ngp-r">{leaf(d)}<span><b>{t}</b><span>{sub}</span></span><b className={k}>{v}</b></div>)}</div><p className="bd-n">Clear Lending funds it from CL Operating: money borrowed from the Yield Pool and BondVault’s excess, plus member repayments. Never from the AssurancePool, the Loss Reserve or BondVault’s Redemption Reserve.</p></div>, topW ? <><span>{firstN(N.moves.find(m => m.kind === 'topup').by)}{" proposed a Deployment · waiting on "}{firstN(N.moves.find(m => m.kind === 'topup').wait || 'dana')}</span><button className="btn sm-b" data-ntab="moves">See it</button></> : <><span>Funded on time</span><span /></>);
       // live, the schedule's rows by week, from this week's Monday
       const mon0 = -((new Date(TODAY).getUTCDay() + 6) % 7);
       const wk = L ? [0, 1, 2, 3, 4].map(i => {
         const fs = FLOWS.filter(f => f[0] >= mon0 + 7 * i && f[0] < mon0 + 7 * i + 7);
         return [i ? dayD(mon0 + 7 * i) : 'This week', fs.filter(f => f[1] === 'in').map(f => f[2]), fs.filter(f => f[1] === 'out').map(f => f[2])];
-      }) : [['This week', [592.94], [412.60]], ['26 Oct', [889.42], []], ['2 Nov', [2310.20], [9510.65, 2916.00]], ['9 Nov', [], []], ['16 Nov', [], [1140.80]]];
+      }) : [['This week', [592.94], [412.60]], ['26 Oct', [889.42, 3840.05], []], ['2 Nov', [2310.20], [9510.65, 2916.00]], ['9 Nov', [], []], ['16 Nov', [], [1140.80]]];
       const wmx = L ? Math.max(1, ...wk.flatMap(([, i, o]) => [i.reduce((a, b) => a + b, 0), o.reduce((a, b) => a + b, 0)])) * 1.1 : 12500;
       const weeks = cell('s7', 'In and out, by week', <span className="lbl">Next 5 weeks</span>, <div className="nwk">{wk.map(([t, i, o], __k) => {
           const ti = i.reduce((a, b) => a + b, 0),
             to = o.reduce((a, b) => a + b, 0);
           return <div key={__k} className="nwk-c"><div className="nwk-u"><i style={css(`height:${ti / wmx * 100}%`)} />{ti ? <span>+{money0(ti)}</span> : ''}</div><div className="nwk-d"><i className={!L && t === '16 Nov' ? 'hx' : ''} style={css(`height:${to / wmx * 100}%`)} />{to ? <span>−{money0(to)}</span> : ''}</div><span className="nwk-t">{t}</span></div>;
-        })}</div>, <><span className="f-key"><span><i style={css("background:var(--land)")} />In from members</span><span><i style={css("background:var(--fg)")} />Out to shops</span><span><i className="hx" />Estimate</span></span><span /></>);
-      const later = cell('s5', 'After that', <span className="lbl">Next 90 days</span>, <div className="nl">{L && !soon90().length ? <p className="nmv-e">No bond matures in the next 90 days.</p> : ''}{(L ? soon90().map(x => [x[4], `${x[0]} matures`, `${x[7] || 'Bondholder'} · ${x[5]} months at ${x[6].toFixed(1)}%`, x[1]]) : [[54, 'BB-0001 matures', 'Member · 4 months at 6.0%', 2500], [92, 'BB-0002 matures', 'Founding lender · 5 months at 6.5%', 5000], [41, 'Monthly run', 'October sales · NET-30 · estimate', 19825.70 * 0.98]]).sort((a, b) => a[0] - b[0]).map(([d, t, s, v], __k) => <div key={__k} className="nl-r">{leaf(d)}<span><b>{t}</b><span>{s}{" · "}{rel(d)}</span></span><b>−{money(v)}</b></div>)}</div>, <><span>Bonds are paid from what BondVault keeps back</span><button data-npool="bonds">Bonds →</button></>);
+        })}</div>, <><span className="f-key"><span><i style={css("background:var(--land)")} />In · repayments and Clear Lending</span><span><i style={css("background:var(--fg)")} />Out to shops</span><span><i className="hx" />Estimate</span></span><span /></>);
+      const later = cell('s5', 'After that', <span className="lbl">Next 90 days</span>, <div className="nl">{L && !soon90().length ? <p className="nmv-e">No bond matures in the next 90 days.</p> : ''}{(L ? soon90().map(x => [x[4], `${x[0]} matures`, `${x[7] || 'Bondholder'} · ${x[5]} months at ${x[6].toFixed(1)}%`, x[1]]) : [[54, 'BB-0001 matures', 'Member · 4 months at 6.0%', 2500], [92, 'BB-0002 matures', 'Founding lender · 5 months at 6.5%', 5000], [41, 'Monthly run', 'October sales · NET-30 · estimate', 19825.70 * 0.98]]).sort((a, b) => a[0] - b[0]).map(([d, t, s, v], __k) => <div key={__k} className="nl-r">{leaf(d)}<span><b>{t}</b><span>{s}{" · "}{rel(d)}</span></span><b>−{money(v)}</b></div>)}</div>, <><span>Bonds are paid from BondVault’s Redemption Reserve</span><button data-npool="bonds">Bonds →</button></>);
       // live, nothing records the schedule yet: its cells say so
       const nr = L && !L.flowsReal;
       html(document.getElementById('nv'), <>{band(<>{nr ? notReal('s7', 'Every movement', NEED_FLOWS) : list}{gap}</>, 1)}{band(<>{nr ? notReal('s7', 'In and out, by week', NEED_FLOWS) : weeks}{later}</>)}</>);
@@ -757,10 +857,10 @@ function makeMoney() {
       const oct = L ? null : cell('s12', 'October', <span className="lbl">Protocol · 12 s</span>, <div className="ncr"><div className="ncr-rp"><div className="ncr-h"><div className="m-big">{"100% "}<small>of this cycle’s repayments are in or on autopay</small></div><span>{"Due 31 Oct · "}{money(CR.due)}</span></div><div className="ncr-t"><i style={css(`width:${CR.repaid / CR.due * 100}%`)} /><i className="s hx" style={css(`width:${CR.sched / CR.due * 100}%`)} /></div><div className="f-key"><span><i style={css("background:var(--fg)")} />{"Collected "}<b>{money(CR.repaid)}</b></span><span><i className="hx" />{"On autopay, 24 and 30 Oct "}<b>{money(CR.sched)}</b></span></div></div><div className="ngp-eq ncr-eq">{t4('Owed on 1 Oct', money(CR.start), 'start of the month')}<i>+</i>{t4('Spent', money(CR.spent), 'at 12 shops')}<i>−</i>{t4('Repaid', money(CR.repaid), 'by members')}<i>=</i>{t4('Owed now', money(M.credit), `by ${M.members} members`, 'hi')}</div></div>, <><span>{money(M.limits)}{" in limits · "}{pct(M.credit, M.limits)}{" drawn · "}{M.autopay}{" members on autopay"}</span><button data-ngo="members">Members →</button></>);
       /* one shape for the row: a figure, one bar, then a ledger whose rows match the bar's colours */
       const lrow = (col, k, sub, v, cls = '') => <div className={cls}><span><i className="nsw" style={css(`background:${col}`)} />{k}{sub ? <em>{sub}</em> : ''}</span><b>{v}</b></div>;
-      const back = cell('s4', 'What backs it', <span className="lbl">If a member stops paying</span>, <div className="ncb"><div className="m-big">{pct(M.savingsBacked, M.credit)}{" "}<small>backed by their own savings</small></div><div className="ncb-bar"><i style={css(`flex:${M.savingsBacked}`)} /><i style={css(`flex:${M.unsecured};background:var(--underway)`)} /></div><div className="led ncb-l">{lrow('var(--fg)', 'Savings-backed', 'Their own savings pay it', money(M.savingsBacked))}{lrow('var(--underway)', 'Unsecured', 'Yield pool, then AssurancePool', money(M.unsecured))}</div></div>, <><span>Only unsecured counts for RTD</span><button data-npool="ap" data-ntab="pools">Gate →</button></>);
+      const back = cell('s4', 'What backs it', <span className="lbl">If a member stops paying</span>, <div className="ncb"><div className="m-big">{pct(M.savingsBacked, M.credit)}{" "}<small>backed by their own savings</small></div><div className="ncb-bar"><i style={css(`flex:${M.savingsBacked}`)} /><i style={css(`flex:${M.unsecured};background:var(--underway)`)} /></div><div className="led ncb-l">{lrow('var(--fg)', 'Savings-backed', 'Their own savings pay it', money(M.savingsBacked))}{lrow('var(--underway)', 'Unsecured', 'Clear Lending’s reserve, the backstop, then the pool', money(M.unsecured))}</div></div>, <><span>Only what collateral misses is a loss</span><button data-npool="ap" data-ntab="pools">Loss order →</button></>);
       const AC = ['var(--fg)', 'color-mix(in srgb,var(--fg) 45%,transparent)', 'var(--underway)', 'var(--absent)'];
       const age = L ? null : cell('s4', 'How old', <span className="lbl">What’s owed</span>, <div className="ncb"><div className="m-big">{pct(CR.aging[0][1], M.credit)}{" "}<small>is current</small></div><div className="ncb-bar">{CR.aging.filter(a => a[1]).map(([k, v], i) => <i key={i} style={css(`flex:${v};background:${AC[i]}`)} />)}</div><div className="led ncb-l">{CR.aging.map(([k, v], i) => <Fragment key={i}>{lrow(AC[i], k, '', v ? money(v) : 'None', v ? '' : 'z')}</Fragment>)}</div></div>, <><span>{money(1310.40 + 421.80)}{" late · nothing over 60 days"}</span><span /></>);
-      const loss = L ? null : cell('s4', 'Losses', <span className="lbl">All time</span>, <div className="ncb"><div className="m-big">{money(M.lost)}{" "}<small>3 members · paid by the AssurancePool</small></div><div className="ncb-bar">{CR.losses.map((_, __k) => <i key={__k} style={css("flex:1;background:var(--absent)")} />)}</div><div className="led ncb-l">{CR.losses.map(([d, n, id, v]) => <Fragment key={id}>{lrow('var(--absent)', n, `${dayD(d)} · 90 days late`, money(v))}</Fragment>)}</div></div>, <><span>Loss rate 1.1% · recovered $0.00</span><button data-npool="ap" data-ntab="pools">AssurancePool →</button></>);
+      const loss = L ? null : cell('s4', 'Losses', <span className="lbl">All time</span>, <div className="ncb"><div className="m-big">{money(M.lost)}{" "}<small>3 members · Clear Lending absorbed it</small></div><div className="ncb-bar">{CR.losses.map((_, __k) => <i key={__k} style={css("flex:1;background:var(--absent)")} />)}</div><div className="led ncb-l">{CR.losses.map(([d, n, id, v]) => <Fragment key={id}>{lrow('var(--absent)', n, `${dayD(d)} · 90 days late`, money(v))}</Fragment>)}</div></div>, <><span>Loss rate 1.1% · no backstop draw</span><button data-npool="ap" data-ntab="pools">AssurancePool →</button></>);
       const smx = L ? Math.max(1, ...CR.shops.map(x => x[1])) : CR.shops[0][1];
       const shops = cell('s7', 'Where it was spent', <span className="lbl">{L ? L.creditReal ? `${CR.month ?? 'This month'} · ClearCredit and Lithic` : `${CR.month ?? 'This month'} · ${srcTxt('lithic')}` : 'October · Lithic · 1 min'}</span>, <div className="nsh">{L && !CR.shops.length ? <p className="nmv-e">{L.creditReal ? 'Nothing spent on credit this month.' : 'No card spend this month.'}</p> : ''}{CR.shops.map(([n, v, l], i) => <div key={i} className={`nsh-r ${!L && i === CR.shops.length - 1 ? 'rest' : ''}`}><span>{n}</span><span className="nsh-b"><i style={css(`width:${v / smx * 100}%;${l ? 'background:var(--underway)' : ''}`)} /></span><b>{money(v)}</b></div>)}</div>, <><span className="f-key"><i style={css("background:var(--fg)")} />{"No losses "}<i style={css("background:var(--underway)")} />A loss on its book</span><button data-ngo="merchants/partners">Partners →</button></>);
       const lmx = Math.max(...CR.limits.map(x => x[1]));
@@ -787,7 +887,7 @@ function makeMoney() {
     /* ══ Pools ═════════════════════════════════════════════════════════════════════════ */
     // a share of a total that may be nothing yet (live): 0, not NaN
     const dv = (a, b) => b ? a / b : 0;
-    const POOLS = [['ap', 'AssurancePool', () => M.assurance, L ? 'Credit Backstop and Member Assurance · read only' : 'Covers unsecured losses after the yield pool', () => L ? <><i style={css(`width:${Math.min(1, dv(M.backstopFloor ?? 0, M.assurance)) * 100}%`)} /><i style={css(`width:${(1 - Math.min(1, dv(M.backstopFloor ?? 0, M.assurance))) * 100}%;background:var(--land)`)} /></> : <><i style={css(`width:${Math.min(1, dv(M.unsecured * M.floor, M.assurance)) * 100}%`)} /><i style={css(`width:${(1 - Math.min(1, dv(M.unsecured * M.floor, M.assurance))) * 100}%;background:var(--land)`)} /></>, () => L ? `Backstop floor ${money(M.backstopFloor ?? 0)} · ${money(M.coverage ?? 0)} coverage` : `${money(M.assurance - M.unsecured * M.floor)} spare over the floor`], ['pay', 'Payout pool', () => M.payout, 'Pays shops for financed sales, oldest first', () => <><i style={css(`width:${L ? Math.min(1, dv(M.payout, M.owed14)) * 100 : M.payout / M.owed14 * 100}%`)} /><i className="hx" style={css("flex:1")} /></>, () => L ? M.owed14 ? `Covers ${pct(Math.min(M.payout, M.owed14), M.owed14, 0)} of what’s owed in 14 days` : 'Nothing owed to shops in 14 days' : `Covers ${pct(M.payout, M.owed14, 0)} of what’s owed by 4 Nov`], ['yield', 'Yield pool', () => Y.assets, 'Members lending to unsecured credit', () => <><i style={css(`width:${Y.util * 100}%;background:var(--live)`)} /><i style={css(`width:${(1 - Y.util) * 100}%;background:var(--land)`)} /></>, () => `${(Y.apy * 100).toFixed(2)}% a year · ${pct(Y.lent, Y.assets, 0)} lent out`], ['bonds', 'Bonds', () => M.bonds, L ? `Owed to bondholders · ${BONDS.length} BurnerBond${BONDS.length === 1 ? '' : 's'}` : 'Owed to bondholders · 6 BurnerBonds', () => <><i style={css(`width:${Math.min(1, dv(Math.min(M.bv, BV_NEED()), M.bonds)) * 100}%`)} /><i style={css(`width:${Math.min(1, dv(Math.max(0, M.bv - BV_NEED()), M.bonds)) * 100}%;background:var(--land)`)} /></>, () => `${money(Math.min(M.bv, BV_NEED()))} kept · ${money(Math.max(0, M.bv - BV_NEED()))} spare`]];
+      const POOLS = L ? [['ap', 'AssurancePool', () => M.assurance, L ? 'Credit Backstop and Member Assurance · read only' : 'Covers unsecured losses after the yield pool', () => L && M.apBack != null ? <><i style={css(`width:${Math.min(1, dv(M.apBack, M.assurance)) * 100}%;background:var(--underway)`)} /><i style={css(`width:${Math.min(1, dv(M.apMem ?? 0, M.assurance)) * 100}%;background:var(--land)`)} /></> : L ? <><i style={css(`width:${Math.min(1, dv(M.backstopFloor ?? 0, M.assurance)) * 100}%`)} /><i style={css(`width:${(1 - Math.min(1, dv(M.backstopFloor ?? 0, M.assurance))) * 100}%;background:var(--land)`)} /></> : <><i style={css(`width:${Math.min(1, dv(M.unsecured * M.floor, M.assurance)) * 100}%`)} /><i style={css(`width:${(1 - Math.min(1, dv(M.unsecured * M.floor, M.assurance))) * 100}%;background:var(--land)`)} /></>, () => L ? `Backstop floor ${money(M.backstopFloor ?? 0)} · ${money(M.coverage ?? 0)} coverage` : `${money(M.assurance - M.unsecured * M.floor)} spare over the floor`], ['pay', 'Payout pool', () => M.payout, 'Pays shops for financed sales, deadline first', () => <><i style={css(`width:${L ? Math.min(1, dv(M.payout, M.owed14)) * 100 : M.payout / M.owed14 * 100}%`)} /><i className="hx" style={css("flex:1")} /></>, () => L ? M.owed14 ? `Covers ${pct(Math.min(M.payout, M.owed14), M.owed14, 0)} of what’s owed in 14 days` : 'Nothing owed to shops in 14 days' : `Covers ${pct(M.payout, M.owed14, 0)} of what’s owed by 4 Nov`], ['yield', 'Yield pool', () => Y.assets, 'Pool Shares · deployed only to Clear Lending', () => <><i style={css(`width:${Y.util * 100}%;background:var(--live)`)} /><i style={css(`width:${(1 - Y.util) * 100}%;background:var(--land)`)} /></>, () => `${(Y.apy * 100).toFixed(2)}% a year · ${pct(Y.lent, Y.assets, 0)} deployed`], ['bonds', 'Bonds', () => M.bonds, L ? `Owed to bondholders · ${BONDS.length} BurnerBond${BONDS.length === 1 ? '' : 's'}` : 'Owed to bondholders · 6 BurnerBonds', () => <><i style={css(`width:${Math.min(1, dv(Math.min(M.bv, BV_NEED()), M.bonds)) * 100}%`)} /><i style={css(`width:${Math.min(1, dv(Math.max(0, M.bv - BV_NEED()), M.bonds)) * 100}%;background:var(--land)`)} /></>, () => `${money(Math.min(M.bv, BV_NEED()))} kept · ${money(Math.max(0, M.bv - BV_NEED()))} spare`]] : [['ap', 'AssurancePool', () => M.assurance, 'The co-op’s · Credit Backstop and Member Assurance', () => <><i style={css(`width:${M.apBack / M.assurance * 100}%;background:var(--underway)`)} /><i style={css(`width:${M.apMem / M.assurance * 100}%;background:var(--land)`)} /></>, () => `${money(M.cover)} available to the backstop`], ['pay', 'Payout pool', () => M.payout, 'Pays shops for financed sales, deadline first', () => <><i style={css(`width:${M.payout / M.owed14 * 100}%`)} /><i className="hx" style={css("flex:1")} /></>, () => `Topped up by Mon 2 Nov`], ['yield', 'Yield pool', () => Y.assets, 'Pool Shares · deployed only to Clear Lending', () => <><i style={css(`width:${Y.util * 100}%;background:var(--live)`)} /><i style={css(`width:${(1 - Y.util) * 100}%;background:var(--land)`)} /></>, () => `${(Y.apy * 100).toFixed(2)}% a year · ${pct(Y.lent, Y.assets, 0)} deployed`], ['bonds', 'Bonds', () => M.bonds, 'Owed to bondholders · 6 BurnerBonds', () => <><i style={css(`width:${Math.min(M.bv, BV_NEED()) / M.bonds * 100}%`)} /><i style={css(`width:${Math.max(0, M.bv - BV_NEED()) / M.bonds * 100}%;background:var(--land)`)} /></>, () => `${money(Math.min(M.bv, BV_NEED()))} kept back`]];
     function renderPools() {
       const tiles = POOLS.map(([k, n, v, s, bar, f], __k) => <button key={__k} className={`cell s3 npt ${N.pool === k ? 'on' : ''}`} data-npool={k}><div className="hd"><h2>{n}</h2><div className="r">{ICO.chev}</div></div><div className="npt-b"><div className="m-big">{money(v()).replace(/\.\d+$/, '')}<small className="ct">{money(v()).match(/\.\d+$/)[0]}</small></div><span>{s}</span><div className="npt-bar">{bar()}</div></div><div className="bk-ft"><span>{f()}</span></div></button>);
       const D = {
@@ -797,14 +897,26 @@ function makeMoney() {
         bonds: poolBonds
       }[N.pool]();
       const st = (n, k, v, s) => <div className="nlo-s"><span className="nlo-n">{n}</span><b>{k}</b><span className="m-big">{v}</span><span>{s}</span></div>;
-      const ex = M.unsecured,
-        S3 = [[1, 'Their own savings', M.savingsBacked, 'Savings-backed credit · their pledged savings pay it', 'Covers all of it', 1, 'var(--fg)', 'solo'], [2, 'Yield pool', Y.assets, 'Unsecured credit · first loss, its share price falls', `Could cover all ${money(ex)}`, 1, 'var(--live)', 'to'], [3, 'AssurancePool', M.assurance, 'Unsecured credit · pays what the yield pool can’t', `Covers ${pct(M.assurance, ex, 0)} of it`, dv(M.assurance, ex), 'var(--underway)', 'end']];
-      const arrow = <span className="nlx-a"><i /><svg viewBox="0 0 8 12" aria-hidden="true"><path d="M1.5 1.5 6.5 6l-5 4.5" /></svg></span>;
-      const stop = <span className="nlx-a nlx-stop" title="Stops here: savings-backed credit never reaches a pool"><i /><b /></span>;
-      const order = cell('s12', 'If a member stops paying', <span className="lbl">The order the contracts enforce</span>, <div className="nlx"><div className="nlx-st">{S3.map(([n, k, v, note, cov, f, col, kind], __k) => <div key={__k} className={`nlx-s ${kind}`}><div className="nlx-h"><span className="nlx-n" style={css(`--c:${col}`)}>{n}</span><b className="nlx-k">{k}</b>{kind === 'to' ? arrow : kind === 'solo' ? stop : ''}</div><span className="m-big">{money(v)}</span><span className="nlx-t">{note}</span><div className="nlx-b"><i style={css(`width:${Math.min(1, f) * 100}%;background:${col}`)} /></div><span className="nlx-c">{cov}</span></div>)}</div><div className="nlx-nv"><div className="nlx-h"><span className="nlx-n nlx-x"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2 2 8" /></svg></span><b className="nlx-k">Never covers a loss</b></div><div className="nlx-nl">{[['Bondholders', M.bonds, 'Owed by the co-op'], ['Payout pool', M.payout, 'Owed to shops'], ['Other members’ savings', M.savings - M.savingsBacked, 'Theirs, untouched']].map(([k, v, sub], __k) => <div key={__k}><span><b>{k}</b><em>{sub}</em></span><b>{money(v)}</b></div>)}</div></div></div>, <><span>Savings-backed credit never reaches a pool</span><button data-ntab="credit">Credit →</button></>);
+      const V = lossVerdict();
+      const NEVER = [['Bondholders', M.bonds, 'Never written down'], ['Payout pool', M.payout, 'Owed to shops'], ['Member Assurance', M.apMem ?? 0, 'The other compartment'], ['Other members’ savings', M.savings - M.savingsBacked, 'Theirs, untouched']];
+      const order = L && !ladderRead() ? notReal('s12', 'If a member stops paying', 'Needs Clear Lending’s Spread and capital this month, from the credit book, beside its Loss Reserve and the Credit Backstop.') : cell('s12', 'If a member stops paying', <span className="lbl">Who takes the loss, in order · IV-02 5.1</span>, <div className="lw-wrap"><div className="lw-top"><div className="m-big">{money(V.ahead)}{" "}<small>{"stands ahead of the yield pool. "}{V.line}.</small></div><p className="lw-pre"><b>Before any of this:</b>{" savings-backed credit ("}{money(M.savingsBacked)}) is paid from the member’s own pledged savings. Only what collateral doesn’t cover becomes a loss and starts at step 1.</p></div>{lossLadder()}<div className="lw-nv"><span className="lw-nh"><b>Never takes a loss</b><span>{money(NEVER.reduce((a, x) => a + x[1], 0))}</span><em>Outside the order</em></span>{NEVER.map(([k, v, sub], __k) => <span key={__k} className="lw-ni"><b>{k}</b><span>{money(v)}</span><em>{sub}</em></span>)}</div></div>, <><span className="f-key"><span><i className="lw-ks" />Used if every unsecured member stopped paying</span><span><i className="lw-ks lt" />Still left</span></span><button data-ntab="credit">Credit →</button></>, 'loss');
       html(document.getElementById('nv'), <>{band(tiles, 1)}{D}{band(order)}</>);
     }
     function poolAP() {
+      if (L) return poolAPLive();
+      const apW = AP_BAL.slice(1).map((v, i) => v - AP_BAL[i]),
+        wmx = Math.max(...apW);
+      const a = cell('s7', 'Two compartments', <span className="lbl">AssurancePool · the co-op’s · Protocol · 12 s</span>, <div className="npd"><div className="m-big">{money(M.assurance)}{" "}<small>every dollar belongs to one compartment · nothing is lent, staked or pledged</small></div><div className="ncb-bar"><i style={css(`flex:${M.apBack};background:var(--underway)`)} /><i style={css(`flex:${M.apMem};background:var(--land)`)} /></div><div className="led ncb-l">{[['var(--underway)', 'Credit Backstop', 'Clear Lending’s charged-off principal · I-11', money(M.apBack)], ['var(--land)', 'Member Assurance', 'Members’ Assurance grants · MB-10', money(M.apMem)]].map(([c, k, sub, v], __k) => <div key={__k}><span><i className="nsw" style={css(`background:${c}`)} />{k}<em>{sub}</em></span><b>{v}</b></div>)}</div>{lbl('Paid in each week · Clear Lending’s fees and recoveries, the co-op’s interchange and allocations')}<div className="nlm wk">{apW.map((v, i) => <div key={i}><span>{money0(v)}</span><i style={css(`height:${v / wmx * 100}%`)} className={i === apW.length - 1 ? 'hi' : ''} /><s>{NW[i + 1]}</s></div>)}</div></div>, <><span>Money leaves a compartment only after 14 days, with two signers</span><span /></>);
+      const b = cell('s5', 'The backstop this month', <span className="lbl">Floor posted 1 Oct</span>, <div className="npd"><div className="m-big">{money(M.cover)}{" "}<small>{"available · the compartment, up to the "}{money(M.cap)}{" cap"}</small></div><div className="led">{[['Fees and recoveries', 'Clear Lending · its CL Fees wallet'], ['Interchange and board allocations', 'The co-op treasury'], ['Split', 'Credit Backstop to its floor, then 50/50'], ['Coverage cap', `${money(M.cap)} · posted monthly`], ['Covered book', 'Read from CollateralRegistry'], ['Draws this year', M.drawn ? money(M.drawn) : 'None'], ['Draws go to', 'CL Loss Reserve, once two signers release'], ['Grants go to', 'Assurance Disbursement, after two signers'], ['Changing it', 'Board Safe schedules · two signers approve · 7 days'], ['Security pause', '72 hours at a time']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>Clear Lending’s Spread and Loss Reserve come first</span><button data-ngo="settings">Protocol rules →</button></>);
+      const steps = st => <span className="nau-st">{AFD_ST.map((n, i) => <i key={i} className={i < st ? 'on' : i === st ? st === 3 ? 'done' : 'now' : ''}>{n}</i>)}</span>;
+      const item = it => <div className="nau-r nau-f"><span className="nau-m">{it.m}</span><span><b>{"Credit Enhancement Fee · "}{it.month}</b><span>{AFD.bps / 100}{"% a year on "}{money(it.avg)}{" average Available Coverage · "}{it.days}{" days"}{it.st === 3 ? <>{" · "}<a>approve</a>{" · "}<a>deposit</a></> : ''}</span>{steps(it.st)}</span><span className="nau-a"><b>{money(it.amt)}</b>{it.st === 0 ? <button className="btn sm-b" data-nafund={it.id}>Propose funding</button> : it.st === 1 ? <em>Clear Lending’s signers</em> : ''}</span></div>;
+      const e = cell('s7', 'Assurance fees', <span className="lbl">Credit Backstop · CL Fees wallet · paying on</span>, <div className="npd"><div className="m-big">{money(AFD.soFar())}{" "}<small>{"October’s fee so far · "}{AFD.oct.read}{" of "}{AFD.oct.days}{" days read"}</small></div><div className="led">{[[`September · ${money(AFD.items[0].avg)} average`, money(AFD.items[0].amt)], ['Rate', `${AFD.bps / 100}% a year · daily average · actual/365`], ['Advances outstanding', `${money(M.drawn || 0)} · no draws`]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{lbl('What Clear Lending pays in · oldest month first')}<div className="nau-l">{AFD.items.map(item)}</div></div>, <><span>Clear Lending’s two signers sign CL Operating’s transfer · the CL Fees wallet deposits exactly that</span><span /></>);
+      const f = cell('s5', 'Repayments and interchange', <span className="lbl">Into the pool</span>, <div className="npd">{lbl('Spread Repayment or recovery')}<p className="nau-p">Nothing to enter: no draws have been released, so nothing is owed back to the Credit Backstop. A repayment can never be more than the advances outstanding.</p>{lbl('Interchange · the co-op treasury’s 25%')}<div className="led">{AFD.ix.map(([mo, ix, v, st], __k) => <div key={__k}><span>{mo}{" · 25% of $"}{ix}<em className="nau-e">{st}</em></span><b>{money(v)}</b></div>)}<div><span>October<em className="nau-e">Entered once the month ends · the treasury’s owners sign</em></span><b>—</b></div></div>{lbl('Floor figures')}<div className="led"><div><span>Posted 1 Oct · the pool’s two signers<em className="nau-e">Reminded when more than 31 days old</em></span><b>Next by 31 Oct</b></div></div></div>, <><span>Nothing moves until the Safe’s signers sign</span><span /></>);
+      return <>{band(<>{a}{b}</>)}{band(<>{e}{f}</>)}</>;
+    }
+    /* live: the AssurancePool against its floor and the losses it paid, then the Assurance fees card with its real actions.
+       The reference's new layout for these is the demo's (poolAP); the live cards move to it with their data next. */
+    function poolAPLive() {
       const req = M.unsecured * M.floor,
         apW = AP_BAL.slice(1).map((v, i) => v - AP_BAL[i]),
         wmx = L ? Math.max(1, ...apW) : Math.max(...apW);
@@ -870,51 +982,288 @@ function makeMoney() {
       const side = cell('s5', 'Repayments and interchange', <span className="lbl">Into the pool</span>, <div className="npd">{repay}{inter}</div>, <><span>Nothing moves until the Safe’s signers sign</span><span /></>);
       return band(<>{fees}{side}</>);
     }
+    /* Automatic top-ups (decision 51, docs/operators/payout-topups.md): the top-up wallet pulls from CL Operating under a Safe
+       AllowanceModule limit, then approve + PayoutPool.fund. It moves only when 14 days is short, refills to 30 days + $100. */
+    const TU = {
+      cap: 5000,
+      used: 0,
+      resets: 'Mon 26 Oct · 00:00 UTC',
+      margin: 100,
+      op: M.clOp,
+      last: '6 min ago',
+      wallet: '0xC0C4…5068',
+      hist: [[-23, 'Top-up #1', '14-day low-water', 2960.40, 'funded']]
+    };
+    TU.refill = () => M.standShort + TU.margin;
+    /* Assurance fees (docs/operators/assurance-fee-payer.md): 8% a year on average daily Available Coverage, actual/365. Each item goes
+       Due → Funding proposed (CL Operating → CL Fees, signed by the Clear Lending Safe) → Funded → Paid (the CL Fees wallet deposits it). */
+    const AFD = {
+      bps: 800,
+      oct: {
+        read: 20,
+        days: 31,
+        avg: 1094.10
+      },
+      items: [{
+        id: 'af-sep',
+        m: 'Sep',
+        month: 'September 2026',
+        avg: 1046.20,
+        days: 30,
+        amt: 6.87,
+        st: 0
+      }, {
+        id: 'af-aug',
+        m: 'Aug',
+        month: 'August 2026',
+        avg: 980.00,
+        days: 31,
+        amt: 6.65,
+        st: 3
+      }],
+      ix: [['September', '1,284.40', 321.10, 'Deposited · Clear Treasury Safe signed 5 Oct']]
+    };
+    AFD.soFar = () => Math.floor(AFD.oct.read * AFD.oct.avg * AFD.bps / 1e4 / 365 * 100) / 100;
+    const AFD_ST = ['Due', 'Funding proposed', 'Funded', 'Paid'];
     function poolPay() {
       // live, the shops' payouts in the schedule's next 14 days
       const q = L ? FLOWS.filter(f => f[1] === 'out' && f[0] <= 14).map(f => [f[0], f[3], f[2]]) : [[1, 'Rosa’s Panadería', 412.60], [12, 'Monthly run · 11 shops', 9510.65], [14, 'Arrowhead Nails', 732.00], [14, 'Cajon Phone Repair', 2184.00]];
       let run = 0;
-      const a = L && !L.flowsReal ? notReal('s7', 'Claims, oldest first', 'Needs the PayoutPool’s claims: each shop owed for a financed sale, how much and when it’s due.') : cell('s7', 'Claims, oldest first', <span className="lbl">{L ? `PayoutPool · ${srcTxt('protocol')}` : 'PayoutPool · Protocol · 12 s'}</span>, L && !q.length ? <div className="lv-e"><span>Nothing is owed to shops in the next 14 days</span></div> : <div className="nq">{q.map(([d, k, v], i) => {
+      const a = L && !L.flowsReal ? notReal('s7', 'Claims, deadline first', 'Needs the PayoutPool’s claims: each shop owed for a financed sale, how much and when it’s due.') : cell('s7', 'Claims, deadline first', <span className="lbl">{L ? `PayoutPool · ${srcTxt('protocol')}` : 'PayoutPool · Protocol · 12 s'}</span>, L && !q.length ? <div className="lv-e"><span>Nothing is owed to shops in the next 14 days</span></div> : <div className="nq">{q.map(([d, k, v], i) => {
           const s = run;
           run += v;
           const cov = Math.max(0, Math.min(v, M.payout - s)),
             same = i && q[i - 1][0] === d;
           const grp = q[i + 1] && q[i + 1][0] === d;
-          return <div key={i} className={`nq-r ${same ? 'same' : ''} ${grp ? 'grp' : ''}`}><span className="nq-d">{same ? <i className="tie" aria-hidden="true" /> : leaf(d)}</span><span className="nq-k"><b>{k}</b><span>{cov >= v ? 'Covered now' : cov > 0 ? `${money(cov)} covered now` : 'From repayments, then the yield pool'}</span></span><span className="nq-b"><i style={css(`width:${cov / v * 100}%`)} /></span><b>{money(v)}</b></div>;
-        })}</div>, <><span className="f-key"><i style={css("background:var(--fg)")} />{"Covered now "}<i className="hx" />Repayments, then the yield pool</span><button data-ngo="merchants/payouts">Payouts →</button></>);
-      const b = cell('s5', 'How it’s funded', <span className="lbl">Funded beats queued</span>, <div className="led npl">{(L ? [['Today', money(M.payout)], ['Repayments due, 14 days', money(M.dueMembers)], ['Owed, 14 days', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', 'From repayments'], ['Order', 'Oldest claim first, always']] : [['Today', money(M.payout)], ['Repayments due by 4 Nov', money(M.dueMembers)], ['Owed by 4 Nov', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', '6 Nov, from repayments'], ['Order', 'Oldest claim first, always']]).map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>, <><span>Top-ups need a second person</span>{!L || CAN() ? <button className="btn sm-b" data-npropose="topup">Propose a top-up</button> : <span />}</>);
-      // the automatic top-ups (decision 51): what the payout top-up job last saw and did
-      const T = L ? vars.payoutTopUps : demoTopUps(Date.now());
-      const c = T ? cell('s12', 'Automatic top-ups', ...topUpsParts(T, money)) : notReal('s12', 'Automatic top-ups', 'Needs the payout top-up job (PAYOUT_TOPUP_ENABLED) to have checked the PayoutPool: its projections, the spending limit and each top-up it made.');
-      return band(<>{a}{b}{c}</>);
+          return <div key={i} className={`nq-r ${same ? 'same' : ''} ${grp ? 'grp' : ''}`}><span className="nq-d">{same ? <i className="tie" aria-hidden="true" /> : leaf(d)}</span><span className="nq-k"><b>{k}</b><span>{cov >= v ? 'Funded now' : cov > 0 ? `${money(cov)} funded now · Clear Lending funds the rest` : 'Clear Lending funds it by its deadline'}</span></span><span className="nq-b"><i style={css(`width:${cov / v * 100}%`)} /></span><b>{money(v)}</b></div>;
+        })}</div>, <><span className="f-key"><i style={css("background:var(--fg)")} />{"Funded now "}<i className="hx" />Clear Lending funds it by its deadline</span><button data-ngo="merchants/payouts">Payouts →</button></>);
+      // live: the payout pool's funding and the automatic top-ups job (decision 51), from the API; the reference's
+      // keeper and top-up wallet cards below are the demo's, and the live cards move to that layout with their data next
+      if (L) {
+        const b = cell('s5', 'How it’s funded', <span className="lbl">Funded beats queued</span>, <div className="led npl">{[['Today', money(M.payout)], ['Repayments due, 14 days', money(M.dueMembers)], ['Owed, 14 days', money(M.owed14)], ['Clear Lending owes, 14 days', money(M.short)], ['Order', 'Deadline first, always']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>, <><span>Top-ups need a second person</span>{CAN() ? <button className="btn sm-b" data-npropose="topup">Propose a top-up</button> : <span />}</>);
+        const T = vars.payoutTopUps;
+        const c = T ? cell('s12', 'Automatic top-ups', ...topUpsParts(T, money)) : notReal('s12', 'Automatic top-ups', 'Needs the payout top-up job (PAYOUT_TOPUP_ENABLED) to have checked the PayoutPool: its projections, the spending limit and each top-up it made.');
+        return band(<>{a}{b}{c}</>);
+      }
+      const lv = M.standShort ? ['Amber', 'var(--underway)'] : ['Green', 'var(--settled)'];
+      const opts = [['Yield Pool Deployment', Y.headroom, 'Up to 90% deployed · two Deployment signers'], ['BondVault excess', Math.max(0, M.bv - BV_NEED()), 'Through the Collateral Agent'], ['Co-op treasury allowance', M.treasuryAllow, 'treasuryAvailable · none set']];
+      const b = cell('s5', 'Payout funding keeper', <span className="lbl">Hourly · read-only</span>, <div className="npd"><div className="ngt-top"><div className="m-big">{money(M.standShort)}{" "}<small>top-up that restores the standing balance</small></div><span className="fst" style={css(`color:${lv[1]};box-shadow:inset 0 0 0 1px ${lv[1]}`)}>{lv[0]}</span></div><div className="led">{[['Deadline rule', 'Met · 2 business days ahead'], ['Standing balance', `${money(M.payout)} of ${money(M.due30)} due`], ['Next deadline', `Mon 2 Nov · ${money(M.short)} from Clear Lending`]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{lbl('Where the money can come from · information only')}<div className="led ncb-l">{opts.map(([k, v, sub], i) => <div key={i}><span><i className="nsw" style={css(`background:${['var(--live)', 'color-mix(in srgb,var(--fg) 45%,transparent)', 'var(--land)'][i]}`)} />{k}<em>{sub}</em></span><b>{money(v)}</b></div>)}</div></div>, <><span>Alerts ops when Amber or Red · moves nothing</span><button className="btn sm-b" data-npropose="topup">Propose a Deployment</button></>);
+      const need = TU.refill(),
+        left = TU.cap - TU.used,
+        ready = TU.op >= need;
+      const c = cell('s7', 'Automatic top-ups', <span className="fst" style={css("color:var(--underway);box-shadow:inset 0 0 0 1px var(--underway)")}>{ready ? 'Moves next check' : 'Waiting on CL Operating'}</span>, <div className="npd"><div className="m-big">{money(need)}{" "}<small>{"next top-up · 30 days due plus a "}{money0(TU.margin)}{" margin"}</small></div>{ready ? '' : <p className="nau-w"><b>{"CL Operating holds "}{money(TU.op)}</b>{", short of the refill, so it moved nothing and emailed ops once. The Deployment in Moves brings it to "}{money(TU.op + M.short)}; the next check after it lands moves the lot.</p>}<div className="led">{[['Due within 14 days · moves if short', `${money(M.owed14)} · ${money(M.short)} short`], ['Due within 30 days · refills to', `${money(M.due30)} + ${money0(TU.margin)}`], ['Spending limit · weekly, set on CL Operating', `${money(TU.used)} of ${money0(TU.cap)} used`], ['Limit resets', TU.resets], ['In CL Operating', money(TU.op)], ['Last check', `${TU.last} · every 15 min`]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{lbl('Recent top-ups')}<div className="nau-l">{TU.hist.map(([dd, k, trig, v], __k) => <div key={__k} className="nau-r">{leaf(dd)}<span><b>{k}{" · "}{trig}</b><span>{"Funded · "}<a>pull</a>{" · "}<a>approve</a>{" · "}<a>fund</a></span></span><b>{money(v)}</b></div>)}</div></div>, <><span>{"Never more than "}{money0(left)}{" this week · any revert stops it until someone clears it"}</span><button data-ntab="moves">Moves →</button></>);
+      const d = cell('s5', 'The top-up wallet', <span className="lbl">CDP · payout-topup</span>, <div className="npd"><div className="led">{[['Address', <span className="mono">{TU.wallet}</span>], ['It can', 'Pull from CL Operating, approve, fund'], ['It never', 'Withdraws, or calls anything else'], ['Holds between top-ups', 'No USDC · gas only'], ['Pool positions it buys', 'Kept · not redeemed yet']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{lbl('Turning it off')}<div className="led">{[['Pause the job', <span className="mono">PAYOUT_TOPUP_ENABLED=0</span>], ['Cut it off on chain', 'CL Operating drops the delegate'], ['Key in doubt', 'Also revoke FUNDER_ROLE']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>Only CL Operating’s owners can change the limit</span><button data-ngo="build/security">Security →</button></>);
+      return <>{band(<>{a}{b}</>)}{band(<>{c}{d}</>)}</>;
     }
-    /* live, the rate is the carry members pay, not the LendingPool's curve, which no contract charges: the pool lends to the
-       PayoutPool to pay shops, and the PayoutPool hands each lender the carry on what it funded. Members pay it on revolving
-       credit (a range across its tiers) and on term plans; a dollar lent earns the book's average of the two, and the
-       depositors that times the share lent out. With nothing out yet, the term plans' rate stands in */
-    function rateLive(mo, t) {
-      const R = Y.rates,
-        rev = R ? R.tiers.filter(x => x.bps > 0).map(x => x.bps) : [],
-        book = R && R.bookBps != null ? R.bookBps : null,
-        rate = book != null ? book : R && R.term.bps ? R.term.bps : rev.length ? Math.min(...rev) : 0,
-        kinds = [rev.length ? `revolving ${mo(Math.min(...rev))}–${mo(Math.max(...rev))}` : '', R && R.term.bps ? `term plans ${mo(R.term.bps)}` : ''].filter(Boolean).join(' · ');
-      const depAt = u => yApy(rate * u) * 100;
-      const sc = [['20%', .2], ['40%', .4], [`${Math.round(Y.util * 100)}% now`, Y.util], [`${Math.round(Y.utilAfter * 100)}% in 14 days`, Y.utilAfter], ['80%', .8]],
-        smx = Math.max(...sc.map(x => depAt(x[1]))) || 1;
-      return cell('s7', 'Rate', <span className="lbl">{"Member carry · per "}{Y.cycleDays}{" days"}</span>, <div className="npd"><div className="ngp-eq">{t('Credit pays', book != null ? mo(book) : '—', `${book != null ? 'a month · ' : 'Nothing out yet · '}${kinds || 'rates not read yet'}${kinds ? ' a month' : ''}`)}<i>×</i>{t('Lent out', pct(Y.lent, Y.assets), `${money(Y.lent)} of ${money(Y.assets)} · to the payout pool`)}<i>=</i>{t('Depositors earn', mo(Y.supplyBps), `a month · ${(Y.apy * 100).toFixed(2)}% a year`, 'hi')}</div>{lbl(`Yearly rate to depositors, by share lent out · at ${book != null ? 'the book’s' : 'the term plans’'} ${mo(rate)} a month`)}<div className="nlm wk">{sc.map(([k, u], i) => <div key={i}><span>{depAt(u).toFixed(1)}%</span><i style={css(`height:${depAt(u) / smx * 100}%`)} className={i === 2 ? 'hi' : 'hx'} /><s>{k}</s></div>)}</div></div>, <><span>Lent to the payout pool to pay shops · paid from members’ carry · idle cash earns nothing</span><span /></>);
+    /* the yield pool's next 30 days: one Deployment out (in Moves), Returns back as members repay. A Return pays interest first, then principal. */
+    const Y_RET = [[5, 640.00], [12, 910.00], [19, 520.00], [26, 480.00]];
+    function yieldProjection() {
+      const day = Y.borrowBps / 1e4 / 365;
+      let dep = Y.lent,
+        owed = Y.accrued,
+        last = 0,
+        cash = Y.cash,
+        intIn = 0,
+        prinIn = 0;
+      const rows = [];
+      const accrue = d => {
+        owed += dep * day * (d - last);
+        last = d;
+      };
+      const evs = Y_RET.map(([d, p]) => ({
+        d,
+        p
+      })).concat([{
+        d: 9,
+        out: Y.toPayout
+      }]).sort((a, b) => a.d - b.d);
+      evs.forEach(e => {
+        accrue(e.d);
+        if (e.out) {
+          dep += e.out;
+          cash -= e.out;
+          rows.push({
+            d: e.d,
+            k: 'Deployment',
+            sub: 'Waiting in Moves · two signers',
+            out: e.out,
+            cash,
+            dep,
+            owed
+          });
+        } else {
+          const i = owed,
+            p = e.p;
+          owed = 0;
+          dep -= p;
+          cash += i + p;
+          intIn += i;
+          prinIn += p;
+          rows.push({
+            d: e.d,
+            k: 'Return',
+            sub: 'As members repay their credit',
+            i,
+            p,
+            cash,
+            dep,
+            owed
+          });
+        }
+      });
+      accrue(30);
+      /* the same events, day by day, for the chart */
+      const days = [];
+      {
+        let d2 = Y.lent,
+          o2 = Y.accrued,
+          c2 = Y.cash;
+        const ev = {};
+        evs.forEach(e => ev[e.d] = e);
+        for (let t = 0; t <= 30; t++) {
+          if (t) o2 += d2 * day;
+          const e = ev[t];
+          if (e) {
+            if (e.out) {
+              d2 += e.out;
+              c2 -= e.out;
+            } else {
+              c2 += o2 + e.p;
+              d2 -= e.p;
+              o2 = 0;
+            }
+          }
+          days.push({
+            t,
+            cash: c2,
+            dep: d2,
+            owed: o2
+          });
+        }
+      }
+      return {
+        rows,
+        intIn,
+        prinIn,
+        dep,
+        cash,
+        owed,
+        assets: cash + dep + owed,
+        days
+      };
+    }
+    /* a month of Clear Lending's income on the unsecured book (rate-schedule.json, monthly bps; MR-02 2.5% merchant fee), and where it goes */
+    const CARRY = [['Income tier', 150, 2600.00, 0.45, '1.5% a month'], ['Boost', 250, 1240.00, 0.70, '2.5% a month'], ['Partner plans', 200, M.unsecured - 3840.00, 0.75, '2% a month · free if paid in full'], ['Savings-backed', 0, M.savingsBacked, 0, 'No carry']];
+    const MFEE = {
+      rate: 0.025,
+      sales: 10689.20
+    };
+    function memberPayments() {
+      const c = CARRY.map(([k, bps, bal, sh, n]) => ({
+        k,
+        bps,
+        bal,
+        sh,
+        n,
+        v: Math.round(bal * sh * bps / 1e4 * 100) / 100
+      }));
+      const carry = c.reduce((a, x) => a + x.v, 0),
+        fees = Math.round(MFEE.sales * MFEE.rate * 100) / 100,
+        inc = carry + fees;
+      const pool = Math.round(Y.lent * Y.borrowBps / 1e4 / 12 * 100) / 100,
+        losses = 0,
+        spread = Math.round((inc - pool - losses) * 100) / 100;
+      return {
+        c,
+        carry,
+        fees,
+        inc,
+        pool,
+        losses,
+        spread
+      };
     }
     function poolYield() {
-      const mo = bps => (bps / 100).toFixed(2) + '%',
+      const yr = bps => (bps / 100).toFixed(2) + '%',
         depAt = u => yApy(yBorrowBps(u) * u) * 100;
-      const sc = [['20%', .2], ['40%', .4], [`${Math.round(Y.util * 100)}% now`, Y.util], [`${Math.round(Y.utilAfter * 100)}% ${L ? 'in 14 days' : '4 Nov'}`, Y.utilAfter], ['80%', .8]],
-        smx = Math.max(...sc.map(s => depAt(s[1]))) || 1;
+      const sc = [['50%', .5], [`${Math.round(Y.util * 100)}% now`, Y.util], [`${Math.round(Y.utilAfter * 100)}% ${L ? 'in 14 days' : '2 Nov'}`, Y.utilAfter], ['80% · kink', .8], ['90%', .9], ['100%', 1]],
+        smx = 10;
       const t = (k, v, n, cls = '') => <div className={cls}>{lbl(k)}<b>{v}</b><span>{n}</span></div>;
-      const a = L ? rateLive(mo, t) : cell('s7', 'Rate', <span className="lbl">{"LendingPool · opened "}{Y.opened}</span>, <div className="npd"><div className="ngp-eq">{t('Credit pays', mo(Y.borrowBps), `a month · ${(Y.apr * 100).toFixed(1)}% a year`)}<i>×</i>{t('Lent out', pct(Y.lent, Y.assets), `${money(Y.lent)} of ${money(Y.assets)}`)}<i>=</i>{t('Depositors earn', mo(Y.supplyBps), `a month · ${(Y.apy * 100).toFixed(2)}% a year`, 'hi')}</div>{lbl('Yearly rate to depositors, by share lent out')}<div className="nlm wk">{sc.map(([k, u], i) => <div key={i}><span>{depAt(u).toFixed(1)}%</span><i style={css(`height:${depAt(u) / smx * 100}%`)} className={i === 2 ? 'hi' : 'hx'} /><s>{k}</s></div>)}</div></div>, <><span>Set by the contract’s curve, not by us · past 80% lent it climbs fast</span><span /></>);
-      const b = cell('s5', 'How depositors get paid', <span className="lbl">ERC-4626</span>, <div className="npd"><div className="m-big">${Y.price.toFixed(4)}{" "}<small>{"a share · up "}{((Y.price - 1) * 100).toFixed(2)}{"% since "}{Y.opened}</small></div><div className="led">{[['Interest', 'Raises the share price'], [`Withdrawals up to ${money(Y.cash)}`, 'Paid at once'], ['Above that', 'Queued, paid as credit repays'], ['Pledged to credit', `${money(Y.pledged)} · locked`], ['Earned so far', money(Y.earned)]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>{L && Y.queued ? `Queue: ${money(Y.queued)}` : 'Queue: empty'}</span><span /></>);
+      const a = L && !Y.rateAt ? notReal('s7', 'Rate', 'Needs the Yield Pool’s Funding Rate, read by the API from the chain: fundingRate and fundingRateAt at each share lent out.') : cell('s7', 'Rate', <span className="lbl">{"LendingPool · opened "}{Y.opened}</span>, <div className="npd"><div className="ngp-eq">{t('Funding Rate', yr(Y.borrowBps), 'a year · Clear Lending pays it')}<i>×</i>{t('Deployed', pct(Y.lent, Y.assets), `${money(Y.lent)} to Clear Lending`)}<i>=</i>{t('Holders earn', yr(Y.supplyBps), 'a year · before losses', 'hi')}</div>{lbl('Holders earn, by share lent out · Funding Rate × share, before losses')}<div className="nlm wk yr">{sc.map(([k, u], i) => {
+            const h = depAt(u) / smx * 100;
+            return <div key={i}><b className="yr-t"><span style={css(`bottom:calc(${h}% + 6px)`)}>{depAt(u).toFixed(2)}%</span><i style={css(`height:${h}%`)} className={i === 1 ? 'hi' : 'hx'} /></b><s>{k}</s></div>;
+          })}</div></div>, <><span>2% base, +3% to the 80% kink, +5% above · 10% is the ceiling, only if every dollar were lent out</span><span /></>);
+      const b = cell('s5', 'How holders get paid', <span className="lbl">Pool Shares · ERC-4626</span>, <div className="npd"><div className="m-big">${Y.price.toFixed(4)}{" "}<small>{"Share Value · up "}{((Y.price - 1) * 100).toFixed(2)}{"% since "}{Y.opened}</small></div><div className="led">{[['Pool Interest', 'Raises Share Value'], [`Redemptions up to ${money(Y.cash)}`, 'Paid at once, while no one is queued'], ['Above that', 'A strict queue · still earning, still bearing losses'], ['Loss Holdback', 'None open'], ['Pledged to credit', `${money(Y.pledged)} · locked`], ['Earned so far', money(Y.earned)]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>{L && Y.queued ? `Queue: ${money(Y.queued)}` : 'Queue: empty'}</span><span /></>);
       const per = 8,
         rows = Y_DEP.slice(N.dp * per, N.dp * per + per);
-      const tbl = cell('s12', 'Depositors', <span className="lbl">{Y.depositors}{" members · masked"}</span>, L && !rows.length ? <div className="lv-e"><span>No one has deposited yet</span></div> : <div className="bt-wrap"><table className="bt ndp"><colgroup><col style={css("width:16%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /></colgroup><thead><tr><th className="c-nm">Member</th><th style={css("text-align:left")}>Since</th><th>Put in</th><th>Earned</th><th>Worth now</th><th>Pledged</th><th>Can withdraw</th></tr></thead><tbody>{rows.map((r, __k) => <tr key={__k}><td className="tn"><b className="mono">M•••{r.id}</b></td><td style={css("text-align:left")}>{r.since}</td><td>{money(r.d)}</td><td>{money(r.e)}</td><td><b>{money(r.w)}</b></td><td>{r.pl ? money(r.pl) : <span className="quiet">None</span>}</td><td className="quiet">{r.pl ? money(r.w - r.pl) : 'All of it'}</td></tr>)}</tbody></table></div>, <><span>{"Names stay masked · "}{money(Y.assets)}{" in all"}</span>{pager(N.dp, Y_DEP.length, per, 'ndp')}</>);
-      return <>{band(<>{a}{b}</>)}{band(tbl)}</>;
+      const tbl = cell('s12', 'Holders', <span className="lbl">{Y.depositors}{" members · masked"}</span>, L && !rows.length ? <div className="lv-e"><span>No one holds Pool Shares yet</span></div> : <div className="bt-wrap"><table className="bt ndp"><colgroup><col style={css("width:16%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /></colgroup><thead><tr><th className="c-nm">Member</th><th style={css("text-align:left")}>Since</th><th>Put in</th><th>Earned</th><th>Worth now</th><th>Pledged</th><th>Can redeem</th></tr></thead><tbody>{rows.map((r, __k) => <tr key={__k}><td className="tn"><b className="mono">M•••{r.id}</b></td><td style={css("text-align:left")}>{r.since}</td><td>{money(r.d)}</td><td>{money(r.e)}</td><td><b>{money(r.w)}</b></td><td>{r.pl ? money(r.pl) : <span className="quiet">None</span>}</td><td className="quiet">{r.pl ? money(r.w - r.pl) : 'All of it'}</td></tr>)}</tbody></table></div>, <><span>{"Names stay masked · "}{money(Y.assets)}{" in all"}</span>{pager(N.dp, Y_DEP.length, per, 'ndp')}</>);
+      const P = L ? null : yieldProjection(),
+        prinTot = Y.principal,
+        earned = Y.assets - Y.principal;
+      /* the loop: money goes right (out), comes back left (Returns); the loss order is a separate question, answered below */
+      const node = (k, v, sub, cls = '') => <div className={`ny-nd ${cls}`}><span>{k}</span><b>{v}</b><em>{sub}</em></div>;
+      const link = (out, back) => <div className="ny-ln"><div className="ny-o"><em>{out}</em><i /></div><div className="ny-b"><i /><em>{back}</em></div></div>;
+      const V = lossVerdict();
+      const flow = cell('s12', 'How the pool’s money moves', <span className="lbl">Lending order</span>, <><div className="ny-dg">{node('Holders', money(Y.principal), `${Y.depositors} members put in`)}{link('Subscribe', 'Redeem')}{node('Yield pool', money(Y.assets), `Share Value $${Y.price.toFixed(4)}`, 'me')}{link('Deploy · two signers', 'Return · interest, then principal')}{node('Clear Lending', money(Y.lent), 'Borrowed · owed back')}{link('Lend as credit', 'Repay')}{node('Members', money(M.unsecured), 'Owe on unsecured credit')}</div><div className="ny-ls"><span className="ny-lx">If a member doesn’t repay</span>{L && !ladderRead() ? <span>Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop. The pool is last.</span> : <span>{"Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop, "}<b>{money(V.ahead)}</b>{" in all. The pool is last."}</span>}<button className="lnk" data-ntab="pools" data-npool="yield" data-njump="loss">Loss order ↓</button></div></>, <><span>The pool and the bonds are the funding base · they lend only to Clear Lending, never to housing</span><span /></>);
+      // live, the 30-day projection (scheduled Returns and Deployments) and member payments (the month's carry by product, merchant fees) aren't read yet
+      if (L) return <>{band(flow)}{band(<>{a}{b}</>)}{band(tbl)}</>;
+      /* one card: what holders put in, what the pool holds, and how that moves over 30 days, as a chart with its events beneath */
+      const D = P.days,
+        top = Math.ceil(Math.max(...D.map(d => d.cash + d.dep + d.owed)) * 1.16 / 500) * 500,
+        W = 1000,
+        H = 220;
+      const X = t => t / 30 * W,
+        Yv = v => H - v / top * H,
+        pcx = t => (t / 30 * 100).toFixed(3) + '%',
+        pcy = v => (Yv(v) / H * 100).toFixed(3) + '%';
+      const area = (lo, hi) => 'M' + D.map(d => `${X(d.t)},${Yv(hi(d))}`).join(' L') + ' L' + D.slice().reverse().map(d => `${X(d.t)},${Yv(lo(d))}`).join(' L') + 'Z';
+      const step = (lo, hi) => {
+        /* events are instant: draw each day as a step */
+        const pts = [];
+        D.forEach((d, k) => {
+          if (k) pts.push([X(d.t), D[k - 1]]);
+          pts.push([X(d.t), d]);
+        });
+        return 'M' + pts.map(([x, d]) => `${x},${Yv(hi(d))}`).join(' L') + ' L' + pts.slice().reverse().map(([x, d]) => `${x},${Yv(lo(d))}`).join(' L') + 'Z';
+      };
+      const earnedNow = Y.assets - Y.principal,
+        earned30 = P.assets - Y.principal;
+      const gl = [0, 2500, 5000, 7500, 10000].filter(v => v <= top).map((v, __k) => <Fragment key={__k}><span className="yc-g" style={css(`top:${pcy(v)}`)}>{v ? '$' + v / 1000 + 'k' : '$0'}</span><i className="yc-gl" style={css(`top:${pcy(v)}`)} /></Fragment>);
+      const lineTop = Math.max(Y.principal, P.assets);
+      const marks = P.rows.map((r, __k) => <i key={__k} className={`yc-m${r.out ? ' out' : ''}`} style={css(`left:${pcx(r.d)}${r.out ? '' : `;top:${pcy(lineTop)}`}`)} />);
+      /* money out sits above the chart, money back below it */
+      const chip = r => <div className={`yc-e${r.out ? ' out' : ''}`} style={css(`left:${pcx(r.d)}`)}><span>{dayD(r.d)}{" · "}{r.out ? 'Deployment' : 'Return'}</span><b>{r.out ? '−' : '+'}{money(r.out || r.i + r.p)}</b><em>{r.out ? 'Out to Clear Lending' : <>{money(r.i)}{" interest"}<br />{money(r.p)}{" principal"}</>}</em></div>;
+      const chips = P.rows.filter(r => !r.out).map(chip),
+        outs = P.rows.filter(r => r.out).map(chip);
+      const proj = cell('s12', 'The pool, now and over the next 30 days', <span className="lbl">{"Projected at a "}{(Y.borrowBps / 100).toFixed(2)}{"% Funding Rate · "}{Y_RET.length}{" Returns, 1 Deployment"}</span>, <><div className="yp-top">{[['Holders put in', money(Y.principal), 'Returns don’t change it'], ['Pool Assets', money(Y.assets), `${money(P.assets)} in 30 days`], ['Earned on top', money(earnedNow), `${money(earned30)} in 30 days`], ['Share Value', `$${Y.price.toFixed(4)}`, `$${(P.assets / Y.principal).toFixed(4)} in 30 days`]].map(([k, v, n], __k) => <div key={__k}><span>{k}</span><b>{v}</b><em>{n}</em></div>)}</div><div className="yc"><div className="yc-ev up">{outs}</div><div className="yc-plot">{gl}<svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="ycHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="color-mix(in srgb,var(--settled) 12%,var(--ground))" /><rect width="2" height="6" fill="color-mix(in srgb,var(--settled) 62%,var(--ground))" /></pattern></defs><path className="yc-cash" d={step(d => 0, d => d.cash)} /><path className="yc-dep" d={step(d => d.cash, d => d.cash + d.dep)} /><path className="yc-own" d={step(d => d.cash + d.dep, d => d.cash + d.dep + d.owed)} /><line x1="0" x2={W} y1={Yv(Y.principal)} y2={Yv(Y.principal)} className="yc-pr" vectorEffect="non-scaling-stroke" /></svg>{marks}<span className="yc-pl" style={css(`top:${pcy(lineTop)}`)}>{"Holders’ principal "}{money(Y.principal)}</span><span className="yc-er" style={css(`top:${pcy(lineTop)}`)}><b>+{money(earned30)}</b>{" earned by "}{dayD(30)}</span><span className="yc-lb c" style={css(`top:${pcy(D[0].cash / 2)};left:14px`)}><em>Vault Cash</em>{money(Y.cash)}</span><span className="yc-lb h" style={css(`top:${pcy(D[0].cash + D[0].dep / 2)};left:14px`)}><em>Lent to Clear Lending</em>{money(Y.lent)}</span><span className="yc-lb c r" style={css(`top:${pcy(D[30].cash / 2)};right:14px`)}><em>{dayD(30)}</em>{money(D[30].cash)}</span><span className="yc-lb h r" style={css(`top:${pcy(D[30].cash + D[30].dep / 2)};right:14px`)}><em>{dayD(30)}</em>{money(D[30].dep)}</span></div><div className="yc-x">{[0, 7, 14, 21, 30].map((t, __k) => <span key={__k} style={css(`left:${pcx(t)}`)}>{t ? dayD(t) : 'Today · ' + dayD(0)}</span>)}</div><div className="yc-ev">{chips}</div></div></>, <><span className="f-key"><span><i className="yc-k1" />Vault Cash · in hand</span><span><i className="yc-k2" />Lent to Clear Lending · owed back</span><span><i className="yc-k3" />Interest owed</span><span><i className="yc-kd" />Holders’ principal</span></span><span className="quiet small yc-note">Returns follow member repayments</span></>);
+      const MP = memberPayments(),
+        Wp = v => (v / MP.inc * 100).toFixed(3) + '%';
+      const inSeg = MP.c.filter(x => x.v > 0).map((x, i) => ({
+        k: x.k,
+        v: x.v,
+        sub: `${x.n} · ${Math.round(x.sh * 100)}% of ${money0(x.bal)} carried`,
+        c: ['var(--land)', 'color-mix(in srgb,var(--land) 70%,var(--ground))', 'color-mix(in srgb,var(--land) 45%,var(--ground))'][i]
+      })).concat([{
+        k: 'Merchant fees',
+        v: MP.fees,
+        sub: `2.5% of ${money(MFEE.sales)} financed`,
+        c: 'var(--underway)'
+      }]);
+      const outSeg = [{
+        k: 'Holders’ interest',
+        v: MP.pool,
+        sub: `${(Y.borrowBps / 100).toFixed(2)}% a year on ${money0(Y.lent)} lent out`,
+        c: 'var(--live)'
+      }, {
+        k: 'Clear Lending’s Spread',
+        v: MP.spread,
+        sub: 'Its costs, then the first loss',
+        c: 'var(--fg)'
+      }];
+      const bar = segs => <div className="wp-bar">{segs.map((x, __k) => <i key={__k} style={css(`width:${Wp(x.v)};background:${x.c}`)} title={`${x.k} · ${money(x.v)}`} />)}</div>;
+      const legend = segs => <div className="wp-lg">{segs.map((x, __k) => <div key={__k}><i style={css(`background:${x.c}`)} /><span><b>{x.k}</b><em>{x.sub}</em></span><strong>{money(x.v)}</strong></div>)}</div>;
+      const pay = cell('s12', 'Where member payments go', <span className="lbl">One month · the deployed rate schedule · demo balances</span>, <><div className="wp"><div className="wp-col"><div className="wp-h"><span>Comes in to Clear Lending</span><b>{money(MP.inc)}</b></div>{bar(inSeg)}{legend(inSeg)}</div><div className="wp-mid" aria-hidden="true"><svg viewBox="0 0 12 20"><path d="M2 2l8 8-8 8" /></svg></div><div className="wp-col"><div className="wp-h"><span>Goes out</span><b>{money(MP.inc)}</b></div>{bar(outSeg)}{legend(outSeg)}<p className="wp-n">{"Holders get "}{pct(MP.pool, MP.inc, 0)}{" of it. They don’t share in carry or fees: Clear Lending keeps the Spread and takes every loss before the pool does. Charged off this month: "}{money(MP.losses)}.</p></div></div><div className="wp-af"><span className="wp-afh">Then the Spread</span>{[['1', 'Bills and reserves first', 'Expenses, bonds due, pool interest, reserves, the Assurance fee · L-01 9.2'], ['2', 'Kept as capital', 'More member and merchant lending, and the fourth loss layer'], ['3', 'Or paid to Holdings', 'Only if reserves, coverage and licences pass · L-01 12.2'], ['4', 'Split by shares', 'The co-op’s Class A and investors’ Class B alike · Holdings funds Clear Building Co. for homes']].map(([n, k, t], i) => <div key={i} className="wp-as"><b><i>{n}</i>{k}</b><span>{t}</span></div>)}</div></>, <><span>Many members pay in full and owe no carry · savings-backed lines carry none</span><button data-npool="ap" data-ntab="pools">Loss order →</button></>);
+      return <>{band(flow)}{band(pay)}{band(proj)}{band(<>{a}{b}</>)}{band(tbl)}</>;
     }
     function poolBonds() {
       // live, the ten months from this one, each bond by when it matures
@@ -945,7 +1294,7 @@ function makeMoney() {
       // live, the Ops Safe's own owners and threshold (GET /safe)
       const sf = L && L.safe,
         anyN = n => ['none', 'one', 'two', 'three', 'four', 'five'][n] || String(n);
-      const rules = cell('s4', 'How money moves', <span className="lbl">{L ? sf ? `Ops Safe · ${sf.threshold} of ${sf.owners.length}` : 'Ops Safe · not connected' : 'Ops Safe · 2 of 3'}</span>, <div className="nru">{lbl(L ? sf ? `Signers · any ${anyN(sf.threshold)}` : 'Signers' : 'Signers · any two')}{L && !L.signers.length ? <p className="nmv-e">{sf ? 'The Safe has no owners.' : 'The Ops Safe isn’t connected here yet.'}</p> : ''}<div className="nru-l">{(L ? L.signers : ['kai', 'dana', 'board']).map((k, __k) => <div key={__k} className={`nru-p ${k === N.me ? 'me' : ''}`}><span className="av sm">{PPL[k].ini}</span><b>{k === N.me ? 'You' : PPL[k].n}</b><span>{PPL[k].role}</span><em>{k === N.me ? 'Signed in' : ''}</em></div>)}</div>{lbl('Rules')}<div className="led">{(L ? [['Who proposes', 'Anyone with Propose in Money'], ['Who approves', 'Someone else with Approve'], ['Then it’s signed', 'In the Ops Safe'], ['Spending the co-op balance', 'A member vote']] : [['Who proposes', 'Any signer'], ['Who approves', 'A different signer'], ['Crossing to a bank', 'Always two people'], ['Spending the co-op balance', 'A member vote']]).map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{lbl('Runs on its own')}<div className="nru-a">{['Yield pool withdrawals, up to its cash', 'The payout pool borrowing for a claim that’s due', 'The AssurancePool paying a loss'].map((t, __k) => <span key={__k}>{t}</span>)}</div></div>, <><span>Set in Permissions</span><button data-ngo="team">Permissions →</button></>);
+      const rules = L ? cell('s4', 'How money moves', <span className="lbl">{L ? sf ? `Ops Safe · ${sf.threshold} of ${sf.owners.length}` : 'Ops Safe · not connected' : 'Ops Safe · 2 of 3'}</span>, <div className="nru">{lbl(L ? sf ? `Signers · any ${anyN(sf.threshold)}` : 'Signers' : 'Signers · any two')}{L && !L.signers.length ? <p className="nmv-e">{sf ? 'The Safe has no owners.' : 'The Ops Safe isn’t connected here yet.'}</p> : ''}<div className="nru-l">{(L ? L.signers : ['kai', 'dana', 'board']).map((k, __k) => <div key={__k} className={`nru-p ${k === N.me ? 'me' : ''}`}><span className="av sm">{PPL[k].ini}</span><b>{k === N.me ? 'You' : PPL[k].n}</b><span>{PPL[k].role}</span><em>{k === N.me ? 'Signed in' : ''}</em></div>)}</div>{lbl('Rules')}<div className="led">{(L ? [['Who proposes', 'Anyone with Propose in Money'], ['Who approves', 'Someone else with Approve'], ['Then it’s signed', 'In the Ops Safe'], ['Spending the co-op balance', 'A member vote']] : [['Who proposes', 'Any signer'], ['Who approves', 'A different signer'], ['Crossing to a bank', 'Always two people'], ['Spending the co-op balance', 'A member vote']]).map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{lbl('Runs on its own')}<div className="nru-a">{['Yield Pool redemptions, up to its Vault Cash', 'Payouts to shops, soonest deadline first', 'Payout pool top-ups, within CL Operating’s weekly limit', 'Assurance fees, once Clear Lending’s signers fund them'].map((t, __k) => <span key={__k}>{t}</span>)}</div></div>, <><span>Set in Permissions</span><button data-ngo="team">Permissions →</button></>) : cell('s4', 'How money moves', <span className="lbl">Two signers</span>, <div className="nru">{lbl('Signers · any two')}<div className="nru-l">{['kai', 'dana', 'board'].map((k, __k) => <div key={__k} className={`nru-p ${k === N.me ? 'me' : ''}`}><span className="av sm">{PPL[k].ini}</span><b>{k === N.me ? 'You' : PPL[k].n}</b><span>{PPL[k].role}</span><em>{k === N.me ? 'Signed in' : ''}</em></div>)}</div>{lbl('Rules')}<div className="led">{[['Who proposes', 'Any signer'], ['Who approves', 'A different signer'], ['Crossing to a bank', 'Always two people'], ['Spending the co-op balance', 'A member vote']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{lbl('Runs on its own')}<div className="nru-a">{['Yield Pool redemptions, up to its Vault Cash', 'Payouts to shops, soonest deadline first', 'Payout pool top-ups, within CL Operating’s weekly limit', 'Assurance fees, once Clear Lending’s signers fund them'].map((t, __k) => <span key={__k}>{t}</span>)}</div></div>, <><span>Set in Permissions</span><button data-ngo="team">Permissions →</button></>);
       const F = {
         all: ['All', N.done],
         people: ['By people', N.done.filter(x => x.by)],
@@ -955,7 +1304,7 @@ function makeMoney() {
         per = 6,
         pages = Math.max(1, Math.ceil(list.length / per));
       N.mp = Math.min(N.mp, pages - 1);
-      const hist = cell('s12', 'Done', <div className="seg sm" role="group" aria-label="Show">{Object.entries(F).map(([k, [t, a]], __k) => <button key={__k} data-nmf={k} aria-pressed={N.mf === k}>{t}{" "}{a.length}</button>)}</div>, L && !list.length ? <div className="lv-e"><span>{N.mf === 'all' ? 'No moves in the last 30 days' : N.mf === 'people' ? 'Nobody proposed a move in the last 30 days' : 'Nothing moved on its own in the last 30 days'}</span></div> : <div className="nd">{list.slice(N.mp * per, N.mp * per + per).map((x, __k) => <div key={__k} className={`nd-r ${x.no ? 'no' : ''}`}>{leaf(x.d)}<span className="nd-k"><b>{x.t}</b><span>{x.from}{" → "}{x.to}</span></span><span className="nd-w">{x.auto ? <><span className="nd-auto">Automatic</span><span>{x.auto}</span></> : x.no ? <><span>{firstN(x.by)}{" proposed · "}<b className="bad">{firstN(x.no)}{" rejected"}</b></span><span>{x.why}</span></> : <><span>{firstN(x.by)}{" proposed · "}{firstN(x.ok)}{" approved"}</span><span>{L ? 'Approved here · then signed in the Ops Safe' : 'Signed in the Ops Safe'}</span></>}</span><b className={`nd-v ${x.no ? 'quiet' : ''}`}>{money(x.amt)}</b><span className="nd-tx">{x.tx ? <span className="mono">{x.tx}</span> : <span className="quiet">{L && x.ok ? 'For the Safe' : 'Not sent'}</span>}</span></div>)}</div>, <><span>Last 30 days</span>{pager(N.mp, list.length, per, 'nmp')}</>);
+      const hist = cell('s12', 'Done', <div className="seg sm" role="group" aria-label="Show">{Object.entries(F).map(([k, [t, a]], __k) => <button key={__k} data-nmf={k} aria-pressed={N.mf === k}>{t}{" "}{a.length}</button>)}</div>, L && !list.length ? <div className="lv-e"><span>{N.mf === 'all' ? 'No moves in the last 30 days' : N.mf === 'people' ? 'Nobody proposed a move in the last 30 days' : 'Nothing moved on its own in the last 30 days'}</span></div> : <div className="nd">{list.slice(N.mp * per, N.mp * per + per).map((x, __k) => <div key={__k} className={`nd-r ${x.no ? 'no' : ''}`}>{leaf(x.d)}<span className="nd-k"><b>{x.t}</b><span>{x.from}{" → "}{x.to}</span></span><span className="nd-w">{x.auto ? <><span className="nd-auto">Automatic</span><span>{x.auto}</span></> : x.no ? <><span>{firstN(x.by)}{" proposed · "}<b className="bad">{firstN(x.no)}{" rejected"}</b></span><span>{x.why}</span></> : <><span>{firstN(x.by)}{" proposed · "}{firstN(x.ok)}{" approved"}</span><span>{L ? 'Approved here · then signed in the Ops Safe' : /Yield pool/.test(x.from) ? 'Two Deployment signers' : x.from === 'BondVault' ? 'Two treasury signers, through the Collateral Agent' : 'Signed in the Ops Safe'}</span></>}</span><b className={`nd-v ${x.no ? 'quiet' : ''}`}>{money(x.amt)}</b><span className="nd-tx">{x.tx ? <span className="mono">{x.tx}</span> : <span className="quiet">{L && x.ok ? 'For the Safe' : 'Not sent'}</span>}</span></div>)}</div>, <><span>Last 30 days</span>{pager(N.mp, list.length, per, 'nmp')}</>);
       html(document.getElementById('nv'), <>{band(<>{wc}{rules}</>, 1)}{band(hist)}</>);
     }
 
@@ -990,20 +1339,26 @@ function makeMoney() {
       const nb = BONDS.filter(x => Number.isFinite(x[4]) && x[4] >= 0).sort((a, b) => a[4] - b[4])[0];
       const facts = L ? {
         sav: [['Active members', String(M.members)], ['Tied to credit', money(M.savingsBacked)], ['Free to withdraw', money(Math.max(0, M.savings - M.savingsBacked))], ['USDC in the savings vault', money(M.savings)], ['Reserve', L.reserve ? `${L.reserve.ratio} · ${L.reserve.checked}` : 'Not read yet']],
-        yld: [['Deposited', `${money(Y.assets)} · ${Y.depositors} members`], ['Lent to the payout pool now', `${money(Y.lent)} · ${pct(Y.lent, Y.assets, 0)}`], ['Cash for withdrawals', money(Y.cash)], ['Lends it next', `${money(Y.toPayout)} as claims come due`], ['Depositors earn', `${(Y.apy * 100).toFixed(2)}% a year`]],
-        pay: [['Owed to shops, 14 days', money(M.owed14)], ['Repayments due', money(M.dueMembers)], ['Borrows, 14 days', money(M.short)], ['Moves by', 'Two people · Ops Safe']],
-        ap: [['Covers', money(M.unsecured) + ' unsecured' + (M.bondGap ? ` · ${money(M.bondGap)} of bonds due` : '')], ['RTD', `${(M.rtd * 100).toFixed(1)}% · floor ${Math.round(M.floor * 100)}%`], ['Room to issue', money(M.room)], ['Losses absorbed', money(M.lost)]],
+        yld: [['Pool Assets', `${money(Y.assets)} · ${Y.depositors} members`], ['Deployed to Clear Lending', `${money(Y.lent)} · ${pct(Y.lent, Y.assets, 0)}`], ['Vault Cash', money(Y.cash)], ['Holders earn', `${(Y.apy * 100).toFixed(2)}% a year`]],
+        pay: [['Owed to shops, 14 days', money(M.owed14)], ['Repayments due', money(M.dueMembers)], ['Clear Lending owes, 14 days', money(M.short)], ['Moves by', 'Two people · Ops Safe']],
+        ap: M.apBack != null ? [['Credit Backstop', money(M.apBack)], ['Member Assurance', M.apMem != null ? money(M.apMem) : 'Not read yet'], ['Coverage cap', M.cap != null ? `${money(M.cap)} · this month` : 'Not read yet'], ['Draws this year', M.drawn ? money(M.drawn) : 'None']] : [['Covers', money(M.unsecured) + ' unsecured' + (M.bondGap ? ` · ${money(M.bondGap)} of bonds due` : '')], ['RTD', `${(M.rtd * 100).toFixed(1)}% · floor ${Math.round(M.floor * 100)}%`], ['Room to issue', money(M.room)], ['Losses absorbed', money(M.lost)]],
         ops: [['Bank', 'Business checking'], ['Last sync', srcTxt('plaid')], ['Set aside inside it', money(ASIDE.reduce((a, x) => a + x[1], 0))], ['Free to spend', money(freeCash())]],
         bv: [['Owed to bondholders', `${money(M.bonds)} · ${BONDS.length} bond${BONDS.length === 1 ? '' : 's'}`], ['Kept back', money(Math.min(M.bv || 0, BV_NEED())) + ' of ' + money(BV_NEED())], ['The Safe can take', money(Math.max(0, (M.bv || 0) - BV_NEED()))], ['First maturity', nb ? `${nb[3]} · ${nb[0]} · ${money(nb[1])}` : 'None'], ['Moves by', 'Two people · Ops Safe']],
         // the co-op's balance is the Ops Safe's USDC, from the chain; its ClearCredit is a claim still to be cashed, from the PayoutPool or the AssurancePool's excess
         coop: L.COOP ? [['USDC in the Safe', money(L.COOP.usdc)], ...(L.COOP.credit ? [['ClearCredit claim', `${money(L.COOP.credit)} · not counted`]] : []), ['Held by', `Ops Safe · ${L.COOP.holder.slice(0, 6)}…${L.COOP.holder.slice(-4)}`], ['History', 'From today on'], ...(L.OFFERS ? [['Offers owed', `${money(L.OFFERS.owed)} of ${money(L.OFFERS.cap)}`]] : []), ['Spending it', 'Needs a member vote']] : [['Added, last 4 weeks', money(COOP_W.slice(-4).reduce((a, b) => a + b, 0))], ['From', 'The co-op’s fee on financed sales'], ['Spending it', 'Needs a member vote']]
       }[id] ?? [['Source', srcTxt(src)]] : {
-        sav: [['Members', String(M.members)], ['Tied to credit', money(M.savingsBacked)], ['Free to withdraw', money(M.savings - M.savingsBacked)], ['USDC at Bridge', money(M.savings)], ['Reserve', '1 : 1 · 2 min ago']],
-        yld: [['Deposited', `${money(Y.assets)} · ${Y.depositors} members`], ['Lent to unsecured credit', `${money(Y.lent)} · ${pct(Y.lent, Y.assets, 0)}`], ['Cash for withdrawals', money(Y.cash)], ['Lends the payout pool', `${money(Y.toPayout)} on 4 Nov`], ['Depositors earn', `${(Y.apy * 100).toFixed(2)}% a year`]],
-        pay: [['Owed to shops by 4 Nov', money(M.owed14)], ['Repayments due', money(M.dueMembers)], ['Borrows on 4 Nov', money(M.short)], ['Moves by', 'Two people · Ops Safe']],
-        ap: [['Covers', money(M.unsecured) + ' unsecured'], ['RTD', `${(M.rtd * 100).toFixed(1)}% · floor 20%`], ['Room to issue', money(M.room)], ['Losses absorbed', money(M.lost)]],
+        sav: [['Members', String(M.members)], ['Tied to credit', money(M.savingsBacked)], ['Free to withdraw', money(M.savings - M.savingsBacked)], ['USDC in the ESA vault', money(M.savings)], ['Trustee', 'Clear Financial · ESA Reserve Trust'], ['Reserve', '1 : 1 · checked hourly']],
+        yld: [['Pool Assets', `${money(Y.assets)} · ${Y.depositors} members`], ['Deployed to Clear Lending', `${money(Y.lent)} · ${pct(Y.lent, Y.assets, 0)}`], ['Vault Cash', money(Y.cash)], ['Deploys to', 'Clear Lending’s lending account only · two signers'], ['Holders earn', `${(Y.apy * 100).toFixed(2)}% a year`]],
+        pay: [['Owed to shops by 4 Nov', money(M.owed14)], ['Member repayments due', money(M.dueMembers)], ['Clear Lending still to fund by Mon 2 Nov', money(M.short)], ['Keeper', `${M.standShort ? 'Amber' : 'Green'} · checked hourly`]],
+        ap: [['Credit Backstop', money(M.apBack)], ['Member Assurance', money(M.apMem)], ['Coverage cap', `${money(M.cap)} · this month`], ['Draws this year', M.drawn ? money(M.drawn) : 'None'], ['Owned by', 'Clear Collective LLC · board Safe and two signers']],
         ops: [['Bank', 'Business checking'], ['Last sync', '3 h ago · Plaid'], ['Set aside inside it', money(ASIDE.reduce((a, x) => a + x[1], 0))], ['Free to spend', money(freeCash())]],
-        bv: [['Owed to bondholders', money(M.bonds) + ' · 6 bonds'], ['Kept back', money(Math.min(M.bv || 0, BV_NEED())) + ' of ' + money(BV_NEED())], ['The Safe can take', money(Math.max(0, (M.bv || 0) - BV_NEED()))], ['First maturity', '14 Dec · BB-0001 · ' + money(2500)], ['Moves by', 'Two people · Ops Safe']],
+        bv: [['Owed to bondholders', money(M.bonds) + ' · 6 bonds'], ['Kept back', money(Math.min(M.bv || 0, BV_NEED())) + ' of ' + money(BV_NEED())], ['Excess Clear Lending can withdraw', money(Math.max(0, (M.bv || 0) - BV_NEED()))], ['First maturity', '14 Dec · BB-0001 · ' + money(2500)], ['Moves by', 'Two treasury signers, through the Collateral Agent']],
+        cash: [['Held for', `${M.members} members · in their own names`], ['Held by', 'The Bank Partner · Clear Financial services it'], ['Never funds', 'Card credit · I-02 4.9(b)'], ['Reconciled', 'Hourly, against Lithic’s ledger']],
+        clop: [['Owned by', 'Clear Lending Co. · through the Clear Lending Safe'], ['Address', '0xfAFf…df65'], ['Comes in', 'Yield Pool Deployments, BondVault excess'], ['Goes out', 'Payout top-ups (bot, $5,000 a week), Assurance fee funding']],
+        clset: [['Owned by', 'Clear Lending Co. · Clear Financial runs it as servicer'], ['Kept at least', `${money(M.clSettlePeak)} · the peak day forecast`], ['Pays', 'The credit part of each card swipe'], ['If it runs short', 'Card credit is declined, and Clear Lending is told that day'], ['Testnet', 'Lithic sandbox has no funded float yet']],
+        cllr: [['Owned by', 'Clear Lending Co. · its own Safe'], ['Address', '0xb425…'], ['Takes losses', 'After the month’s Spread, before the Credit Backstop'], ['Receives', 'Backstop draws, once two signers release them']],
+        clfee: [['Address', '0xB9ed…cDFd'], ['Holds', 'Only what CL Operating sends it to pay'], ['Pays', 'Credit Enhancement Fees and recoveries into the Credit Backstop'], ['Between payments', 'Empty, by design']],
+        trs: [['Address', '0x52e6…cf50'], ['Signers', 'Two · Clear and Clear Financial'], ['Pays', '25% of card interchange into the AssurancePool, monthly'], ['On testnet', 'Also plays the Ops, board and Clear Financial Safes']],
         coop: [['Added in October', money(COOP_W.slice(3).reduce((a, b) => a + b, 0))], ['From', 'Member discounts at partner shops'], ['Spending it', 'Needs a member vote']]
       }[id];
       const pts = wk.map((v, i) => `${(i / (wk.length - 1) * 100).toFixed(1)},${(38 - v / mx * 34).toFixed(1)}`).join(' L');
@@ -1017,15 +1372,17 @@ function makeMoney() {
         ap: <button className="btn" data-npool="ap">AssurancePool →</button>,
         coop: <button className="btn" data-ngo="governance">Propose a use · Governance</button>
       }[id] : {
-        bv: <button className="btn p" data-npropose="bondvault">Propose using the spare</button>,
+        bv: <button className="btn p" data-npropose="bondvault">Propose withdrawing the excess</button>,
         ops: <button className="btn p" data-npropose="bill">Propose a move from here</button>,
-        pay: <button className="btn p" data-npropose="topup">Propose a top-up</button>,
+        pay: <button className="btn p" data-npropose="topup">Propose a Deployment</button>,
         sav: <button className="btn" data-nreserve="">Run the reserve check</button>,
         yld: <button className="btn" data-npool="yield">Yield pool →</button>,
+        clop: <button className="btn" data-npool="pay">Automatic top-ups →</button>,
+        clfee: <button className="btn" data-npool="ap">Assurance fees →</button>,
         ap: <button className="btn" data-npool="ap">AssurancePool →</button>,
         coop: <button className="btn" data-ngo="governance">Propose a use · Governance</button>
       }[id];
-      return <><div className="pn-hd"><span className="lbl">{GROUPS[g][0]}</span><span className={`nsrc ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{n}</p><p className="npn-s">{why}</p></div><div><div className="m-big">{money(bal)}</div><svg className="npn-ch" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={`M${pts} L100,40 L0,40 Z`} className="ar" style={css(`fill:color-mix(in srgb,${col} 18%,transparent)`)} /><path d={`M${pts}`} className="ln" style={css(`stroke:${col}`)} /></svg><div className="npn-ax"><span>{L ? acctOf(id)[8] > 1 ? dayD(-7 * (wk.length - 1)) : 'Now' : NW[0]}</span><span>{L ? 'Now' : NW[NW.length - 1]}</span></div></div><div>{lbl('Facts')}<div className="led">{facts.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>{id === 'coop' && L && L.OFFERS && CAN() ? offersCapForm() : ''}</div><div className="pn-ft">{CAN() || !/propose/.test(act) ? act : <span className="small quiet">Read-only for you</span>}</div></>;
+      return <><div className="pn-hd"><span className="lbl">{GROUPS[g][0]}</span><span className={`nsrc ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{n}</p><p className="npn-s">{why}</p></div><div><div className="m-big">{money(bal)}</div><svg className="npn-ch" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={`M${pts} L100,40 L0,40 Z`} className="ar" style={css(`fill:color-mix(in srgb,${col} 18%,transparent)`)} /><path d={`M${pts}`} className="ln" style={css(`stroke:${col}`)} /></svg><div className="npn-ax"><span>{L ? acctOf(id)[8] > 1 ? dayD(-7 * (wk.length - 1)) : 'Now' : NW[0]}</span><span>{L ? 'Now' : NW[NW.length - 1]}</span></div></div><div>{lbl('Facts')}<div className="led">{facts.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>{id === 'coop' && L && L.OFFERS && CAN() ? offersCapForm() : ''}</div><div className="pn-ft">{!act ? <span className="small quiet">{g === 'cl' ? 'Clear Lending’s account · its signers move it' : 'Read-only here'}</span> : CAN() || !/propose/.test(act) ? act : <span className="small quiet">Read-only for you</span>}</div></>;
     }
     function proposePanel(P) {
       if (L) {
@@ -1036,15 +1393,15 @@ function makeMoney() {
       const K = KINDS[P.kind],
         amt = P.amt ?? K.amt(),
         to = P.kind === 'bill' ? P.payee || '' : PLACES[K.to],
-        fromBal = K.from === 'bv' ? M.bv : M.cash;
+        fromBal = K.from === 'bv' ? M.bv : K.from === 'yld' ? Y.cash : M.cash;
       const approvers = Object.entries(PPL).filter(([k, p]) => p.sign && k !== N.me);
-      return <><div className="pn-hd"><span className="lbl">New move</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><p className="npn-t">Propose a move</p><div className="npk">{Object.entries(KINDS).map(([k, x], __k) => <button key={__k} data-nkind={k} aria-pressed={P.kind === k}><b>{x.t}</b><span>{PLACES[x.from]}{" → "}{k === 'bill' ? 'a payee' : PLACES[x.to]}</span></button>)}</div><div className="npf">{P.kind === 'bill' ? <label>{lbl('Pay who')}<input id="npayee" className="vin" defaultValue={(P.payee || '').replace(/"/g, '&quot;')} placeholder="CDTFA · sales tax" /></label> : ''}<label>{lbl('Amount')}<input id="namt" className="vin" inputMode="decimal" defaultValue={amt ? amt.toFixed(2) : ''} placeholder="0.00" /></label><label>{lbl('Why')}<textarea id="nwhy" className="vin" rows="2" placeholder="What it’s for" defaultValue={P.why ?? K.why} /></label><label>{lbl('Second person')}<select id="nappr" className="vin" defaultValue={P.appr || 'dana'}>{approvers.map(([k, p], __k) => <option key={__k} value={k}>{p.n}{" · "}{p.role}</option>)}</select></label></div><div>{lbl('After it')}<div className="led"><div><span>{PLACES[K.from]}</span><b>{money(fromBal)}{" → "}<span id="nafter">{money(fromBal - (amt || 0))}</span></b></div>{P.kind === 'topup' ? <div><span>Payout pool on 4 Nov</span><b>No borrowing from the yield pool</b></div> : P.kind === 'bondvault' ? <><div><span>Still kept for bondholders</span><b>{money(BV_NEED())}</b></div><div><span>Payout pool on 4 Nov</span><b>No borrowing from the yield pool</b></div></> : ''}{K.from === 'ops' ? <div><span>Free to spend</span><b>{money(freeCash() - (amt || 0))}</b></div> : ''}</div></div><p className="npn-n"><b>Two people.</b>{" You propose it, the second person signs it in the Ops Safe. Nothing moves until they do."}</p></div><div className="pn-ft"><button className="btn" data-nclose="">Cancel</button><button className="btn p" data-nsubmit="">Propose it</button></div></>;
+      return <><div className="pn-hd"><span className="lbl">New move</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><p className="npn-t">Propose a move</p><div className="npk">{Object.entries(KINDS).map(([k, x], __k) => <button key={__k} data-nkind={k} aria-pressed={P.kind === k}><b>{x.t}</b><span>{PLACES[x.from]}{" → "}{k === 'bill' ? 'a payee' : PLACES[x.to]}</span></button>)}</div><div className="npf">{P.kind === 'bill' ? <label>{lbl('Pay who')}<input id="npayee" className="vin" defaultValue={(P.payee || '').replace(/"/g, '&quot;')} placeholder="CDTFA · sales tax" /></label> : ''}<label>{lbl('Amount')}<input id="namt" className="vin" inputMode="decimal" defaultValue={amt ? amt.toFixed(2) : ''} placeholder="0.00" /></label><label>{lbl('Why')}<textarea id="nwhy" className="vin" rows="2" placeholder="What it’s for" defaultValue={P.why ?? K.why} /></label><label>{lbl('Second person')}<select id="nappr" className="vin" defaultValue={P.appr || 'dana'}>{approvers.map(([k, p], __k) => <option key={__k} value={k}>{p.n}{" · "}{p.role}</option>)}</select></label></div><div>{lbl('After it')}<div className="led"><div><span>{PLACES[K.from]}</span><b>{money(fromBal)}{" → "}<span id="nafter">{money(fromBal - (amt || 0))}</span></b></div>{P.kind === 'topup' ? <div><span>Payout pool on 4 Nov</span><b>Funded before the deadline</b></div> : P.kind === 'bondvault' ? <><div><span>Redemption Reserve kept</span><b>{money(BV_NEED())}</b></div><div><span>Goes to</span><b>Clear Lending’s registered multisig</b></div></> : ''}{K.from === 'ops' ? <div><span>Free to spend</span><b>{money(freeCash() - (amt || 0))}</b></div> : ''}</div></div><p className="npn-n"><b>Two people.</b>{" You propose it, the second person signs it in the Ops Safe. Nothing moves until they do."}</p></div><div className="pn-ft"><button className="btn" data-nclose="">Cancel</button><button className="btn p" data-nsubmit="">Propose it</button></div></>;
     }
     function reviewPanel(id) {
       const m = N.moves.find(x => x.id === id);
       if (!m) return '';
       const after = m.from === 'ops' ? M.cash - m.amt : null;
-      return <><div className="pn-hd"><span className="lbl">{L ? 'Needs your approval' : 'Needs your signature'}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{m.t}</p><p className="npn-s">{PPL[m.by].n}{" proposed it "}{rel(m.d)}{m.due != null ? ' · due ' + dayD(m.due) : ''}</p></div><div className="m-big">{money(m.amt)}</div><div className="led">{[['From', PLACES[m.from] || m.from], ['To', m.to], ['Why', m.why || '—'], ...(after != null ? [['Operating cash after', `${money(after)}`], ['Free to spend after', money(freeCash() - m.amt)]] : []), ...(m.from === 'bv' ? [['BondVault after', money(M.bv - m.amt)], ['Still kept for bondholders', money(BV_NEED())]] : []), ['Signs in', L ? L.safe ? `Ops Safe · ${L.safe.threshold} of ${L.safe.owners.length}` : 'The Ops Safe' : 'Ops Safe · 2 of 3']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{N.rej && !L ? <label>{lbl('Why not')}<textarea id="nrej" className="vin" rows="2" placeholder={`Tell ${PPL[m.by].f} why`} /></label> : ''}<p className="npn-n">{L ? 'Approving records you as the second person. The transfer then goes to the Ops Safe to be signed, and it’s logged in Records.' : 'Approving signs it as the second person. It goes out at once and is logged in Records.'}</p></div><div className="pn-ft">{N.rej ? <><button className="btn" data-nrejcancel="">Back</button><button className="btn dz" data-nreject={m.id}>Send it back</button></> : <><button className="btn" data-nrejopen="">Reject</button><button className="btn p" data-napprove={m.id}>{L ? 'Approve' : 'Approve and sign'}</button></>}</div></>;
+      return <><div className="pn-hd"><span className="lbl">{L ? 'Needs your approval' : 'Needs your signature'}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{m.t}</p><p className="npn-s">{PPL[m.by].n}{" proposed it "}{rel(m.d)}{m.due != null ? ' · due ' + dayD(m.due) : ''}</p></div><div className="m-big">{money(m.amt)}</div><div className="led">{[['From', PLACES[m.from] || m.from], ['To', m.to], ['Why', m.why || '—'], ...(after != null ? [['Operating cash after', `${money(after)}`], ['Free to spend after', money(freeCash() - m.amt)]] : []), ...(m.from === 'bv' ? [['BondVault after', money(M.bv - m.amt)], ['Redemption Reserve kept', money(BV_NEED())]] : []), ['Signs in', L ? L.safe ? `Ops Safe · ${L.safe.threshold} of ${L.safe.owners.length}` : 'The Ops Safe' : m.from === 'yld' ? 'Two Deployment signers' : m.from === 'bv' ? 'Two treasury signers, through the Collateral Agent' : 'Ops Safe · two signers']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{N.rej && !L ? <label>{lbl('Why not')}<textarea id="nrej" className="vin" rows="2" placeholder={`Tell ${PPL[m.by].f} why`} /></label> : ''}<p className="npn-n">{L ? 'Approving records you as the second person. The transfer then goes to the Ops Safe to be signed, and it’s logged in Records.' : 'Approving signs it as the second person. It goes out at once and is logged in Records.'}</p></div><div className="pn-ft">{N.rej ? <><button className="btn" data-nrejcancel="">Back</button><button className="btn dz" data-nreject={m.id}>Send it back</button></> : <><button className="btn" data-nrejopen="">Reject</button><button className="btn p" data-napprove={m.id}>{L ? 'Approve' : 'Approve and sign'}</button></>}</div></>;
     }
 
     /* ══ render + events ══════════════════════════════════════════════════════════════ */
@@ -1245,6 +1602,15 @@ function makeMoney() {
         closeN();
         return render();
       }
+      // the demo's funding proposal (live, the app's own handler sends it to the API)
+      if (d.nafund && !L) {
+        const it = AFD.items.find(x => x.id === d.nafund);
+        if (it) {
+          it.st = 1;
+          toast(`Batch saved · load it in the Transaction Builder on CL Operating: ${money(it.amt)} to the CL Fees wallet. The Clear Lending Safe’s two owners sign`);
+          return render();
+        }
+      }
       if (d.npropose) {
         if (!CAN()) return toast(L ? 'Proposing a move takes Propose in Money' : 'Only Ops Safe signers can propose a move');
         N.panel = {
@@ -1329,6 +1695,18 @@ function makeMoney() {
       if (d.napprove) {
         const m = N.moves.find(x => x.id === d.napprove);
         N.moves = N.moves.filter(x => x !== m);
+        if (m.from === 'yld') {
+          Y.cash -= m.amt;
+          Y.lent += m.amt;
+          Y.util = Y.lent / Y.assets;
+          const y = acctOf('yld');
+          y[5] = Y.cash;
+          y[6][y[6].length - 1] = Y.cash;
+          M.payout += m.amt;
+          const p = acctOf('pay');
+          p[5] = M.payout;
+          p[6][p[6].length - 1] = M.payout;
+        }
         if (m.from === 'bv') {
           M.bv -= m.amt;
           const v = acctOf('bv');

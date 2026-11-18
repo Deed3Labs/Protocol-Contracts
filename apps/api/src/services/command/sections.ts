@@ -5,7 +5,9 @@ import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, 
 import type { Db, Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, moneyAccountsLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { payoutKeeperConfigFromEnv } from '../payoutFunding/fundingStatus.js';
+import { CL_OPERATING_BASE_SEPOLIA } from '../payoutFunding/topUp.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
 import { feedRows } from './feeds.js';
@@ -1319,19 +1321,26 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   Y.earned = Y.assets - Y.principal;
   // live, the price of a share; the seed has no shares, so its principal stands in
   Y.price = chainPool ? (chainPool.supply ? chainPool.assets / chainPool.supply : 1) : Y.principal ? Y.assets / Y.principal : 1;
+  // seeded, the prototype's per-cycle curve (the demo); live, every rate below is the contract's own read
   const borrowBps = (u: number) => (u <= Y.curve.kink ? Y.curve.base + (Y.curve.s1 * u) / Y.curve.kink : Y.curve.base + Y.curve.s1 + (Y.curve.s2 * (u - Y.curve.kink)) / (1 - Y.curve.kink));
   const apr = (bps: number) => ((bps / 10000) * 365) / Y.cycleDays;
   const apy = (bps: number) => Math.pow(1 + bps / 10000, 365 / Y.cycleDays) - 1;
-  // live, credit pays the carry on the book, not the LendingPool's curve, which nothing charges: the pool lends to the
-  // PayoutPool, and the PayoutPool hands each lender the carry on the float it funded. So a dollar lent earns the book's
-  // average rate, and the depositors that times the share lent out; idle cash earns nothing
-  const rates = credit?.rates ?? null;
-  if (credit) Y.rates = rates;
-  // carry compounds per the issuers' cycle, so a year is counted in theirs
-  if (rates) Y.cycleDays = rates.cycleDays;
-  Y.borrowBps = credit ? (rates?.bookBps ?? 0) : borrowBps(Y.util);
-  Y.supplyBps = Y.borrowBps * Y.util;
-  Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
+  // live, the carry members pay on the book, by tier and on term plans: what "Where member payments go" draws.
+  // It is not the pool's rate: since E2b the LendingPool is the Yield Pool, and its YieldPoolLedger charges Clear
+  // Lending the Funding Rate on what it has deployed.
+  if (credit) Y.rates = credit.rates ?? null;
+  if (chainPool) {
+    // live, the Funding Rate (annual): what Clear Lending pays on the Deployed Balance, read from the pool. Holders
+    // earn about that times Utilization, before losses. Annual figures, so no cycle compounding.
+    Y.borrowBps = chainPool.fundingBps;
+    Y.supplyBps = Y.borrowBps * Y.util;
+    Y.apy = Y.supplyBps / 1e4; Y.apr = Y.borrowBps / 1e4;
+    Y.rateAt = chainPool.rateAt; Y.pending = chainPool.pending; Y.accrued = chainPool.accrued; Y.deployed = chainPool.deployed;
+  } else {
+    Y.borrowBps = borrowBps(Y.util);
+    Y.supplyBps = Y.borrowBps * Y.util;
+    Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
+  }
   if (reserve) { M.clrusd = reserve.clrusd; M.reserveDiff = reserve.difference; }
   M.rtd = M.unsecured ? M.assurance / M.unsecured : 0;
   M.room = M.floor ? M.assurance / M.floor - M.unsecured : 0;
@@ -1358,7 +1367,38 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   }
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
   // live, the gap is the PayoutPool's own shortfall, never the tables' sample against real cash
-  Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy((credit ? Y.borrowBps : borrowBps(Y.utilAfter)) * Y.utilAfter);
+  Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0;
+  // live, the Funding Rate the pool would charge at that utilization (fundingRateAt), times it; null if it couldn't be read
+  if (chainPool) {
+    const after = chainPool.rateAt?.[chainPool.utilAfterBps];
+    Y.apyAfter = after == null ? null : (after * Y.utilAfter) / 1e4;
+  } else Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
+
+  // live, Money's accounts beyond the pools (brief update 2, section 5); each null when it can't be read. Member cash
+  // (Lithic), the Credit Settlement Account and the credit book's monthly Spread and residual aren't wired yet: null.
+  // Seeded, none is sent: the demo's balances are the prototype's.
+  const MX: Record<string, number | null> = {};
+  if (provider === 'live') {
+    const keeper = payoutKeeperConfigFromEnv(process.env);
+    // CL Operating: the Safe the payout top-ups draw from, as the top-up job resolves it
+    const clOperating = (process.env.PAYOUT_TOPUP_SAFE || '').trim() || (payoutChainId() === 84532 ? CL_OPERATING_BASE_SEPOLIA : '');
+    const acc = await moneyAccountsLive(chainOf(o, 'money'), { assurancePool: assurancePoolV2, clOperating, horizonSeconds: keeper.standingDays * 86_400, maxClaims: keeper.maxClaims }).catch(() => null);
+    Object.assign(MX, {
+      // the Credit Backstop and Member Assurance compartments, the coverage cap, what's covered now and approved draws not yet paid
+      apBack: assurance ? assurance.backstop : null,
+      apMem: assurance?.compartments.find((c) => c.key === 'MEMBER_ASSURANCE')?.balance ?? null,
+      cap: acc?.cap ?? null,
+      cover: assurance ? assurance.coverage : null,
+      drawn: assurance ? assurance.approvedUnpaid : null,
+      // the CL Loss Reserve's USDC (where released draws go), CL Operating's, and payout claims due within 30 days
+      lr: acc?.lr ?? null,
+      clOp: acc?.clOp ?? null,
+      due30: acc?.due30 ?? null,
+      // the Clear Treasury Safe: the co-op's Ops Safe, whose USDC is the co-op's balance
+      treasury: coop ? coop.usdc : null,
+      memberCash: null, clSettle: null, spread: null, resid: null,
+    });
+  }
 
   const AP_BAL = [...((f['money.ap.balance_weeks'] as number[] | undefined) ?? []), M.assurance];
   const UNSEC = [...((f['money.credit.unsecured_weeks'] as number[] | undefined) ?? []), M.unsecured];
@@ -1393,7 +1433,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
 
   const counts = await memberCounts(db, o);
   return {
-    M, Y, Y_DEP,
+    M: { ...M, ...MX }, Y, Y_DEP,
     // where the co-op's balance is held, whether that's the Ops Safe, and in what
     COOP,
     // the $10 offers' line: what the co-op owes for them, apart from its balance

@@ -27,6 +27,7 @@ import "./IExtensionKind.sol";
 /// Storage is append-only against the Base Sepolia implementation recorded in
 /// `.openzeppelin/base-sepolia.json` (slots 351-360, then a 40-slot gap). Slots 361-369 hold the
 /// Phase 1 audit fields, which were never deployed there; the Yield Pool fields follow from 370.
+/// The Settlement Funding lane (decision 54) follows the Yield Pool gap.
 abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgradeable {
     using MathUpgradeable for uint256;
 
@@ -332,7 +333,34 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
 
     /// @dev Room for later fields. Named apart from the Base Sepolia `__gap` (slots 361-400), which
     /// the fields above have used up and run past, as the last contract in the layout may.
+    /// OpenZeppelin's layout check recognizes a gap only by the names `__gap` and `__gap_*`, so it
+    /// cannot be shrunk under the check against the deployed layout: later fields follow it.
     uint256[36] private __yieldPoolGap;
+
+    /* ========== SETTLEMENT FUNDING LANE (decision 54; slots 456-459, after the Yield Pool gap) ========== */
+
+    /// @dev The automated Settlement Funding lane (IV-02 §4.3A; L-01 §8.4A): a Standing Approval
+    /// (C-01 §6.14) with a fixed destination (the registered deployment account), a per-period limit
+    /// and an immediate stop. One registered funder may make a Deployment alone, up to `capPerPeriod`
+    /// in each period of `periodSeconds` counted from when it was set. `epoch` counts the stops, so a
+    /// proposal made before a stop cannot restart the lane with one signature after it.
+    struct SettlementLane {
+        address funder;
+        uint64 periodSeconds;
+        bool stopped;
+        uint24 epoch;
+        /// @dev The start of the period last used, and what the lane deployed in it.
+        uint64 periodStart;
+        uint192 used;
+        uint256 capPerPeriod;
+    }
+    SettlementLane internal _settlementLane;
+    /// @notice How far above the posted Pool Tier principal the lane (only) may take the Deployed
+    /// Balance: credit portions authorized and not yet settled (IV-02 §4.3A).
+    uint256 internal _settlementHeadroom;
+
+    /// @dev Room for later fields, named as OpenZeppelin's check recognizes a gap.
+    uint256[46] private __gap_settlementLane;
 
     /* ========== ERRORS ========== */
 
@@ -373,6 +401,7 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     error LendingPoolNoValuationEvent();
     error LendingPoolNotYet(uint256 effectiveAt);
     error LendingPoolReceiverNotOwner(address receiver);
+    error LendingPoolSettlementCap(uint256 usedInPeriod, uint256 capPerPeriod, uint256 amount);
 
     /* ========== EVENTS ========== */
 
@@ -424,6 +453,12 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     event LegalHoldPlaced(uint256 indexed holdId, address indexed holder, uint256 shares, bytes32 orderHash, uint256 expiresAt, address proposer, address approver);
     event LegalHoldReleased(uint256 indexed holdId, address indexed holder, address proposer, address approver);
     event SuccessorRedemptionRequested(address indexed holder, address indexed successor, uint256 requestId, uint256 shares);
+    /// @notice The Settlement Funding lane (decision 54).
+    event SettlementFunderSet(address indexed funder, uint256 capPerPeriod, uint64 periodSeconds, address proposer, address approver);
+    event SettlementHeadroomSet(uint256 amount, address proposer, address approver);
+    event SettlementFunderStopped(address indexed funder, address indexed by);
+    /// @param periodUsed what the lane has deployed in the period running, this Deployment included.
+    event SettlementDeployed(uint256 indexed id, uint256 amount, bytes32 ref, uint256 periodUsed);
 
     /* ========== ACCOUNTING ========== */
 

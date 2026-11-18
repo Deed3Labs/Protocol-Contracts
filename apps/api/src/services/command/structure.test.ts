@@ -17,14 +17,14 @@ beforeAll(async () => {
 describe('the structure', () => {
   test('writes the contracts, entities, boards and who decides, once', async () => {
     const first = await structureCommand(db);
-    expect(first).toEqual(['32 contracts', '7 accounts', '9 entities', '3 boards']);
+    expect(first).toEqual(['32 contracts', '7 accounts', '10 entities', '3 boards']);
     // a second start leaves it alone
     expect(await structureCommand(db)).toEqual([]);
   });
 
   test('every entity starts not formed, under its owner', async () => {
     const { rows } = await db.query<{ id: string; status: string; parent_id: string | null; facts: Record<string, unknown> | null }>('SELECT id, status, parent_id, facts FROM command.entities ORDER BY position');
-    expect(rows.map((r) => r.status)).toEqual(Array(9).fill('planned'));
+    expect(rows.map((r) => r.status)).toEqual(Array(10).fill('planned'));
     expect(rows.find((r) => r.id === 'mgr')!.parent_id).toBe('hold');
     // no formation dates, numbers or officers
     for (const r of rows) for (const k of ['formed', 'ein', 'officers']) expect(r.facts?.[k]).toBeUndefined();
@@ -65,6 +65,36 @@ describe('the structure', () => {
     ]);
   });
 
+  test('a database written before Clear Building Co. gets it and the drafting brief’s names from migration 0079, and running it again changes nothing', async () => {
+    // the entities as the structure first wrote them
+    await db.query("DELETE FROM command.entities WHERE id = 'lsub'");
+    await db.query("UPDATE command.entities SET name = 'Clear Co-op', kind = 'Wyoming LLC · co-op' WHERE id = 'coop'");
+    await db.query("UPDATE command.entities SET name = 'Manager LLC' WHERE id = 'mgr'");
+    await db.query("UPDATE command.entities SET owned = '100%' WHERE id = 'hold'");
+    await db.query("UPDATE command.entities SET parent_id = 'mgr', owned = NULL WHERE id = 'prop'");
+    await db.query(`UPDATE command.entities SET facts = '{"tax":"Disregarded","steps":[["Name reserved",1],["Articles filed",0],["Operating agreement",0],["EIN",0],["Bank account",0]]}' WHERE id = 'lend'`);
+    // and one someone renamed since: left as it is
+    await db.query("UPDATE command.entities SET name = 'The Foundation (renamed)' WHERE id = 'fdn'");
+    const sql = readFileSync(new URL('../../../migrations/0079_command_entities_building_co.sql', import.meta.url), 'utf8');
+    // a statement ends at a semicolon that ends its line: Holdings' role has one inside it
+    const statements = sql.replace(/^--.*$/gm, '').split(/;\s*$/m).map((x) => x.trim()).filter(Boolean);
+    for (let i = 0; i < 2; i++) for (const st of statements) await db.query(st);
+    const { rows } = await db.query<{ id: string; name: string; parent_id: string | null; owned: string | null; step: string | null }>(
+      "SELECT id, name, parent_id, owned, facts #>> '{steps,4,0}' AS step FROM command.entities WHERE id IN ('coop', 'mgr', 'hold', 'prop', 'lend', 'lsub', 'fdn') ORDER BY id",
+    );
+    expect(rows).toEqual([
+      { id: 'coop', name: 'Clear Collective LLC', parent_id: null, owned: null, step: null },
+      { id: 'fdn', name: 'The Foundation (renamed)', parent_id: null, owned: null, step: null },
+      { id: 'hold', name: 'Clear Capital Holdings', parent_id: 'coop', owned: 'Class A', step: null },
+      { id: 'lend', name: 'Clear Lending Co.', parent_id: 'hold', owned: '100%', step: 'CFL licence' },
+      { id: 'lsub', name: 'Clear Building Co.', parent_id: 'hold', owned: '100%, once I-06 funds', step: null },
+      { id: 'mgr', name: 'Clear Capital Management LLC', parent_id: 'hold', owned: '100%', step: null },
+      { id: 'prop', name: 'Clear Properties Co.', parent_id: 'hold', owned: 'Majority, shrinking as contributors join', step: null },
+    ]);
+    const { rows: n } = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM command.entities WHERE id = 'lsub'");
+    expect(n[0].n).toBe(1);
+  });
+
   test('the contracts keep their map, without the prototype’s notes', async () => {
     const { rows } = await db.query<{ n: number; notes: number }>('SELECT count(*)::int AS n, count(note)::int AS notes FROM command.contracts');
     expect(rows[0]).toEqual({ n: 32, notes: 0 });
@@ -102,7 +132,8 @@ describe('Money with only the structure', () => {
       // the co-op's to use, owed back at maturity: what it keeps back, and what the Safe may take
       expect(m.ACCTS.find((a: any[]) => a[0] === 'bond')[3]).toBe('coop');
       expect(m.figures['money.bondvault']).toEqual({ required: 90, deployable: 200.38, floorPct: 30, windowDays: 90 });
-      for (const [k, v] of Object.entries(m.M)) expect([k, Number.isFinite(v)]).toEqual([k, true]);
+      // a figure is a number, or null where it can't be read (brief update 2's accounts), never NaN
+      for (const [k, v] of Object.entries(m.M)) expect([k, v === null || Number.isFinite(v)]).toEqual([k, true]);
       expect([m.AP_BAL, m.UNSEC, m.COOP_W, m.FLOWS]).toEqual([[0], [0], [], []]);
     } finally {
       env == null ? delete process.env.PROVIDER_MONEY : (process.env.PROVIDER_MONEY = env);
