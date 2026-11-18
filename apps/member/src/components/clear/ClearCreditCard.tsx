@@ -63,8 +63,11 @@ export default function ClearCreditCard({
   credit,
   onViewBreakdown,
   onAddBoost,
+  boostNote,
 }: {
   credit: Credit;
+  /** The Boost cap and how it grows ("Boost up to $500 · rises to $750 after …"), from the chain. */
+  boostNote?: string | null;
   onViewBreakdown?: () => void;
   onAddBoost?: () => void;
 }) {
@@ -112,6 +115,7 @@ export default function ClearCreditCard({
             );
           })}
         </div>
+        {boostNote && <p className="c-det mt-s1">{boostNote}</p>}
         {drawn && (
           <>
             <Line className="mt-s2 border-t border-ink-13 pt-s2">
