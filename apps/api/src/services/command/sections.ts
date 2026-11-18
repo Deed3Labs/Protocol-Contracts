@@ -1873,12 +1873,14 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     ...(SIGNING ? { SIGNING } : {}),
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
-    SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
+    // live, the signers are the Ops Safe's own (the page reads GET /safe); command.signers is the seed's sample
+    SIGNERS: provider === 'live' ? [] : sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
     NOW,
     figures: {
       ...(await figures(db, 'contracts')),
       // live, the chain's header and who holds each power over the contracts (replayed from their events)
-      ...(provider === 'live' ? { 'contracts.chain': await chainHeader(db), 'contracts.key_roles': await keyRolesLive(db, safeConfig()?.address ?? null) } : {}),
+      // and signatures a week are counted from the Safe's own transactions (the page's loadSafe), never the seed's
+      ...(provider === 'live' ? { 'contracts.chain': await chainHeader(db), 'contracts.key_roles': await keyRolesLive(db, safeConfig()?.address ?? null), 'contracts.signatures_weekly': {} } : {}),
     },
     asOf: asOfFor(provider, o.now),
   };
@@ -2062,7 +2064,10 @@ export async function recordsSection(db: Queryable, o: ReadOptions): Promise<Rec
         )
       ).map((r) => ({ proposer: { id: r.proposed_by, name: r.proposer }, approver: { id: r.approved_by, name: r.approver }, n: r.n }))
     : [];
-  return { DOCS, LOG, APPROVALS, people: people ? 'shown' : 'none', figures: await figures(db, 'records'), asOf: asOfFor(provider, o.now) };
+  // live, nothing writes Records' stored counts (the seed's figures): the page counts the documents themselves
+  const f = await figures(db, 'records');
+  if (provider === 'live') for (const k of ['records.doc_counts', 'records.doc_states', 'records.coverage']) delete f[k];
+  return { DOCS, LOG, APPROVALS, people: people ? 'shown' : 'none', figures: f, asOf: asOfFor(provider, o.now) };
 }
 
 // ── Home ────────────────────────────────────────────────────────────────────

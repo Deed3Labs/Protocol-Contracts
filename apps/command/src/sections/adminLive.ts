@@ -441,7 +441,8 @@ export function adminLive() {
     const ENTO = Object.fromEntries(ENTS.map((e) => [e[0], e]));
     const DOCS2 = DOCS.filter((d) => ENTO[d[3]]).map((d) => d.slice(0, 9));
     const KINDS = ['agreement', 'minutes', 'filing', 'policy', 'bond', 'report'];
-    const DCOUNT2 = Object.fromEntries(KINDS.map((k) => [k, DCOUNT[k] != null ? num(DCOUNT[k]) : DOCS2.filter((d) => d[2] === k).length]));
+    // what's on file is the documents themselves, never a stored count (the seed's figures)
+    const DCOUNT2 = Object.fromEntries(KINDS.map((k) => [k, DOCS2.filter((d) => d[2] === k).length]));
     const COVER2 = Object.fromEntries(Object.entries(COVER).filter(([id, c]) => ENTO[id] && Array.isArray(c) && c.length === 6));
 
     // the audit log, newest first: who by their key on the team, the area as Records colours it
