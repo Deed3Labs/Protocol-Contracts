@@ -504,15 +504,19 @@ function funnelViz(F) {
 }
 /**
  * The co-op's entities as a small tree, the same as Governance → Entities: the Foundation outside it, the
- * co-op over its four subsidiaries, and Holdings over the manager and the two funds it manages. Each box
- * is a card (a name line, a footer rule, a status square) in its entity's status, from Governance's data.
+ * co-op over its four subsidiaries, Holdings over the Manager and Clear Building Co., and the Manager over
+ * the two companies it runs. Each box is a card (a name line, a footer rule, a status square) in its
+ * entity's status, from Governance's data.
  */
 function treeViz() {
   const W = 60,
     H = 20,
     X = [43, 128, 214, 299],
     CO = 171,
-    Y = [12, 42, 72];
+    Y = [12, 40, 68, 96],
+    // the Manager under Holdings, Clear Building Co. beside it; the Manager's two companies under it
+    R3 = [214, 128],
+    R4 = [181, 247];
   const st = Object.fromEntries(ENT.map((e) => [e[0], e[3]]));
   const cls = (id) => ({ formed: '', forming: 'ing' })[st[id]] ?? 'pl';
   // id, x, y, the name line's length
@@ -523,13 +527,14 @@ function treeViz() {
     ['fin', X[1], Y[1], 38],
     ['hold', X[2], Y[1], 40],
     ['dt', X[3], Y[1], 36],
-    ['mgr', X[1], Y[2], 28],
-    ['prop', X[2], Y[2], 38],
-    ['lend', X[3], Y[2], 32],
-  ];
+    ['mgr', R3[0], Y[2], 38],
+    ['lsub', R3[1], Y[2], 26],
+    ['prop', R4[0], Y[3], 28],
+    ['lend', R4[1], Y[3], 32],
+  ].filter(([id]) => id in st || !Object.keys(st).length);
   const ln = (k, d, c = 'h-ln') => <path key={k} className={c} d={d} />;
   return (
-    <svg className="h-gt" width="100%" height="100" viewBox="0 0 342 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    <svg className="h-gt" width="100%" height="100" viewBox="0 0 342 124" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       <defs>
         <pattern id="hgt-h" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <path d="M0 0V4" style={css('stroke:var(--line);stroke-width:1')} />
@@ -542,9 +547,9 @@ function treeViz() {
         Members
       </text>
       {ln('l1', `M${CO} ${Y[0] + H}V${Y[1] - 5}M${X[0]} ${Y[1] - 5}H${X[3]}` + X.map((x) => `M${x} ${Y[1] - 5}V${Y[1]}`).join(''))}
-      {ln('l2', `M${X[2]} ${Y[1] + H}V${Y[2] - 5}M${X[1]} ${Y[2] - 5}H${X[3]}` + X.slice(1).map((x) => `M${x} ${Y[2] - 5}V${Y[2]}`).join(''))}
+      {ln('l2', `M${X[2]} ${Y[1] + H}V${Y[2]}M${X[2]} ${Y[2] - 4}H${R3[1]}V${Y[2]}`)}
       {ln('d1', `M${X[0] - 18} ${Y[0] + H}V${Y[1]}`, 'dt')}
-      {ln('d2', `M${X[1]} ${Y[2] + H}V${Y[2] + H + 5}H${X[3]}V${Y[2] + H}M${X[2]} ${Y[2] + H}V${Y[2] + H + 5}`, 'dt')}
+      {ln('d2', `M${R3[0]} ${Y[2] + H}V${Y[3] - 4}M${R4[0]} ${Y[3] - 4}H${R4[1]}M${R4[0]} ${Y[3] - 4}V${Y[3]}M${R4[1]} ${Y[3] - 4}V${Y[3]}`, 'dt')}
       {at.map(([id, x, y, t]) => (
         <g key={id} className={id === 'fdn' ? `out ${cls(id)}` : cls(id)}>
           <rect className="bx" x={x - W / 2 + 0.5} y={y + 0.5} width={W - 1} height={H - 1} />

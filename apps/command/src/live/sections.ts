@@ -140,7 +140,7 @@ import { setFigures } from './figures';
  * opened; until then the page shows the prototype's loading state. Sections not listed here still
  * draw the prototype's demo data.
  */
-export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records', 'settings']);
+export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records', 'settings', 'legal']);
 const ready = new Set<string>();
 let loads = 0;
 /** Counts the sections loaded: a redesigned page built from older data is built again (pageHost.tsx). */
@@ -437,6 +437,10 @@ const apply = {
     // the stored alerts, and the shop's materials at or under their low mark (Phase 10c)
     replace(ALERTS0, [...(f['home.alerts'] ?? []), ...(d.LOW_MATERIALS ?? []).map(lowAlert)]);
     if (f['growth.range']) assign(RANGE, f['growth.range']);
+  },
+  // Governance → Legal: the private agreements repo through the API, in full for Admin, the counts for anyone else; or why it's off
+  legal(d) {
+    vars.legal = d;
   },
   // Settings → Rules and limits (the redesign's admin2.tsx, through sections/adminLive.ts): every rule, what waits, what changed
   settings(d) {
