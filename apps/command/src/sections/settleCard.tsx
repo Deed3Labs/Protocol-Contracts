@@ -140,7 +140,9 @@ export function demoSettle(now, state = 'covered') {
 
 export function settleBar(S, V, { sm = false } = {}) {
   zoned(S);
-  const max = Math.max(V.target, V.after) || 1,
+  // the scale: the target, or more when more is coming; an empty card (nothing due) keeps a scale of 1 to draw on
+  const top = Math.max(V.target, V.after),
+    max = top || 1,
     p = (v) => ((v / max) * 100).toFixed(3) + '%';
   let x = 0;
   const seg = (v, cls) => {
@@ -157,7 +159,7 @@ export function settleBar(S, V, { sm = false } = {}) {
     <div className={`sfb${sm ? ' sm' : ''}`}>
       {sm ? '' : <div className="sfb-ax"><span className={`due ${a}`} style={css(`left:${p(S.due)}`)}><b>Due</b> {usd(S.due)}</span></div>}
       <div className="sfb-t"><div className="sfb-i">{bar}<b className="sfb-due" style={css(`left:${p(S.due)}`)} /></div></div>
-      {sm ? '' : <div className="sfb-ax lo"><span>$0</span><span className="end"><b>{max > V.target + 0.005 ? 'Coming in' : 'With the buffer'}</b> {usd(max)}</span></div>}
+      {sm ? '' : <div className="sfb-ax lo"><span>$0</span><span className="end"><b>{top > V.target + 0.005 ? 'Coming in' : 'With the buffer'}</b> {usd(top)}</span></div>}
     </div>
   );
 }
@@ -198,7 +200,7 @@ function settleTimeline(S, V, now) {
 
 function settleSources(S, V, can) {
   const urgent = V.state === 'short' || V.state === 'thin';
-  const btn = (k, t, primary) => (can ? <button className={`btn sm-b sfs-go${primary ? ' p' : ''}`} data-nsf={k}>{t}</button> : '');
+  const btn = (k, t, primary) => (can && !S.off ? <button className={`btn sm-b sfs-go${primary ? ' p' : ''}`} data-nsf={k}>{t}</button> : '');
   const col = S.netting.collection ?? 0,
     booked = S.netting.bookedToday ?? 0;
   const laneLeft = Math.max(0, S.lane.cap - S.lane.used);
@@ -269,7 +271,9 @@ const left = (S, now) => {
   const m = Math.max(0, Math.round((S.cutoff.next - now) / MIN));
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
 };
-const pill = (V) => <span className="fst" style={css(`color:${TONE[V.tone]};box-shadow:inset 0 0 0 1px ${TONE[V.tone]}`)}>{V.label}</span>;
+/** The pill: the verdict's colour, or neutral for an off card's tag (Queued, Not on). */
+const pillTone = (S) => (S.off ? 'var(--fg-50)' : TONE[S.verdict.tone]);
+const pill = (S) => <span className="fst" style={css(`color:${pillTone(S)};box-shadow:inset 0 0 0 1px ${pillTone(S)}`)}>{S.verdict.label}</span>;
 const cutLabel = (S) => `${wd(S.cutoff.next)} ${dm(S.cutoff.next)} · ${hm(S.cutoff.next)}`;
 
 /** Money → Overview's card, #nsettle. h: Money's own helpers (cell, lbl) and whether this person can move money. */
@@ -294,15 +298,15 @@ export function settleCard(S, h, now = Date.now()) {
   const wk = [['From the pool', usd(S.week.sent)], ['Booked repayments', usd(S.week.booked)], ['Returned to the pool', usd(S.week.returnedPool)], ['Next cut-off so far', usd(S.pendingCredit), 't']];
   const foot = (
     <>
-      <span className="sf-ft">{S.stopped ? <><i className="sf-dot off" /><span><b>Desk stopped</b>{S.stopped.by ? ` by ${S.stopped.by}` : ''}{S.stopped.at ? ` at ${hm(S.stopped.at)}` : ''}</span></> : <><i className="sf-dot" /><span><b>{S.dryRun ? 'Desk in a dry run' : 'Desk on'}</b>{S.lastCheck ? ` · checked ${ago(S.lastCheck, now)}` : ''}</span></>}</span>
-      {h.can ? (S.stopped ? <button className="btn sm-b" data-nsf="restart">Restart…</button> : <button className="btn sm-b dz" data-nsf="stop">Stop the desk</button>) : ''}
+      <span className="sf-ft">{S.off ? <><i className="sf-dot off" style={css('background:var(--fg-50)')} /><span><b>{S.off.tag}</b>{` · ${S.off.why}`}</span></> : S.stopped ? <><i className="sf-dot off" /><span><b>Desk stopped</b>{S.stopped.by ? ` by ${S.stopped.by}` : ''}{S.stopped.at ? ` at ${hm(S.stopped.at)}` : ''}</span></> : <><i className="sf-dot" /><span><b>{S.dryRun ? 'Desk in a dry run' : 'Desk on'}</b>{S.lastCheck ? ` · checked ${ago(S.lastCheck, now)}` : ''}</span></>}</span>
+      {h.can && !S.off ? (S.stopped ? <button className="btn sm-b" data-nsf="restart">Restart…</button> : <button className="btn sm-b dz" data-nsf="stop">Stop the desk</button>) : ''}
       <button data-ngo="build/security">Guide →</button>
     </>
   );
   return h.cell(
     's12 sf',
     'Next card settlement',
-    <><span className="sf-cut">{`${cutLabel(S)} · in ${left(S, now)}`}</span>{pill(V)}</>,
+    <><span className="sf-cut">{`${cutLabel(S)} · in ${left(S, now)}`}</span>{pill(S)}</>,
     <div className="sf-gr">
       <div className="sf-c sf-kpi">{V.cells.map((c, i) => <div key={i}><span className="lbl">{c.label}</span><b style={css(c.tone ? `color:${tone(c.tone)}` : '')}>{c.value}</b><span>{c.sub}</span></div>)}</div>
       <div className="sf-c sf-main">
@@ -330,7 +334,7 @@ export function settleSlim(S, h) {
   return h.cell(
     's12 sf sm',
     'Card settlement',
-    <><span className="sf-cut">{`${cutLabel(S)} cut-off`}</span>{pill(V)}</>,
+    <><span className="sf-cut">{`${cutLabel(S)} cut-off`}</span>{pill(S)}</>,
     <div className="sf-slim"><div className="m-big">{usd(S.due)} <small>due</small></div>{settleBar(S, V)}<div className="sf-sl-n"><b>{usd(Math.max(0, S.lane.cap - S.lane.used))}</b><span>left in the pool’s settlement lane this week</span></div></div>,
     <><span>{V.brief}</span><button data-ntab="overview" data-njump="nsettle">Fund or review →</button></>,
   );
@@ -343,7 +347,7 @@ export function settleTile(S, { cls = 'sc sc-sf', lblCls = 'lbl', valCls = 'sc-v
   return (
     <button type="button" className={cls} {...attrs}>
       <span className={lblCls}>Card settlement</span>
-      {V ? <span className={valCls} style={css(`color:${TONE[V.tone]}`)}>{V.label}</span> : <span className={valCls}>—</span>}
+      {V ? <span className={valCls} style={css(`color:${pillTone(S)}`)}>{V.label}</span> : <span className={valCls}>—</span>}
       {V ? settleBar(S, V, { sm: true }) : <span className="sfb sm"><span className="sfb-t" /></span>}
       <span className={`${subCls}${V?.state === 'short' ? ' bad' : ''}`}>{V ? `${wd(S.cutoff.next)} ${hm(S.cutoff.next)} · ${usd(S.due)} due` : 'Not read yet'}</span>
     </button>
@@ -357,7 +361,7 @@ export function settleTile(S, { cls = 'sc sc-sf', lblCls = 'lbl', valCls = 'sc-v
 export function settleNeed(S, now = Date.now()) {
   zoned(S);
   const V = S?.verdict;
-  if (!V || V.state === 'covered') return null;
+  if (!V || S.off || V.state === 'covered') return null;
   const desk = V.state === 'ontrack';
   return {
     sev: V.state === 'short' ? 'absent' : 'underway',

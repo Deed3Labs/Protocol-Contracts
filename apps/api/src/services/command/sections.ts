@@ -11,7 +11,9 @@ import { CL_OPERATING_BASE_SEPOLIA } from '../payoutFunding/topUp.js';
 import { assuranceFeeConfig } from '../assuranceFees/config.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
-import { settlementFundingLive, settlementFundingSeed } from './settlementFunding.js';
+import { settlementFundingLive, settlementFundingOff, settlementFundingSeed } from './settlementFunding.js';
+import { SETTLEMENT_LANE_VIEW } from '../settlementFunding/abi.js';
+import { parseAbi } from 'viem';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
@@ -1537,7 +1539,11 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     // live, this month's financed sales and the merchant fees on them (Where member payments go); null seeded or unread
     MERCHANT_FEES: provider === 'live' ? await merchantFeesThisMonth(o.charges ?? getPostgresPool() ?? db, o.now).catch(() => null) : null,
     // card settlement funding (decision 54): what the funding desk recorded, live; a sample, seeded
-    SETTLEMENT_FUNDING: provider === 'live' ? await settlementFundingLive(db, process.env, o.now.getTime()).catch(() => null) : settlementFundingSeed(o.now.getTime()),
+    // live, before the desk has ever checked, its real state (nothing yet) and whether the lane is queued or the desk not on
+    SETTLEMENT_FUNDING:
+      provider === 'live'
+        ? ((await settlementFundingLive(db, process.env, o.now.getTime()).catch(() => null)) ?? settlementFundingOff(process.env, o.now.getTime(), await laneUpgraded(chainOf(o, 'money'))))
+        : settlementFundingSeed(o.now.getTime()),
     // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
     figures: {
       ...f,
@@ -1555,6 +1561,15 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     },
     asOf: asOfFor(provider, o.now),
   };
+}
+
+/** Whether the Yield Pool answers settlementLane() (the SL upgrade has run); false when it reverts, null when it can't be asked. */
+async function laneUpgraded(reader: ChainReader | null | undefined): Promise<boolean | null> {
+  if (!reader) return null;
+  return reader
+    .read([{ contract: 'LendingPool', fn: 'settlementLane', abi: parseAbi([SETTLEMENT_LANE_VIEW]) }])
+    .then(() => true)
+    .catch((e: Error) => (/revert/i.test(String(e?.message ?? e)) ? false : null));
 }
 
 /**

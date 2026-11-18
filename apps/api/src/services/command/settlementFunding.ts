@@ -1,7 +1,7 @@
 import type { Queryable } from '../../db/db.js';
 import { deskConfigFromEnv } from '../settlementFunding/config.js';
 import { laneSetup, remainderBatches, type DeskAddresses } from '../settlementFunding/desk.js';
-import { localDate, zonedInstant } from '../settlementFunding/schedule.js';
+import { coverage, localDate, zonedInstant } from '../settlementFunding/schedule.js';
 import { deskOverview, deskStore, type MoveRow } from '../settlementFunding/store.js';
 import { settlementVerdict, type SettlementVerdict } from '../settlementFunding/verdict.js';
 import { DEFAULT_DESK_CONFIG } from '../settlementFunding/config.js';
@@ -106,6 +106,12 @@ export interface SettlementCard {
   verdict: SettlementVerdict | null;
   /** The cut-off's own zone: every time the card says is in it, so the page and the verdict agree. */
   timeZone: string;
+  /**
+   * Before the desk has ever checked: the card is its real state, which is nothing yet, and why. "Queued" while the
+   * settlement lane waits on its timelock (the pool doesn't answer settlementLane()); "Not on" once the lane is there and
+   * SETTLEMENT_FUNDING_ENABLED isn't set. Absent once the desk has checked.
+   */
+  off?: { tag: 'Queued' | 'Not on'; why: string };
 }
 
 function move(r: MoveRow): SettlementMove {
@@ -292,6 +298,76 @@ function extras(x: { s: any; halted: MoveRow | null; recent: MoveRow[]; laneStop
     stopped,
     verdict,
     timeZone: cfg.schedule.timeZone,
+  };
+}
+
+/**
+ * The card before the desk has ever checked: everything at zero, the next cut-off from the desk's schedule, and a tag.
+ * `laneUpgraded` is whether the pool answers settlementLane() (null when it couldn't be asked).
+ */
+export function settlementFundingOff(env: Record<string, string | undefined>, nowMs: number, laneUpgraded: boolean | null): SettlementCard {
+  const cfg = deskConfigFromEnv(env);
+  const cov = coverage(Math.floor(nowMs / 1000), cfg.schedule);
+  const next = cov.next * 1000;
+  const forcedAt = next - (cfg.offRampLatencyMinutes + cfg.marginMinutes) * 60_000;
+  const queued = laneUpgraded !== true;
+  const off = queued
+    ? { tag: 'Queued' as const, why: 'The settlement lane waits on its timelock: the Yield Pool upgrade that adds it runs after its 7-day wait' }
+    : { tag: 'Not on' as const, why: 'The funding desk isn’t switched on (SETTLEMENT_FUNDING_ENABLED)' };
+  const verdict = settlementVerdict(
+    { due: 0, buffer: 0, csa: 0, inFlight: 0, collection: 0, laneRoom: 0, capLeft: 0, forwardLeft: 0, laneReady: false, stopped: { why: off.why }, dryRun: false, cutoff: next, forcedAt, latencyMinutes: cfg.offRampLatencyMinutes, timeZone: cfg.schedule.timeZone },
+    cfg,
+  );
+  return {
+    enabled: false,
+    dryRun: false,
+    returnsEnabled: false,
+    chainId: 84532,
+    explorer: EXPLORERS[84532] ?? '',
+    lastCheck: null,
+    outcome: 'off',
+    wallet: '',
+    forwarder: '',
+    safe: '',
+    offRamp: { name: '', rail: '', address: '' },
+    bank: '',
+    cutoff: { next, through: cov.through * 1000, rollover: cov.rollover, forcedAt, latencyMinutes: cfg.offRampLatencyMinutes, measuredMinutes: null },
+    byCutoff: [],
+    due: 0,
+    dueSettled: 0,
+    duePending: 0,
+    buffer: 0,
+    target: 0,
+    csa: 0,
+    inFlight: 0,
+    need: 0,
+    surplus: 0,
+    pendingCredit: 0,
+    netting: { collection: 0, bookedToday: 0, drawsDue: 0 },
+    today: { day: new Date(nowMs).toISOString().slice(0, 10), sent: 0, booked: 0, returnedPool: 0, returnedMargin: 0, marginAdvanced: 0 },
+    week: { days: 0, sent: 0, booked: 0, returnedPool: 0, returnedMargin: 0 },
+    lane: { upgraded: !queued, stopped: false, cap: 0, used: 0, left: 0, periodSeconds: 0, periodStart: null, headroom: 0, headroomUsed: 0, principal: 0, deployed: 0, poolRoom: 0 },
+    allowance: { cap: 0, spent: 0, remaining: 0, resetMinutes: 0 },
+    setup: [],
+    needsHuman: null,
+    halted: null,
+    marginOutstanding: 0,
+    recent: [],
+    margin: { held: null, advanced: 0 },
+    inFlightEta: null,
+    stopped: null,
+    verdict: {
+      ...verdict,
+      state: 'covered',
+      label: off.tag,
+      tone: 'settled',
+      head: off.tag,
+      when: off.why,
+      brief: `${off.tag} · ${queued ? 'the settlement lane waits on its 7-day timelock' : 'the funding desk isn’t switched on'}`,
+      cells: [verdict.cells[0], verdict.cells[1], { label: 'Short', value: '$0.00', sub: 'Nothing due yet', tone: null }, { label: 'Fund by', value: '—', sub: queued ? 'The lane is queued' : 'The desk isn’t on', tone: null }],
+    },
+    timeZone: cfg.schedule.timeZone,
+    off,
   };
 }
 
