@@ -1100,7 +1100,7 @@ function makeGovernance() {
       if (LG && !LGON) {
         // off, it says why; the empty preview reads nothing at all
         const why = LGL && LGL.off ? LGL.off : LIVE_APP ? null : 'the preview reads nothing';
-        html(document.getElementById('gv'), band(cell('s12', 'Agreements', <span className="lbl">Deed3Labs/clear-agreements</span>, <div className="gv-e"><span>{why ? `Not connected yet: ${why}` : 'Reading the agreements…'}</span></div>, <><span>{why ? 'The agreements repo is read with its own read-only token' : 'From the private agreements repo'}</span><span /></>), 1));
+        html(document.getElementById('gv'), band(cell('s12', 'Agreements', <span className="lbl">Deed3Labs/clear-agreements</span>, <div className="gv-e"><span>{why ? `Not connected yet: ${why}` : 'Reading the agreements…'}</span></div>, <><span>{why ? 'The agreements repo is read with a read-only GitHub token' : 'From the private agreements repo'}</span><span /></>), 1));
         return;
       }
       const F = [['all', 'All', LREG.length], ['open', 'Open questions', LREG.filter(r => r[6]).length], ['s1', 'Redesign-level', LREG.filter(r => r[7]).length]];
