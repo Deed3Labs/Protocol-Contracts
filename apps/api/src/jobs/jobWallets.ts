@@ -14,6 +14,13 @@ export const JOB_WALLET_KEYS: Array<{ job: string; envVar: string; unsetNote?: s
   // The chain keepers pay their gas from the card settler's key (docs/operators/keepers.md): cycle
   // and default, shortfall notices, pledged pool shares and bonds, and the Yield Pool's queue.
   { job: 'chain keepers', envVar: 'CARD_SETTLER_PRIVATE_KEY' },
+  // Credit onboarding attests members' states (NetworkRegistry STATE_ATTESTER_ROLE) with this key,
+  // and opens their lines as the credit operator.
+  {
+    job: 'state attester',
+    envVar: 'STATE_ATTESTER_PRIVATE_KEY',
+    unsetNote: 'the credit operator attests states instead',
+  },
   {
     job: 'membership registrar',
     envVar: 'MEMBERSHIP_REGISTRAR_PRIVATE_KEY',

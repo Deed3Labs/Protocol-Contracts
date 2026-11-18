@@ -35,6 +35,7 @@ The cycle and shortfall notice keepers have run since Phase 2b whenever the API 
 | `POOL_ENFORCE_KEEPER_MAX_PER_RUN` | 25 calls: settle, cancelExcess and enforce together |
 | `BOND_PLEDGE_KEEPER_MAX_PER_RUN` | 25 bonds |
 | `QUEUE_FILL_KEEPER_MAX_COUNT` | 25 queue requests looked at in one `fillQueue` call |
+| `CREDIT_ONBOARDING_MAX_PER_RUN` | 25 members (an attestation and its line count as one); see [Credit onboarding](#credit-onboarding-state-attestation-then-the-line) |
 
 ## Credit: cycles and defaults
 
@@ -47,6 +48,27 @@ What the keeper reads from the receipt:
 - **A second miss in a row.** The issuer sets a cure amount and the line stays frozen. The member gets a notification: "Your line is paused: two cycles missed". Ops get an alert, because default can only be computed after a cure-notice timestamp. Two different `ATTESTER_ROLE` signers record it with `proposeCureNotice` and then `approveCureNotice`, if Clear decides to send the notice.
 
 `triggerDefault` is sent only when the issuer itself reports `inDefault`. With its switch off, a member in computed default is left alone completely: the keeper does not sync them either, because a sync would record the default too. Each default sent alerts ops with the member, what was drawn on the line just before the write-off, and the transaction.
+
+## Credit onboarding: state attestation, then the line
+
+One job here is not a permissionless keeper: it sends with roles, from the credit operator's wallet, not the card settler's. It shares the keepers' switches, dry run, simulate-then-send and alerts, and replaces running `apps/api/src/scripts/backfillCreditLines.ts` by hand.
+
+| Job | Switch | Interval | Wallet | Sends |
+|---|---|---|---|---|
+| Credit onboarding | `CREDIT_ONBOARDING_ENABLED`: off unless `1` (`CREDIT_ONBOARDING_DRY_RUN=1` simulates only) | hourly, and once at startup | attests with `STATE_ATTESTER_PRIVATE_KEY`, or the credit operator's key when that is unset (the owner's choice on Base Sepolia: `0x8801…edd`); opens lines as the credit operator | `NetworkRegistry.attestStateCode(member, stateCode)` (needs `STATE_ATTESTER_ROLE`), then `RevolvingIssuer.openLine(member, zeros, 0)` (needs `CREDIT_LINES_ROLE`) |
+
+RevolvingIssuer opens no line until the member's state of residence is attested (`NetworkRegistry.stateCodeOf`) and the revolving product is enabled there (`RateSchedule.isEnabled(state, ceilingProduct)`; on Base Sepolia, CA only). For each member on record, the chain decides:
+
+1. **A line already** (`creditPeriods.issuedAt` set): nothing to do.
+2. **No state attested:** the job attests the state on the member's private profile (`addressState`), but only when their identity check passed (Lithic's account holder is `ACCEPTED`, the identity state the app shows) and the state is a US state. A full name ("New York") is read as its code; anything else is skipped and counted, never guessed. The code is written as `ethers.encodeBytes32String("NY")`, exactly as deploy 25 writes the rate table (`apps/api/src/services/chain/stateCode.ts`).
+3. **A state attested that differs from the profile:** never overwritten by the job. Ops get one alert for the member; if they have moved, a person attests the new state. The line opens on the state already attested.
+4. **Then the line.** If the revolving product is not enabled in the member's state, that is recorded and the member is not tried again for a day.
+
+Until the attester holds `STATE_ATTESTER_ROLE` (granted through the CreditTimelock), the job attests nothing, sends no alert, and logs one line a run that says why. Members whose state is already attested still get their lines. Before attesting, it also checks that `NETWORK_REGISTRY_84532` is the registry the RevolvingIssuer's ledger reads; if not, it attests nothing and alerts once a day.
+
+Each run logs one summary line of counts (with a line, opened, waiting and why, failed), never a member's state next to their wallet. At most `CREDIT_ONBOARDING_MAX_PER_RUN` (25) members are acted on in a run; the rest wait for the next. Sends go through the credit operator's queue, one at a time, shared with term limits and offers. Signup, and a passed identity check, run the same steps for their member at once, so a new member does not wait for the hour.
+
+The deployed contracts are built with revert strings stripped, so a missing role reverts with no data. The job reads `hasRole` before attesting, and again when a simulation reverts with nothing, so a role that is not there yet reads as "paused", not as a failure.
 
 ## Enforcement: pledged pool shares and bonds
 
@@ -88,6 +110,15 @@ Read the startup lines (`[cycle-keeper] started (hourly; syncCreditPeriod on, tr
 
 Make sure the card settler wallet holds Base Sepolia ETH for gas.
 
+Credit onboarding, once the credit operator holds `STATE_ATTESTER_ROLE`, dry run first:
+
+```text
+CREDIT_ONBOARDING_ENABLED=1
+CREDIT_ONBOARDING_DRY_RUN=1
+```
+
+Read `[credit-onboarding] started (hourly; dry run; attester 0x8801…)`, then each run's summary line and the day's dry-run alert ("would attest N state(s) and open M line(s)"). When they show what you expect, remove `CREDIT_ONBOARDING_DRY_RUN`. The credit operator wallet pays this job's gas.
+
 ## Stopping one
 
 Set its `_ENABLED` to `0` (or remove it) and redeploy. A run in progress finishes the call it is on, and nothing else is sent. For the cycle and shortfall notice keepers, `0` is the only way to stop them, because they are on when unset. Setting `_DRY_RUN=1` instead keeps the reports coming without sending anything.
@@ -99,4 +130,5 @@ Set its `_ENABLED` to `0` (or remove it) and redeploy. A run in progress finishe
 - `apps/api/src/services/chain/enforcement.ts` and `jobs/enforcementKeeper.ts`: shortfall notices, and the Liquidation Hold tooling for Command.
 - `apps/api/src/services/chain/pledgeEnforcement.ts` and `jobs/pledgeKeeper.ts`: pool shares and bonds.
 - `apps/api/src/services/chain/queueFill.ts` and `jobs/queueFillKeeper.ts`: the Yield Pool's queue.
+- `apps/api/src/services/chain/creditOnboarding.ts` and `jobs/creditOnboarding.ts`: state attestation and opening lines; `stateCode.ts` for the state code's encoding; `creditLineService.ts` for `openLine`.
 - The contracts' refusals and the sentences an operator sees for them: `describeKeeperRefusal` in `apps/api/src/services/chain/chainErrors.ts`.

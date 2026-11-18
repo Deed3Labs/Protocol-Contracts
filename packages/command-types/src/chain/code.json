@@ -613,6 +613,24 @@
     ]
    ]
   },
+  "OffersIssuer": {
+   "source": "contracts/peripherals/OffersIssuer.sol",
+   "sha256": "8ab121c2c3597ac8cc0690c34f88ba0c66cb839e62086b47bb2bcdaaa80164a8",
+   "immutables": [
+    [
+     4696,
+     32
+    ],
+    [
+     5288,
+     32
+    ],
+    [
+     6507,
+     32
+    ]
+   ]
+  },
   "PauseClock": {
    "source": "contracts/peripherals/PauseClock.sol",
    "sha256": "78dcd520fb69ddae083b6f339dd90253e606384d9359acc674e9ffecf981c42e",

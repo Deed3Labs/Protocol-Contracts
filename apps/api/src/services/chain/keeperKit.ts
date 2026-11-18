@@ -88,11 +88,14 @@ export function isRevert(error: unknown): boolean {
   return short.includes('missing revert data') || short.includes('execution reverted');
 }
 
+/** Which decoded reverts are the contract's own "not now", in a sentence; null for a failure. */
+export type RefusalDescriber = (decoded: DecodedChainError | null) => string | null;
+
 /** Sort a simulation's error into refused (the contract's own "not now"), or failed. */
-export function classifySimulationError(error: unknown): Simulation {
+export function classifySimulationError(error: unknown, describe: RefusalDescriber = describeKeeperRefusal): Simulation {
   const decoded = decodeChainError(error);
   if (decoded) {
-    const sentence = describeKeeperRefusal(decoded);
+    const sentence = describe(decoded);
     if (sentence) return { kind: 'refused', error: decoded, sentence };
   }
   if (isRevert(error)) return { kind: 'failed', reason: `reverts: ${chainErrorReason(error)}`.slice(0, 300) };
@@ -109,8 +112,21 @@ export function withKeeperSendLock<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+export interface RunnerOptions {
+  /** Which reverts are "not now" (default: the permissionless keepers' own, describeKeeperRefusal). */
+  describe?: RefusalDescriber;
+  /**
+   * What serialises this key's sends (default: the keeper lock). A key that other writers also send
+   * from passes their queue instead (the credit operator's is `asOperator`), so two writers never
+   * race for one nonce.
+   */
+  lock?: <T>(fn: () => Promise<T>) => Promise<T>;
+}
+
 /** The live runner: simulates as the keeper wallet, sends from it, waits one confirmation. */
-export function liveRunner(chainId: number, key: string): CallRunner {
+export function liveRunner(chainId: number, key: string, options: RunnerOptions = {}): CallRunner {
+  const describe = options.describe ?? describeKeeperRefusal;
+  const lock = options.lock ?? withKeeperSendLock;
   const provider = chainProvider(chainId);
   const signer = new ethers.Wallet(key, provider);
   const from = signer.address;
@@ -121,11 +137,11 @@ export function liveRunner(chainId: number, key: string): CallRunner {
         // `from` set: a call that names a sender is never packed into a multicall (provider.ts).
         return { kind: 'ok', returnData: await provider.call({ to: call.to, data: call.data, from }) };
       } catch (error) {
-        return classifySimulationError(error);
+        return classifySimulationError(error, describe);
       }
     },
     send: (call) =>
-      withKeeperSendLock(async () => {
+      lock(async () => {
         const tx = await signer.sendTransaction({ to: call.to, data: call.data });
         const receipt = await tx.wait(1);
         return { hash: tx.hash, logs: receipt?.logs ?? [], status: receipt?.status ?? null };
