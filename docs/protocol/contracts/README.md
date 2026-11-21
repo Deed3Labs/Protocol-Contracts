@@ -52,6 +52,7 @@ on-chain state: see [Governance](../../governance/README.md).
 | [PoolShareEnforcer](./PoolShareEnforcer.md) | Base Sepolia | — |
 | [RateSchedule](./RateSchedule.md) | Base Sepolia | — |
 | [RevolvingIssuer](./RevolvingIssuer.md) | Base Sepolia | [credit](../credit.md) |
+| [RevolvingIssuerCardFee](./RevolvingIssuerCardFee.md) | Base Sepolia | — |
 | [SavingsIntentFactory](./SavingsIntentFactory.md) | Base Sepolia | [savings](../savings.md) |
 | [SettlementForwarder](./SettlementForwarder.md) | Base Sepolia | — |
 | [Subdivide](./Subdivide.md) | Base Sepolia | [subdivision](../deed-track/subdivision.md) |
