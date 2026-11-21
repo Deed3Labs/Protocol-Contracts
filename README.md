@@ -276,7 +276,7 @@ only the surplus is redeemable.
 Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 
 <details>
-<summary><b>Base Sepolia</b> — the working network (46 contracts)</summary>
+<summary><b>Base Sepolia</b> — the working network (47 contracts)</summary>
 
 
 Each contract's page in the [contract reference](docs/protocol/contracts/README.md) lists its functions and who can call them.
@@ -321,6 +321,7 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [PoolShareEnforcer](docs/protocol/contracts/PoolShareEnforcer.md) | `0xEB6f2c654d078Df56D78946767d5A43307eb4fa1` |
 | [RateSchedule](docs/protocol/contracts/RateSchedule.md) | `0xdb73Ae35D0A22A4CA6bc03F263CF006D16a28b97` |
 | [RevolvingIssuer](docs/protocol/contracts/RevolvingIssuer.md) | `0xBec598bee24cF2973d42eA85e6028621180fE2F0` |
+| [RevolvingIssuerCardFee](docs/protocol/contracts/RevolvingIssuerCardFee.md) | `0x7eDe0306a079cc473DD8298C6bCe727e2497d71f` |
 | [SavingsIntentFactory](docs/protocol/contracts/SavingsIntentFactory.md) | `0xF8074182d9ec61970bBC9E4aaE182B42dF7Bb74B` |
 | [SettlementForwarder](docs/protocol/contracts/SettlementForwarder.md) | `0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c` |
 | [Subdivide](docs/protocol/contracts/Subdivide.md) | `0x3c947D71cb1698dFd4D7551b87E17306865C923F` |
@@ -331,7 +332,7 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [VaultTimelock](docs/protocol/contracts/VaultTimelock.md) | `0xb49c85E8E7eFB4401aaAb2745C9198a239071994` |
 
 23 older records (names ending in `PreAudit`, `Pre2d`, `Pre2f`, `Legacy` or `V1`) are kept in `deployments/base-sepolia/` for history. They are retired and replaced by the contracts above. So are `AssurancePool` (`0xf5E4…5840`) and `AssuranceOracle` (`0x2E52…Fe38`), the Phase 1 reserve, and `BurnerBondDeposit` (`0xA030…dB8c`), a record left under the retired bond deposit contract's name.
-`LendingPoolSettlementLane` is a prepared `LendingPool` implementation that the proxy does not run yet.
+`LendingPoolSettlementLane` and `RevolvingIssuerCardFee` are prepared `LendingPool` and `RevolvingIssuer` implementations that their proxies do not run yet.
 
 </details>
 

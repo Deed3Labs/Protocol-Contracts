@@ -1,0 +1,10 @@
+RevolvingIssuer 0xBec598bee24cF2973d42eA85e6028621180fE2F0 (implementation 0xCaB8500b2b790f8Ba342b01F77D7f5C3606964a2, owner 0x39411C23825844c4B14ad964a661d1Cb8238d330): the new implementation validates as an upgrade of what the manifest records
++ RevolvingIssuerExtension   0x993bf919e3eF2BC8Bc9e2BB9a634AEF02166d251
++ RevolvingIssuerCycles      0x76450c6311FF5539c826C53A5675F1c3f564Ed4b
++ RevolvingIssuerTerms       0xf1E9AD2Ed0c056C9039dfD434E21000f3F314217
++ RevolvingIssuerWorkouts    0xF819B70031324772423D285F8c6f7706cA9fE8d5
++ RevolvingIssuer impl         0x7eDe0306a079cc473DD8298C6bCe727e2497d71f
+  recorded as deployments/base-sepolia/RevolvingIssuerCardFee.json
+
+Nothing is upgraded. The Clear Treasury Safe schedules upgradeToAndCall(impl, setMaxCardCreditFee(fee)) on the CreditTimelock:
+  npx hardhat run scripts/signing_plan.ts --network base-sepolia   (steps CF-upgrade-schedule, CFx-upgrade-execute)

@@ -83,6 +83,7 @@ export const JOBS = {
   RateSchedule: 'Credit products, listed rates and legal caps, by state',
   SettlementForwarder: 'Sends USDC from CL Operating to the card settlement off-ramp',
   LendingPoolSettlementLane: 'The next LendingPool code, with the settlement lane. Not active yet',
+  RevolvingIssuerCardFee: 'The next RevolvingIssuer code, with the card credit fee. Not active yet',
   EarnControls: 'Shared Earn rules: eligibility, caps, pauses and transfers',
   CollateralAgent: 'The bond collateral agent: enforcement, distributions and costs',
   HolderDirections: "Bond holders' signed directions, counted on chain",

@@ -29376,6 +29376,1550 @@
         },
         "namespaces": {}
       }
+    },
+    "baddfe11d56a0721dbd12f9497735fdbaf3efb0d40589317b793582c021c03b2": {
+      "address": "0x7eDe0306a079cc473DD8298C6bCe727e2497d71f",
+      "txHash": "0xef44b996eecf6224c32a917271f69a44741b6b4a253806a5288819d21f138372",
+      "layout": {
+        "solcVersion": "0.8.29",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
+          },
+          {
+            "label": "_paused",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_bool",
+            "contract": "PausableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:29"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "PausableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:116"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "stableCredit",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_contract(IStableCredit)42677",
+            "contract": "CreditIssuer",
+            "src": "contracts/peripherals/CreditIssuer.sol:48"
+          },
+          {
+            "label": "creditPeriods",
+            "offset": 0,
+            "slot": "252",
+            "type": "t_mapping(t_address,t_struct(CreditPeriod)41845_storage)",
+            "contract": "CreditIssuer",
+            "src": "contracts/peripherals/CreditIssuer.sol:50"
+          },
+          {
+            "label": "defaultedAt",
+            "offset": 0,
+            "slot": "253",
+            "type": "t_mapping(t_address,t_uint64)",
+            "contract": "CreditIssuer",
+            "src": "contracts/peripherals/CreditIssuer.sol:55"
+          },
+          {
+            "label": "incomeOf",
+            "offset": 0,
+            "slot": "254",
+            "type": "t_mapping(t_address,t_struct(IncomeRecord)88147_storage)",
+            "contract": "CreditIssuer",
+            "src": "contracts/peripherals/CreditIssuer.sol:76"
+          },
+          {
+            "label": "tiers",
+            "offset": 0,
+            "slot": "255",
+            "type": "t_array(t_struct(TierConfig)121305_storage)dyn_storage",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:56"
+          },
+          {
+            "label": "tierCapacity",
+            "offset": 0,
+            "slot": "256",
+            "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:59"
+          },
+          {
+            "label": "tierNormalized",
+            "offset": 0,
+            "slot": "257",
+            "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:61"
+          },
+          {
+            "label": "tierPrincipal",
+            "offset": 0,
+            "slot": "258",
+            "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:63"
+          },
+          {
+            "label": "carryTreasury",
+            "offset": 0,
+            "slot": "259",
+            "type": "t_address",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:71"
+          },
+          {
+            "label": "tierCarryRecipient",
+            "offset": 0,
+            "slot": "260",
+            "type": "t_mapping(t_uint256,t_address)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:77"
+          },
+          {
+            "label": "exposureSource",
+            "offset": 0,
+            "slot": "261",
+            "type": "t_contract(IExposureSource)42111",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:82"
+          },
+          {
+            "label": "cardSettlementAccount",
+            "offset": 0,
+            "slot": "262",
+            "type": "t_address",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:89"
+          },
+          {
+            "label": "isCardSettler",
+            "offset": 0,
+            "slot": "263",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:91"
+          },
+          {
+            "label": "cardSettlements",
+            "offset": 0,
+            "slot": "264",
+            "type": "t_mapping(t_bytes32,t_struct(CardSettlement)121357_storage)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:100"
+          },
+          {
+            "label": "cardRepayments",
+            "offset": 0,
+            "slot": "265",
+            "type": "t_mapping(t_bytes32,t_uint256)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:104"
+          },
+          {
+            "label": "autoRepayEnabled",
+            "offset": 0,
+            "slot": "266",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:109"
+          },
+          {
+            "label": "autoRepayments",
+            "offset": 0,
+            "slot": "267",
+            "type": "t_mapping(t_bytes32,t_uint256)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:111"
+          },
+          {
+            "label": "capacityIncreaseCap",
+            "offset": 0,
+            "slot": "268",
+            "type": "t_struct(DailyCap)88117_storage",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:114"
+          },
+          {
+            "label": "cardAuthorizations",
+            "offset": 0,
+            "slot": "271",
+            "type": "t_mapping(t_bytes32,t_struct(CardAuthorization)121388_storage)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:122"
+          },
+          {
+            "label": "cardTxCap",
+            "offset": 0,
+            "slot": "272",
+            "type": "t_uint256",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:124"
+          },
+          {
+            "label": "cardSpendCap",
+            "offset": 0,
+            "slot": "273",
+            "type": "t_struct(DailyCap)88117_storage",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:126"
+          },
+          {
+            "label": "rateSchedule",
+            "offset": 0,
+            "slot": "276",
+            "type": "t_contract(RateSchedule)119163",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:134"
+          },
+          {
+            "label": "tierProduct",
+            "offset": 0,
+            "slot": "277",
+            "type": "t_mapping(t_uint256,t_bytes32)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:137"
+          },
+          {
+            "label": "ceilingProduct",
+            "offset": 0,
+            "slot": "278",
+            "type": "t_bytes32",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:139"
+          },
+          {
+            "label": "tierCarry",
+            "offset": 0,
+            "slot": "279",
+            "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:142"
+          },
+          {
+            "label": "tierSnap",
+            "offset": 0,
+            "slot": "280",
+            "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:144"
+          },
+          {
+            "label": "ceilingSnap",
+            "offset": 0,
+            "slot": "281",
+            "type": "t_mapping(t_address,t_struct(Snapshot)116952_storage)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:146"
+          },
+          {
+            "label": "snapState",
+            "offset": 0,
+            "slot": "282",
+            "type": "t_mapping(t_address,t_bytes32)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:148"
+          },
+          {
+            "label": "localAcc",
+            "offset": 0,
+            "slot": "283",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:151"
+          },
+          {
+            "label": "localAccAt",
+            "offset": 0,
+            "slot": "284",
+            "type": "t_mapping(t_uint256,t_uint64)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:152"
+          },
+          {
+            "label": "cycleOf",
+            "offset": 0,
+            "slot": "285",
+            "type": "t_mapping(t_address,t_struct(CycleRecord)121459_storage)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:172"
+          },
+          {
+            "label": "creditTerms",
+            "offset": 0,
+            "slot": "286",
+            "type": "t_struct(CreditTerms)121476_storage",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:182"
+          },
+          {
+            "label": "boostBaseCap",
+            "offset": 0,
+            "slot": "287",
+            "type": "t_uint128",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:184"
+          },
+          {
+            "label": "boostEarnedCap",
+            "offset": 16,
+            "slot": "287",
+            "type": "t_uint128",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:185"
+          },
+          {
+            "label": "depositSource",
+            "offset": 0,
+            "slot": "288",
+            "type": "t_address",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:187"
+          },
+          {
+            "label": "autoClearScopeOf",
+            "offset": 0,
+            "slot": "289",
+            "type": "t_mapping(t_address,t_uint8)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:192"
+          },
+          {
+            "label": "savingsDrawAllowance",
+            "offset": 0,
+            "slot": "290",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:195"
+          },
+          {
+            "label": "memberNonces",
+            "offset": 0,
+            "slot": "291",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:197"
+          },
+          {
+            "label": "snapBasis",
+            "offset": 0,
+            "slot": "292",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:209"
+          },
+          {
+            "label": "lineOpenedAt",
+            "offset": 0,
+            "slot": "293",
+            "type": "t_mapping(t_address,t_uint64)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:217"
+          },
+          {
+            "label": "clrusdToken",
+            "offset": 0,
+            "slot": "294",
+            "type": "t_address",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:220"
+          },
+          {
+            "label": "cycleState",
+            "offset": 0,
+            "slot": "295",
+            "type": "t_mapping(t_address,t_struct(CycleState)121599_storage)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:274"
+          },
+          {
+            "label": "dueTerms",
+            "offset": 0,
+            "slot": "296",
+            "type": "t_struct(DueTerms)121624_storage",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:288"
+          },
+          {
+            "label": "defaultExcludedPayer",
+            "offset": 0,
+            "slot": "298",
+            "type": "t_mapping(t_bytes32,t_bool)",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:293"
+          },
+          {
+            "label": "payerChoice",
+            "offset": 0,
+            "slot": "299",
+            "type": "t_mapping(t_address,t_mapping(t_bytes32,t_uint8))",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:295"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "300",
+            "type": "t_array(t_uint256)3_storage",
+            "contract": "RevolvingIssuerBase",
+            "src": "contracts/peripherals/RevolvingIssuerBase.sol:406"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_uint256,t_struct(PositionStat)36418_storage))": {
+            "label": "mapping(address => mapping(uint256 => struct RevolvingIssuerBase.PositionStat))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(LineClosing)36449_storage)": {
+            "label": "mapping(address => struct RevolvingIssuerBase.LineClosing)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(Workout)36404_storage)": {
+            "label": "mapping(address => struct RevolvingIssuerBase.Workout)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(CardCreditFee)36479_storage)": {
+            "label": "mapping(bytes32 => struct RevolvingIssuerBase.CardCreditFee)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_struct(PositionStat)36418_storage)": {
+            "label": "mapping(uint256 => struct RevolvingIssuerBase.PositionStat)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(CardCreditFee)36479_storage": {
+            "label": "struct RevolvingIssuerBase.CardCreditFee",
+            "members": [
+              {
+                "label": "fee",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "returned",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(CardFeeStorage)36470_storage": {
+            "label": "struct RevolvingIssuerBase.CardFeeStorage",
+            "members": [
+              {
+                "label": "maxCardCreditFee",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "feeOf",
+                "type": "t_mapping(t_bytes32,t_struct(CardCreditFee)36479_storage)",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(LineClosing)36449_storage": {
+            "label": "struct RevolvingIssuerBase.LineClosing",
+            "members": [
+              {
+                "label": "proposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "closedAt",
+                "type": "t_uint64",
+                "offset": 20,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(Phase2gStorage)36440_storage": {
+            "label": "struct RevolvingIssuerBase.Phase2gStorage",
+            "members": [
+              {
+                "label": "workoutOf",
+                "type": "t_mapping(t_address,t_struct(Workout)36404_storage)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "positionStat",
+                "type": "t_mapping(t_address,t_mapping(t_uint256,t_struct(PositionStat)36418_storage))",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "pauseClock",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "lineClosing",
+                "type": "t_mapping(t_address,t_struct(LineClosing)36449_storage)",
+                "offset": 0,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(PositionStat)36418_storage": {
+            "label": "struct RevolvingIssuerBase.PositionStat",
+            "members": [
+              {
+                "label": "principalSeconds",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "cycleCarry",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "endPrincipal",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "1"
+              },
+              {
+                "label": "endCarry",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "lastCycleCarry",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "2"
+              },
+              {
+                "label": "lastPrincipalSeconds",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(Workout)36404_storage": {
+            "label": "struct RevolvingIssuerBase.Workout",
+            "members": [
+              {
+                "label": "state",
+                "type": "t_uint8",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "cyclesLeft",
+                "type": "t_uint8",
+                "offset": 1,
+                "slot": "0"
+              },
+              {
+                "label": "qualifying",
+                "type": "t_uint8",
+                "offset": 2,
+                "slot": "0"
+              },
+              {
+                "label": "planWriteOff",
+                "type": "t_bool",
+                "offset": 3,
+                "slot": "0"
+              },
+              {
+                "label": "secondApproved",
+                "type": "t_bool",
+                "offset": 4,
+                "slot": "0"
+              },
+              {
+                "label": "startedAt",
+                "type": "t_uint64",
+                "offset": 5,
+                "slot": "0"
+              },
+              {
+                "label": "reagedAt",
+                "type": "t_uint64",
+                "offset": 13,
+                "slot": "0"
+              },
+              {
+                "label": "reagedBefore",
+                "type": "t_uint64",
+                "offset": 21,
+                "slot": "0"
+              },
+              {
+                "label": "reducedAmount",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "ref",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "proposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "proposal",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "secondProposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "secondRef",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "6"
+              },
+              {
+                "label": "planTotal",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "7"
+              },
+              {
+                "label": "planInstallment",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "7"
+              },
+              {
+                "label": "planCycles",
+                "type": "t_uint8",
+                "offset": 0,
+                "slot": "8"
+              },
+              {
+                "label": "planDueCount",
+                "type": "t_uint8",
+                "offset": 1,
+                "slot": "8"
+              },
+              {
+                "label": "planPastDueSince",
+                "type": "t_uint64",
+                "offset": 2,
+                "slot": "8"
+              },
+              {
+                "label": "planNoticeAt",
+                "type": "t_uint64",
+                "offset": 10,
+                "slot": "8"
+              },
+              {
+                "label": "planNoticeDue",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "9"
+              },
+              {
+                "label": "planNoticeProposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "10"
+              },
+              {
+                "label": "planNoticeClock",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "11"
+              },
+              {
+                "label": "planDefaultedAt",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "12"
+              }
+            ],
+            "numberOfBytes": "416"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          },
+          "t_array(t_struct(TierConfig)121305_storage)dyn_storage": {
+            "label": "struct RevolvingIssuerBase.TierConfig[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)3_storage": {
+            "label": "uint256[3]",
+            "numberOfBytes": "96"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_array(t_uint256)dyn_storage": {
+            "label": "uint256[]",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IExposureSource)42111": {
+            "label": "contract IExposureSource",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IStableCredit)42677": {
+            "label": "contract IStableCredit",
+            "numberOfBytes": "20"
+          },
+          "t_contract(RateSchedule)119163": {
+            "label": "contract RateSchedule",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bytes32)": {
+            "label": "mapping(address => bytes32)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_bytes32,t_uint8))": {
+            "label": "mapping(address => mapping(bytes32 => uint8))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_uint256,t_uint256))": {
+            "label": "mapping(address => mapping(uint256 => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(CreditPeriod)41845_storage)": {
+            "label": "mapping(address => struct ICreditIssuer.CreditPeriod)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(CycleRecord)121459_storage)": {
+            "label": "mapping(address => struct RevolvingIssuerBase.CycleRecord)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(CycleState)121599_storage)": {
+            "label": "mapping(address => struct RevolvingIssuerBase.CycleState)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(IncomeRecord)88147_storage)": {
+            "label": "mapping(address => struct CreditIssuer.IncomeRecord)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(Snapshot)116952_storage)": {
+            "label": "mapping(address => struct RateSchedule.Snapshot)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint64)": {
+            "label": "mapping(address => uint64)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint8)": {
+            "label": "mapping(address => uint8)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(CardAuthorization)121388_storage)": {
+            "label": "mapping(bytes32 => struct RevolvingIssuerBase.CardAuthorization)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(CardSettlement)121357_storage)": {
+            "label": "mapping(bytes32 => struct RevolvingIssuerBase.CardSettlement)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint8)": {
+            "label": "mapping(bytes32 => uint8)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_address)": {
+            "label": "mapping(uint256 => address)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_bytes32)": {
+            "label": "mapping(uint256 => bytes32)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_uint256)": {
+            "label": "mapping(uint256 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_uint64)": {
+            "label": "mapping(uint256 => uint64)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(CardAuthorization)121388_storage": {
+            "label": "struct RevolvingIssuerBase.CardAuthorization",
+            "members": [
+              {
+                "label": "member",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "amount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(CardSettlement)121357_storage": {
+            "label": "struct RevolvingIssuerBase.CardSettlement",
+            "members": [
+              {
+                "label": "member",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "amount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(CreditPeriod)41845_storage": {
+            "label": "struct ICreditIssuer.CreditPeriod",
+            "members": [
+              {
+                "label": "issuedAt",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "expiration",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "graceLength",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "paused",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(CreditTerms)121476_storage": {
+            "label": "struct RevolvingIssuerBase.CreditTerms",
+            "members": [
+              {
+                "label": "unsecuredLineCap",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "cureWindow",
+                "type": "t_uint64",
+                "offset": 16,
+                "slot": "0"
+              },
+              {
+                "label": "boostCleanCycles",
+                "type": "t_uint8",
+                "offset": 24,
+                "slot": "0"
+              },
+              {
+                "label": "boostDepositCycles",
+                "type": "t_uint8",
+                "offset": 25,
+                "slot": "0"
+              },
+              {
+                "label": "autoClearOffGlobal",
+                "type": "t_bool",
+                "offset": 26,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(CycleRecord)121459_storage": {
+            "label": "struct RevolvingIssuerBase.CycleRecord",
+            "members": [
+              {
+                "label": "missedInRow",
+                "type": "t_uint8",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "cleanStreak",
+                "type": "t_uint8",
+                "offset": 1,
+                "slot": "0"
+              },
+              {
+                "label": "depositBits",
+                "type": "t_uint8",
+                "offset": 2,
+                "slot": "0"
+              },
+              {
+                "label": "cureNoticeAt",
+                "type": "t_uint64",
+                "offset": 3,
+                "slot": "0"
+              },
+              {
+                "label": "unsecuredCeiling",
+                "type": "t_uint128",
+                "offset": 11,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(CycleState)121599_storage": {
+            "label": "struct RevolvingIssuerBase.CycleState",
+            "members": [
+              {
+                "label": "cycleEnd",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "closedAt",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "0"
+              },
+              {
+                "label": "dayChangedAt",
+                "type": "t_uint64",
+                "offset": 16,
+                "slot": "0"
+              },
+              {
+                "label": "cycleEndDay",
+                "type": "t_uint8",
+                "offset": 24,
+                "slot": "0"
+              },
+              {
+                "label": "incomePause",
+                "type": "t_uint8",
+                "offset": 25,
+                "slot": "0"
+              },
+              {
+                "label": "hybridMode",
+                "type": "t_bool",
+                "offset": 26,
+                "slot": "0"
+              },
+              {
+                "label": "rebalanceAmount",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "securedMinimum",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "1"
+              },
+              {
+                "label": "paidSinceClose",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "assetCarry",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "2"
+              },
+              {
+                "label": "securedPastDue",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "pastDueSM",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "3"
+              },
+              {
+                "label": "cureAmount",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "cureDueAt",
+                "type": "t_uint64",
+                "offset": 16,
+                "slot": "4"
+              },
+              {
+                "label": "noticeProposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "pauseProposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "6"
+              },
+              {
+                "label": "pauseCycles",
+                "type": "t_uint8",
+                "offset": 20,
+                "slot": "6"
+              },
+              {
+                "label": "autoClearAuthHash",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "7"
+              },
+              {
+                "label": "cardDay",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "8"
+              },
+              {
+                "label": "cardUsed",
+                "type": "t_uint128",
+                "offset": 8,
+                "slot": "8"
+              },
+              {
+                "label": "graceEligible",
+                "type": "t_bool",
+                "offset": 24,
+                "slot": "8"
+              },
+              {
+                "label": "graceProposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "9"
+              },
+              {
+                "label": "graceUses",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "10"
+              },
+              {
+                "label": "hardshipRef",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "11"
+              },
+              {
+                "label": "pauseRef",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "12"
+              },
+              {
+                "label": "hardshipRun",
+                "type": "t_uint8",
+                "offset": 0,
+                "slot": "13"
+              },
+              {
+                "label": "hardshipLastEnd",
+                "type": "t_uint64",
+                "offset": 1,
+                "slot": "13"
+              },
+              {
+                "label": "closedWorkout",
+                "type": "t_uint8",
+                "offset": 9,
+                "slot": "13"
+              },
+              {
+                "label": "psAt",
+                "type": "t_uint64",
+                "offset": 10,
+                "slot": "13"
+              },
+              {
+                "label": "lastCycleEnd",
+                "type": "t_uint64",
+                "offset": 18,
+                "slot": "13"
+              },
+              {
+                "label": "lastRecordedAt",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "14"
+              },
+              {
+                "label": "lastStatementRequired",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "14"
+              },
+              {
+                "label": "closeClock",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "15"
+              },
+              {
+                "label": "cureClock",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "16"
+              },
+              {
+                "label": "heldClosedAt",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "17"
+              },
+              {
+                "label": "heldDueAt",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "17"
+              },
+              {
+                "label": "heldWorkout",
+                "type": "t_uint8",
+                "offset": 16,
+                "slot": "17"
+              },
+              {
+                "label": "heldRA",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "18"
+              },
+              {
+                "label": "heldSM",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "18"
+              },
+              {
+                "label": "heldPaid",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "19"
+              },
+              {
+                "label": "heldClock",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "20"
+              }
+            ],
+            "numberOfBytes": "672"
+          },
+          "t_struct(DailyCap)88117_storage": {
+            "label": "struct CreditIssuer.DailyCap",
+            "members": [
+              {
+                "label": "cap",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "day",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "used",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(DueTerms)121624_storage": {
+            "label": "struct RevolvingIssuerBase.DueTerms",
+            "members": [
+              {
+                "label": "securedMinimumBps",
+                "type": "t_uint16",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "raisedBps",
+                "type": "t_uint16",
+                "offset": 2,
+                "slot": "0"
+              },
+              {
+                "label": "raisedFrom",
+                "type": "t_uint64",
+                "offset": 4,
+                "slot": "0"
+              },
+              {
+                "label": "securedMinimumFloor",
+                "type": "t_uint64",
+                "offset": 12,
+                "slot": "0"
+              },
+              {
+                "label": "cardMemberDailyCap",
+                "type": "t_uint64",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "incomePauseMaxCycles",
+                "type": "t_uint8",
+                "offset": 28,
+                "slot": "0"
+              },
+              {
+                "label": "termIssuer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "graceCyclesPerWindow",
+                "type": "t_uint8",
+                "offset": 20,
+                "slot": "1"
+              },
+              {
+                "label": "graceWindow",
+                "type": "t_uint64",
+                "offset": 21,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(IncomeRecord)88147_storage": {
+            "label": "struct CreditIssuer.IncomeRecord",
+            "members": [
+              {
+                "label": "creditsReceived",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "depositsReceived",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "debtSeconds",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "lastAccrued",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "windowStart",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(Index)50328_storage": {
+            "label": "struct CarryIndex.Index",
+            "members": [
+              {
+                "label": "base",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "rateStart",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "cycleLength",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "1"
+              },
+              {
+                "label": "ratePerCycle",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(Snapshot)116952_storage": {
+            "label": "struct RateSchedule.Snapshot",
+            "members": [
+              {
+                "label": "list",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "flatAlt",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "annual",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "bands",
+                "type": "t_array(t_uint256)dyn_storage",
+                "offset": 0,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(TierConfig)121305_storage": {
+            "label": "struct RevolvingIssuerBase.TierConfig",
+            "members": [
+              {
+                "label": "kind",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "index",
+                "type": "t_struct(Index)50328_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "active",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "4"
+              }
+            ],
+            "numberOfBytes": "160"
+          },
+          "t_uint16": {
+            "label": "uint16",
+            "numberOfBytes": "2"
+          }
+        },
+        "namespaces": {
+          "erc7201:clear.storage.RevolvingIssuer.Phase2g": [
+            {
+              "contract": "RevolvingIssuerBase",
+              "label": "workoutOf",
+              "type": "t_mapping(t_address,t_struct(Workout)36404_storage)",
+              "src": "contracts/peripherals/RevolvingIssuerBase.sol:345",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "RevolvingIssuerBase",
+              "label": "positionStat",
+              "type": "t_mapping(t_address,t_mapping(t_uint256,t_struct(PositionStat)36418_storage))",
+              "src": "contracts/peripherals/RevolvingIssuerBase.sol:346",
+              "offset": 0,
+              "slot": "1"
+            },
+            {
+              "contract": "RevolvingIssuerBase",
+              "label": "pauseClock",
+              "type": "t_address",
+              "src": "contracts/peripherals/RevolvingIssuerBase.sol:347",
+              "offset": 0,
+              "slot": "2"
+            },
+            {
+              "contract": "RevolvingIssuerBase",
+              "label": "lineClosing",
+              "type": "t_mapping(t_address,t_struct(LineClosing)36449_storage)",
+              "src": "contracts/peripherals/RevolvingIssuerBase.sol:349",
+              "offset": 0,
+              "slot": "3"
+            }
+          ],
+          "erc7201:clear.storage.RevolvingIssuer.CardFee": [
+            {
+              "contract": "RevolvingIssuerBase",
+              "label": "maxCardCreditFee",
+              "type": "t_uint256",
+              "src": "contracts/peripherals/RevolvingIssuerBase.sol:377",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "RevolvingIssuerBase",
+              "label": "feeOf",
+              "type": "t_mapping(t_bytes32,t_struct(CardCreditFee)36479_storage)",
+              "src": "contracts/peripherals/RevolvingIssuerBase.sol:379",
+              "offset": 0,
+              "slot": "1"
+            }
+          ]
+        }
+      }
     }
   }
 }
