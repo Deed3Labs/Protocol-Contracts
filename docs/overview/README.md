@@ -4,7 +4,8 @@ What Clear is, for anyone — before they are a member, a merchant, a contributo
 
 **CLEAR is a money app and a financial co-op, built to help renters become owners.** Members save in
 CLRUSD, which is backed one for one by USDC and can be redeemed at any time. Saving and paying rent on
-time earn equity credits, which can only ever go toward a Clear Deed: a home title, free of debt.
+time earn equity credits, which can only ever go toward a home, ending in a Clear Deed: the title to the
+house, free of debt.
 Underneath the app is the Clear Protocol, the contracts on Base that hold the savings and keep the
 records.
 

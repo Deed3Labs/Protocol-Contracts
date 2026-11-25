@@ -49,8 +49,8 @@ network, only. On Base: Not available yet.
 ## Equity credits
 
 Equity credits are a count Clear's server keeps for you, not money and not a token. New credits wait
-30 days before they count as yours ("vesting"). They can only go toward your Clear Deed; there is no
-way to withdraw them or turn them into cash. The rules for earning them are in
+30 days before they count as yours ("vesting"). They can only go toward your home and your Clear Deed;
+there is no way to withdraw them or turn them into cash. The rules for earning them are in
 [Parameters and who sets them](../governance/parameters.md).
 
 ## Buying at a partner shop

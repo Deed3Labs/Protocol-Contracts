@@ -2,23 +2,38 @@
 
 ## Your Clear Deed
 
-**The Clear Deed is the finish line: a home title, free of debt.** It isn't a mortgage, and it isn't
-bought with a loan. You earn your way to it with equity credits — by saving, and by paying your rent
-on time — and consistency is what gets you there.
+**The Clear Deed is the finish line: the title to your home, the house itself, free of debt.** It
+isn't a mortgage, and it isn't bought with a loan. The land under it stays held in common by
+members, and your home sits on it under a ground lease.
 
-**The Clear Deed is reached at 15,000 equity credits.** Your Savings page shows your
-**home path**: your credits out of 15,000, a step for each protection you unlock on the way, and,
-with auto-save running, the month you're on track for. Every protection is unlocked by 4,000 credits;
-the path ends at 15,000 with your Clear Deed.
+The path has two stages.
 
-When you've reached the end of the path, the Savings page reads **Ready · Your Clear Deed**. The next
-step, signing your Equity-Lease Participation Agreement (ELPA), is not available yet.
+**1. Equity credits unlock the ELPA.** You earn equity credits by saving and by paying your rent on
+time. At **15,000 credits** you can apply for an Equity-Lease Participation Agreement (ELPA): the
+agreement under which you live in a Clear home and buy down its structure. Reaching 15,000 makes you
+eligible to apply. It doesn't guarantee a home in a particular place or by a particular date.
+Signing an ELPA doesn't spend your credits.
 
-What counts toward it:
+**2. Your equity balance redeems the Clear Deed.** Under the ELPA, what you pay toward the home
+builds an equity balance in it. You can also put savings toward it when you sign. When the balance
+reaches the home's price, you redeem: Clear transfers the house to you as your Clear Deed. The ground
+lease continues.
 
-- **Only equity credits.** Your savings balance is your money and stays yours; the credits are what
+**The price of a Clear home is its cost plus 15%.** It is Clear's documented cost of building the
+structure, plus 15%, fixed when you sign your ELPA. It never goes up after that.
+
+Your Savings page shows your **home path**: your credits out of 15,000, a step for each protection
+you unlock on the way, and, with auto-save running, the month you're on track for. Every protection
+is unlocked by 4,000 credits, and the path reaches the ELPA at 15,000. At the end of the path, the
+Savings page reads **Ready · Your Clear Deed**.
+
+**Signing an ELPA.** Not available yet.
+
+What counts toward the path:
+
+- **Only equity credits.** Your savings balance is your money and stays yours. The credits are what
   move you along the path.
-- **Credits can't be withdrawn or cashed in.** They only go toward your Clear Deed.
+- **Credits can't be withdrawn or cashed in.** They only go toward your home.
 
 How credits are earned and how they vest is in
 [Savings and equity credits](./savings-and-equity-credits.md#equity-credits).
