@@ -195,6 +195,12 @@ async function ensureTables(): Promise<void> {
   // Tag each credit with the environment it was earned in ('mainnet' = live/real, 'testnet' = demo).
   // The demo's deposit-match credits (Base Sepolia) stay separate from mainnet credits that count.
   await pool.query(`ALTER TABLE pay_credits ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'mainnet';`);
+  // The minting job's bookkeeping: why the Points Issuer refused a row (it is then void), and how many
+  // times a send failed for some other reason (retried next run).
+  await pool.query(`
+    ALTER TABLE pay_credits ADD COLUMN IF NOT EXISTS mint_error TEXT;
+    ALTER TABLE pay_credits ADD COLUMN IF NOT EXISTS mint_attempts INTEGER NOT NULL DEFAULT 0;
+  `);
   // Savings moved in and out, in whole dollars, so a dollar earns a deposit credit only once (ESA Terms
   // 6.2: Contributed Capital nets out redemptions). One row per deposit or redemption transaction.
   // `seed` stands in for what a wallet held before this table existed: the dollars its credits were
@@ -261,6 +267,15 @@ export interface Biller {
   portalUrl: string | null;
   address: string | null;
   reminders: boolean;
+}
+
+/** A vested credit row the minting job may send to the Points Issuer. */
+export interface MintableCredit {
+  id: string;
+  wallet: string;
+  amount: number; // whole credits
+  reason: string; // deposit_match | rent_on_time | bill_on_time
+  createdAt: Date;
 }
 
 export interface PaySummary {
@@ -777,6 +792,55 @@ export const payLedgerStore = {
       }
     }
     return voided;
+  },
+
+  /**
+   * Rows ready to mint on chain: vested, not yet minted, on this network, oldest first. Vests matured
+   * rows first. `maxAttempts` leaves out rows whose sends keep failing, so one bad row cannot hold up
+   * the rest.
+   */
+  async mintableCredits(network: CreditNetwork, limit: number, maxAttempts = 5): Promise<MintableCredit[]> {
+    const pool = getPayPool();
+    if (!pool) return [];
+    await ensureTables();
+    await pool.query(`UPDATE pay_credits SET status = 'vested' WHERE status = 'pending' AND vest_until <= now() AND network = $1`, [network]);
+    const r = await pool.query(
+      `SELECT id, wallet, amount, reason, created_at FROM pay_credits
+        WHERE status = 'vested' AND mint_tx IS NULL AND network = $1 AND mint_attempts < $2
+        ORDER BY created_at ASC LIMIT $3`,
+      [network, maxAttempts, limit],
+    );
+    return r.rows.map((row) => ({
+      id: String(row.id),
+      wallet: String(row.wallet),
+      amount: num(row.amount),
+      reason: String(row.reason),
+      createdAt: new Date(row.created_at),
+    }));
+  },
+
+  /** The Points Issuer minted this row (or had already, under its ref). */
+  async markCreditMinted(id: string, tx: string): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) return;
+    await pool.query(
+      `UPDATE pay_credits SET status = 'minted', mint_tx = $2, minted_at = now(), mint_error = NULL WHERE id = $1 AND status = 'vested'`,
+      [id, tx],
+    );
+  },
+
+  /** The Points Issuer refused this row by one of its rules (outside the Match Period, a cap): void. */
+  async markCreditRefused(id: string, reason: string): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) return;
+    await pool.query(`UPDATE pay_credits SET status = 'void', mint_error = $2 WHERE id = $1 AND status = 'vested'`, [id, reason.slice(0, 300)]);
+  },
+
+  /** A send failed for some other reason: counted, and retried next run. */
+  async markCreditMintFailed(id: string, reason: string): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) return;
+    await pool.query(`UPDATE pay_credits SET mint_attempts = mint_attempts + 1, mint_error = $2 WHERE id = $1`, [id, reason.slice(0, 300)]);
   },
 
   async getSummary(wallet: string, network: CreditNetwork = 'mainnet'): Promise<PaySummary> {

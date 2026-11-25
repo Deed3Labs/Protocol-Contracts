@@ -36,6 +36,7 @@ The cycle and shortfall notice keepers have run since Phase 2b whenever the API 
 | `BOND_PLEDGE_KEEPER_MAX_PER_RUN` | 25 bonds |
 | `QUEUE_FILL_KEEPER_MAX_COUNT` | 25 queue requests looked at in one `fillQueue` call |
 | `CREDIT_ONBOARDING_MAX_PER_RUN` | 25 members (an attestation and its line count as one); see [Credit onboarding](#credit-onboarding-state-attestation-then-the-line) |
+| `CREDITS_MINT_MAX_PER_RUN` | 50 ledger rows; see [Credits minting](#credits-minting-vested-credits-on-chain) |
 
 ## Credit: cycles and defaults
 
@@ -91,6 +92,26 @@ Before it starts, the pool shares keeper checks that `POOL_SHARE_ENFORCER_84532`
 
 The shortfall notice keeper still sends one alert a day once a notice's wait has passed. The alert says whether the pledge keepers are on. If they are not, the settlement has to be done by hand.
 
+## Credits minting: vested credits, on chain
+
+The second job that sends with roles. Clear Credits are earned off chain first: every rent, bill and saving credit is a row in `pay_credits`, `pending` for its 30 days, then `vested`. This job mints each vested row on chain.
+
+| Job | Switch | Interval | Wallet | Sends |
+|---|---|---|---|---|
+| Credits minting | `CREDITS_MINT_ENABLED`: off unless `1` (`CREDITS_MINT_DRY_RUN=1` simulates only) | hourly, and once at startup | the credit operator (`CREDIT_OPERATOR_PRIVATE_KEY`; on Base Sepolia `0x8801…edd`, which holds `CREDITS_MINTER_ROLE` and `CREDITS_MEMBERS_ROLE`) | `PointsIssuer.mint(member, amount, source, ref)`, and before a member's first saving credit `PointsIssuer.openMatchPeriod(member, joinedAt)` |
+
+For each row, oldest first:
+
+- `source` is `SAVING`, `RENT` or `BILL` by why it was earned; `amount` is the whole credits at 6 decimals; `ref` is `keccak256(row id)`, so a row mints once however often the job runs.
+- A `ref` the issuer has already minted (`PointsIssuerRefUsed`) marks the row minted.
+- Outside the Match Period, past the 54,000 lifetime cap, or a source the issuer does not take: the row is set `void`, with the error kept in `mint_error`. The issuer is the authority on these limits.
+- The month's saving cap (`PointsIssuerMonthlyCap`): the issuer counts it by the month a credit is minted, so the row stays `vested` and is tried again next month.
+- Any other failure is counted in `mint_attempts` and retried next run; after five, the row is left for a person to look at.
+
+The network comes from the chain: on Base Sepolia the job mints `testnet` rows only. `POINTS_ISSUER_84532` defaults to `deployments/base-sepolia/PointsIssuer.json`. Sends go through the credit operator's queue, shared with credit onboarding, term limits and offers.
+
+`GET /api/pay/:wallet/credits/onchain` reads what the chain records for a wallet: balance, credits earned in all, and earned by source.
+
 ## Turning them on
 
 On Railway (API service), dry run first:
@@ -119,6 +140,15 @@ CREDIT_ONBOARDING_DRY_RUN=1
 
 Read `[credit-onboarding] started (hourly; dry run; attester 0x8801…)`, then each run's summary line and the day's dry-run alert ("would attest N state(s) and open M line(s)"). When they show what you expect, remove `CREDIT_ONBOARDING_DRY_RUN`. The credit operator wallet pays this job's gas.
 
+Credits minting, dry run first:
+
+```text
+CREDITS_MINT_ENABLED=1
+CREDITS_MINT_DRY_RUN=1
+```
+
+Read `[credits-mint] started (hourly; dry run; minter 0x8801…; testnet)`, then each run's line (`[credits-mint] N checked: would mint …`). When it shows what you expect, remove `CREDITS_MINT_DRY_RUN`.
+
 ## Stopping one
 
 Set its `_ENABLED` to `0` (or remove it) and redeploy. A run in progress finishes the call it is on, and nothing else is sent. For the cycle and shortfall notice keepers, `0` is the only way to stop them, because they are on when unset. Setting `_DRY_RUN=1` instead keeps the reports coming without sending anything.
@@ -131,4 +161,5 @@ Set its `_ENABLED` to `0` (or remove it) and redeploy. A run in progress finishe
 - `apps/api/src/services/chain/pledgeEnforcement.ts` and `jobs/pledgeKeeper.ts`: pool shares and bonds.
 - `apps/api/src/services/chain/queueFill.ts` and `jobs/queueFillKeeper.ts`: the Yield Pool's queue.
 - `apps/api/src/services/chain/creditOnboarding.ts` and `jobs/creditOnboarding.ts`: state attestation and opening lines; `stateCode.ts` for the state code's encoding; `creditLineService.ts` for `openLine`.
+- `apps/api/src/services/chain/creditsMint.ts` and `jobs/creditsMint.ts`: minting vested credits; the rows come from `payLedgerStore.mintableCredits`.
 - The contracts' refusals and the sentences an operator sees for them: `describeKeeperRefusal` in `apps/api/src/services/chain/chainErrors.ts`.

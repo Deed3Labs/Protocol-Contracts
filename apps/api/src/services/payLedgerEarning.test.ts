@@ -148,3 +148,32 @@ describe('saving credits', () => {
     expect((await deposit(who, 1_000)).creditAwarded).toBe(0);
   });
 });
+
+describe('the minting job\'s rows', () => {
+  test('vested rows are mintable once, oldest first; minted and refused rows drop out', async () => {
+    const who = wallet();
+    await pay(who, 1_000, 'clear_rails', tx());
+    await pay(who, 2_000, 'clear_rails', tx());
+    await pg.query(`UPDATE pay_credits SET vest_until = now() - interval '1 day' WHERE wallet = $1`, [who]);
+    const rows = (await payLedgerStore.mintableCredits('testnet', 500)).filter((r) => r.wallet === who);
+    expect(rows.map((r) => r.amount)).toEqual([20, 40]);
+    await payLedgerStore.markCreditMinted(rows[0].id, '0xabc');
+    await payLedgerStore.markCreditRefused(rows[1].id, 'PointsIssuerLifetimeCap');
+    expect((await payLedgerStore.mintableCredits('testnet', 500)).filter((r) => r.wallet === who)).toHaveLength(0);
+    const st = await pg.query<{ status: string; mint_tx: string | null; mint_error: string | null }>(
+      `SELECT status, mint_tx, mint_error FROM pay_credits WHERE wallet = $1 ORDER BY created_at`, [who]);
+    expect(st.rows).toEqual([
+      { status: 'minted', mint_tx: '0xabc', mint_error: null },
+      { status: 'void', mint_tx: null, mint_error: 'PointsIssuerLifetimeCap' },
+    ]);
+  });
+
+  test('a row whose sends keep failing stops holding up the rest after five tries', async () => {
+    const who = wallet();
+    await pay(who, 1_000, 'clear_rails', tx());
+    await pg.query(`UPDATE pay_credits SET vest_until = now() - interval '1 day' WHERE wallet = $1`, [who]);
+    const [r] = (await payLedgerStore.mintableCredits('testnet', 500)).filter((x) => x.wallet === who);
+    for (let i = 0; i < 5; i++) await payLedgerStore.markCreditMintFailed(r.id, 'rpc down');
+    expect((await payLedgerStore.mintableCredits('testnet', 500)).filter((x) => x.wallet === who)).toHaveLength(0);
+  });
+});
