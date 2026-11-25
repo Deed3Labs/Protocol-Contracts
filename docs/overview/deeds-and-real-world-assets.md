@@ -6,9 +6,12 @@ subdividing and fractionalizing mean — in plain terms. The technical account i
 
 ## The Clear Deed
 
-**The Clear Deed is the finish line for a member: a home title, free of debt, earned by being
-consistent.** It is not a mortgage and it is not bought with a loan. Members work toward it with
-equity credits, earned by saving and by paying rent on time. How that works in the app is in
+**The Clear Deed is the finish line for a member: the title to their home, the house itself, free of
+debt, earned by being consistent.** It is not a mortgage and it is not bought with a loan. Equity
+credits, earned by saving and paying rent on time, unlock an Equity-Lease Participation Agreement
+(ELPA) at 15,000. Under the ELPA, the member's equity balance in a Clear home grows until it reaches
+the home's price, its cost plus 15%, and then the house is redeemed as a Clear Deed. The land stays
+held in common by members. How that works in the app is in
 [Your Clear Deed](../members/clear-deed-and-membership.md#your-clear-deed).
 
 ## The T-Deed

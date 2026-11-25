@@ -2,7 +2,7 @@
 
 Two different things sit on the Savings page. **Your savings are your money**, and you can take them
 out at any time. **Your equity credits are not money.** They can't be withdrawn or cashed in; they
-only count toward your [Clear Deed](./clear-deed-and-membership.md#your-clear-deed).
+only count toward your home, the path to your [Clear Deed](./clear-deed-and-membership.md#your-clear-deed).
 
 ## Savings
 
@@ -58,13 +58,14 @@ and offers **Top off** to put money back into savings.
 
 ### What credits do
 
-- They count toward your Clear Deed, which is reached at 15,000 credits.
+- At 15,000 credits you can apply for an ELPA, the agreement that leads to your Clear Deed. See
+  [Your Clear Deed](./clear-deed-and-membership.md#your-clear-deed).
 - They unlock your protections. See [Assurance](./assurance-and-disputes.md#your-protections).
 - **They can't be withdrawn, sold or redeemed for cash.**
 
 ### On track for
 
-With auto-save running, the Savings page shows the month you're on track to reach the Clear Deed.
+With auto-save running, the Savings page shows the month you're on track to reach 15,000 credits.
 It is worked out from auto-save alone; rent and bill credits aren't projected. Without auto-save,
 there's no date.
 

@@ -2,23 +2,92 @@
 
 ## Your Clear Deed
 
-**The Clear Deed is the finish line: a home title, free of debt.** It isn't a mortgage, and it isn't
-bought with a loan. You earn your way to it with equity credits — by saving, and by paying your rent
-on time — and consistency is what gets you there.
+**The Clear Deed is the finish line: the title to your home, the house itself, free of debt.** It
+isn't a mortgage, and it isn't bought with a loan. The land under it stays held in common by
+members, and your home sits on it under a ground lease.
 
-**The Clear Deed is reached at 15,000 equity credits.** Your Savings page shows your
-**home path**: your credits out of 15,000, a step for each protection you unlock on the way, and,
-with auto-save running, the month you're on track for. Every protection is unlocked by 4,000 credits;
-the path ends at 15,000 with your Clear Deed.
+**Nothing here is an offer of a home.** It describes how the path works. Signing an ELPA and
+everything after it: Not available yet.
 
-When you've reached the end of the path, the Savings page reads **Ready · Your Clear Deed**. The next
-step, signing your Equity-Lease Participation Agreement (ELPA), is not available yet.
+### 1. Equity credits unlock the ELPA
 
-What counts toward it:
+You earn equity credits by saving and by paying your rent on time. At **15,000 credits** you can
+apply for an Equity-Lease Participation Agreement (ELPA): the agreement under which you live in a
+Clear home and pay toward owning its structure.
 
-- **Only equity credits.** Your savings balance is your money and stays yours; the credits are what
-  move you along the path.
-- **Credits can't be withdrawn or cashed in.** They only go toward your Clear Deed.
+- **Credits are a key, not a payment.** Signing an ELPA doesn't spend them, and credits that have
+  vested are never taken back.
+- **Reaching 15,000 makes you eligible to apply.** It doesn't promise a home in a particular place,
+  at a particular price or by a particular date.
+- **How homes are offered.** Each home is open for applications for at least 21 days. Members who
+  need its accessible features come first, then members moving for a change in household size, a
+  disability-related need or damage to their home, then a random draw. When you reached 15,000 and
+  how much you've saved don't move you up.
+- **No income test or credit check** to sign, and you can cancel within 7 days of signing.
+
+Only credits move you along the path. Your savings balance is your money and stays yours, and
+credits can't be withdrawn or cashed in.
+
+**In the app.** Your Savings page shows your **home path**: your credits out of 15,000, a step for
+each protection you unlock on the way, and, with auto-save running, the month you're on track for.
+Every protection is unlocked by 4,000 credits, and at 15,000 the Savings page reads **Ready · Your
+Clear Deed**. Your housing allowance: Not available yet.
+
+### 2. Your equity balance
+
+**What redeems your home is your equity balance in it.** It is built from:
+
+- **Your housing allowance.** For each matched credit you earn in your first 36 months, Clear sets
+  aside $1 toward a home, up to $54,000. It has no cash value and can only be used toward the home
+  you live in. It goes into your equity balance in full when you sign an ELPA, and it waits for you
+  as long as you stay a member.
+- **Savings you choose to apply** when you sign. Whatever you don't apply stays in your savings,
+  yours to withdraw.
+- **Your monthly equity contribution.** You choose it, at least 0.30% of the home's price a month,
+  and every dollar goes to your balance.
+
+Alongside it you pay a **community fee**, which covers ground rent, property taxes, insurance and
+shared costs.
+
+- **Your balance earns nothing and isn't revalued.** It is exactly what went into it.
+- **It stays in the home while you live there.** You can't withdraw it, but it moves with you and
+  comes back to you if you leave (see below).
+
+### The price: cost plus 15%
+
+**The price of a Clear home is Clear's documented cost of building it, plus 15%.** It is fixed when
+you sign and never goes up, however long you take to reach it. A home offered again keeps its
+earlier cost, plus any documented improvements; it is never repriced to the market or to
+inflation.
+
+### Redeeming your Clear Deed
+
+**When your equity balance reaches the price, you redeem.** Clear transfers the house to you as
+your Clear Deed, and pays the cost of the transfer. The land stays held in common by members: your
+ground lease and your community fee continue.
+
+### If things change
+
+- **Missing an equity contribution is never a default.** It only pushes back the day you redeem.
+  Only an unpaid community fee can lead to losing the home, and only after notice, a hardship plan
+  and a court order. Your equity balance is never kept as a penalty.
+- **You can move** to a bigger or smaller Clear home, or another community, at any time before you
+  redeem, without reaching 15,000 again. Your whole balance moves with you. If it already covers the
+  new home's price, you redeem that home when you move in and get the difference back.
+- **You can leave** at any time. Your equity balance comes back to you within 90 days, less only
+  unpaid community fees and the cost of damage beyond normal wear. It is never less because prices
+  fell. Your housing allowance isn't paid out in cash: it is kept for 24 months in case you sign for
+  another Clear home.
+- **If you leave membership before signing an ELPA,** your housing allowance lapses. Your savings
+  are still yours.
+- **If you die,** a joint member or a member of your household can take over, or your equity balance
+  goes to the beneficiary you name.
+
+### After you redeem
+
+You can sell your home only to Clear or to another member, at a formula price: what you paid, raised
+each year by inflation but by no more than 3% a year, or a recent independent appraisal if that is
+lower. If no member buys, Clear must.
 
 How credits are earned and how they vest is in
 [Savings and equity credits](./savings-and-equity-credits.md#equity-credits).

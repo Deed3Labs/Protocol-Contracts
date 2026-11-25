@@ -51,7 +51,8 @@ Your savings sit in the **Equity Savings Account (ESA)**. The contract behind it
 ### Equity credits
 
 Equity credits are a separate count from your savings. They are not money and **they can never be
-withdrawn or cashed out.** They only ever go toward your Clear Deed.
+withdrawn or cashed out.** They only ever go toward your home: at 15,000 you can apply for the
+agreement that leads to your Clear Deed.
 
 You earn them two ways:
 
@@ -66,8 +67,12 @@ Equity credits are kept by Clear's server, not by a contract. No contract on the
 
 ### Clear Deed
 
-The Clear Deed is the finish line: **a home title, free of debt, earned by being consistent.** It is
-not a mortgage. On the chain, a home is recorded as a T-Deed, a token issued by the `DeedNFT`
+The Clear Deed is the finish line: **the title to your home, free of debt, earned by being
+consistent.** It is not a mortgage. Equity credits unlock it: at 15,000 you can apply for an
+Equity-Lease Participation Agreement (ELPA). Under it, what you pay builds an equity balance in a
+Clear home, priced at its cost plus 15%, and when the balance reaches the price the house is yours
+as a Clear Deed. The land stays held in common by members, under a ground lease. Signing an ELPA:
+Not available yet. On the chain, a home is recorded as a T-Deed, a token issued by the `DeedNFT`
 contract in the Deed track of the protocol. Recording a member's home as a T-Deed: Not available
 yet. More in [Deeds and real-world assets](./deeds-and-real-world-assets.md).
 
