@@ -955,7 +955,7 @@
    "0x979E…bc91",
    "Which validators may approve deeds, and for what.",
    10,
-   85,
+   83.5,
    "d",
    "OPS"
   ],
@@ -968,7 +968,7 @@
    "—",
    "The functional contracts a trust deed may be deposited into under any transfer policy (trust agreement v5).",
    10,
-   93,
+   90,
    "d",
    "OPS"
   ],
@@ -981,7 +981,7 @@
    "0x18C5…79b9",
    "Checks a deed’s title and papers before it’s minted. Made by the ValidatorFactory.",
    30,
-   85,
+   83.5,
    "d",
    "OPS"
   ],
@@ -994,7 +994,7 @@
    "0x849e…70E5",
    "Renders a deed’s features, condition and legal details.",
    30,
-   93,
+   90,
    "d",
    "OPS"
   ],
@@ -1007,7 +1007,7 @@
    "0x1a4e…21E6",
    "One token per property deed, with its traits, validation and trust agreement terms.",
    50,
-   85,
+   83.5,
    "d",
    "OPS"
   ],
@@ -1020,7 +1020,7 @@
    "0x3c94…923F",
    "Splits a deed into units, like lots or rooms.",
    50,
-   93,
+   90,
    "d",
    "OPS"
   ],
@@ -1033,7 +1033,7 @@
    "0xeC46…9823",
    "Locks a deed or its units and issues shares against it.",
    70,
-   85,
+   83.5,
    "d",
    "OPS"
   ],
@@ -1046,7 +1046,7 @@
    "—",
    "The only route by which a Coop-policy trust deed changes hands, including Clear’s right of first refusal (trust agreement v5).",
    70,
-   93,
+   90,
    "d",
    "R"
   ],
@@ -1059,7 +1059,7 @@
    "0x3E51…28dc",
    "Shares in one property, made by the FractionTokenFactory.",
    90,
-   85,
+   83.5,
    "d",
    ""
   ],
@@ -1072,9 +1072,61 @@
    "0x73ea…401e",
    "Money around deeds: commissions and payouts.",
    90,
-   93,
+   90,
    "d",
    "OPS"
+  ],
+  [
+   "pi",
+   "PointsIssuer",
+   "v1.0",
+   1,
+   "later",
+   "—",
+   "The only issuer of Clear Credits: mints the credits members earn as they vest, redeems them into the Housing Allowance, and reverses them when two reviewers agree. Credits have no cash value and never leave their member.",
+   30,
+   72.5,
+   "c",
+   "CL"
+  ],
+  [
+   "crl",
+   "CreditsLedger",
+   "v1.0",
+   2,
+   "later",
+   "—",
+   "Clear Credits, on a ClearCredit ledger of their own with its own AccessManager: the credit ledger’s admins have no say over it, no shop can be registered on it, and only the Points Issuer mints.",
+   50,
+   72.5,
+   "c",
+   "CL"
+  ],
+  [
+   "har",
+   "HousingAllowanceRecord",
+   "v1.0",
+   3,
+   "later",
+   "—",
+   "Each member’s Housing Allowance, on chain: the Credit Portion from redeemed credits, never paid as cash, and the Member Portion, which members pay in USDC straight to the home’s payee.",
+   70,
+   59.5,
+   "c",
+   "CL"
+  ],
+  [
+   "rda",
+   "RedemptionAgent",
+   "v1.0",
+   3,
+   "later",
+   "—",
+   "Holds a home’s deed while its member pays toward it, and hands the deed to the member once the Housing Allowance Record shows the price reached. Nothing else moves it.",
+   70,
+   96.5,
+   "d",
+   "R"
   ]
  ],
  "notes": {
@@ -1455,6 +1507,34 @@
    "sf",
    "money",
    "settlement funding, through CL Operating",
+   ""
+  ],
+  [
+   "pi",
+   "crl",
+   "mint",
+   "mints Clear Credits",
+   ""
+  ],
+  [
+   "pi",
+   "har",
+   "money",
+   "redeems credits into",
+   ""
+  ],
+  [
+   "rda",
+   "har",
+   "reads",
+   "reads the price reached",
+   ""
+  ],
+  [
+   "rda",
+   "dn",
+   "money",
+   "hands the deed to its member",
    ""
   ]
  ],

@@ -402,6 +402,11 @@ describe('releases, live', () => {
       CreditPool: null,
       FunctionalContractRegistry: null,
       CoopTransferAgent: null,
+      // Clear Credits (deploy 29) and the RedemptionAgent (deploy 30), until their records are on dev
+      PointsIssuer: null,
+      CreditsLedger: null,
+      HousingAllowanceRecord: null,
+      RedemptionAgent: null,
     });
     // a retired copy never stands for a map name
     for (const n of map) expect(deployedName(n, names) ?? '').not.toMatch(/(PreAudit|Pre2f|Pre2d|Legacy|V1)$/);
@@ -412,15 +417,15 @@ describe('Build’s map, its cards and Signing, live (brief update 2)', () => {
   const sh = (a: string) => `${getAddress(a).slice(0, 6)}…${getAddress(a).slice(-4)}`;
   const quiet = { env: {} };
 
-  test('each contract carries who controls it, the AssurancePool is v2, and 38 of the 42 on the map are deployed: the fresh OffersIssuer and SettlementForwarder among them', async () => {
+  test('each contract carries who controls it, the AssurancePool is v2, and 38 of the 46 on the map are deployed: the fresh OffersIssuer and SettlementForwarder among them, Clear Credits not yet', async () => {
     const c: any = await contractsSection(db, { ...read(), jobs: quiet });
     const row = (id: string) => c.CTR.find((r: any[]) => r[0] === id);
-    expect(c.CTR).toHaveLength(43);
+    expect(c.CTR).toHaveLength(47);
     expect([row('am')[10], row('ca')[10], row('hd')[10], row('pc')[10], row('cp')[10]]).toEqual(['OPS', 'AG', 'H', 'R', '']);
     expect(row('ap')[5]).toBe(sh(C.AssurancePoolV2.address));
     expect(c.DEPLOYED).toContain('oi');
     const onMap = c.CTR.filter((r: any[]) => r[9] !== 'x').map((r: any[]) => r[0]);
-    expect([c.DEPLOYED.filter((id: string) => onMap.includes(id)).length, onMap.length]).toEqual([38, 42]);
+    expect([c.DEPLOYED.filter((id: string) => onMap.includes(id)).length, onMap.length]).toEqual([38, 46]);
   });
 
   test('Timelocks and helpers, Retired and the timelocks, from the records by name', async () => {

@@ -29,7 +29,19 @@ const short = (a: string) => {
 
 /** The timelocks in the order the reference lists them; one it doesn't know comes after, by name. */
 const TIMELOCK_ORDER = ['CreditTimelock', 'AssuranceTimelock', 'VaultTimelock', 'EarnTimelock'];
-const HELPERS = ['BurnerBondFactory', 'BurnerBondDeposit', 'Create2Deployer'];
+const HELPERS = [
+  'BurnerBondFactory',
+  'BurnerBondDeposit',
+  'Create2Deployer',
+  // Clear Credits (deploy 29): the ledger's own AccessManager and registries
+  'CreditsAccessManager',
+  'CreditsNetworkRegistry',
+  'CreditsMerchantRegistry',
+  // Deed v5 (deploy 30): DeedNFT's three extensions
+  'DeedNFTMintExtension',
+  'DeedTrustExtension',
+  'DeedRolesExtension',
+];
 
 /** What each does and who runs it, as the reference's CTR_AUX words it. */
 const AUX_WORDS: Record<string, [string, string]> = {
@@ -40,6 +52,12 @@ const AUX_WORDS: Record<string, [string, string]> = {
   BurnerBondFactory: ['Opens a bond collection for each approved token', 'Through the Earn timelock'],
   BurnerBondDeposit: ['Takes the money behind each bond and holds the proceeds', 'Through the Earn timelock'],
   Create2Deployer: ['Deploys contracts to addresses known in advance', 'No one: a helper'],
+  CreditsAccessManager: ['Roles over the Credits Ledger alone, so the credit ledger’s admins have no say over it', 'The Credit timelock'],
+  CreditsNetworkRegistry: ['The Credits Ledger’s issuer list: the Points Issuer only', 'The Credit timelock'],
+  CreditsMerchantRegistry: ['Empty, with its admin roles given up: no shop can ever take credits', 'No one'],
+  DeedNFTMintExtension: ['Mints deeds for DeedNFT', 'Through DeedNFT'],
+  DeedTrustExtension: ['Each trust deed’s trust agreement terms', 'Through DeedNFT'],
+  DeedRolesExtension: ['Who holds a deed in trust for its member (the owner-trustee)', 'Through DeedNFT'],
 };
 
 const RETIRED = /(PreAudit|Pre2f|Pre2d|Legacy)$/;

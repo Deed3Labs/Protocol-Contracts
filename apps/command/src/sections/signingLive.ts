@@ -79,6 +79,8 @@ const STAGES: Record<string, [string, string]> = {
   SA: ['SA', 'State attester'],
   SR: ['SR', 'Credit by state'],
   SL: ['SL', 'Settlement lane'],
+  RT: ['RT', 'Lending routes'],
+  CF: ['CF', 'Card credit fee'],
   'Day 7': ['D7', 'Day 7 runs'],
 };
 export const stageOf = (st: string): [string, string] => STAGES[st] || [st, st];
