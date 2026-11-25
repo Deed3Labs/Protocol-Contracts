@@ -58,8 +58,10 @@ and offers **Top off** to put money back into savings.
 
 ### What credits do
 
-- At 15,000 credits you can apply for an ELPA, the agreement that leads to your Clear Deed. See
-  [Your Clear Deed](./clear-deed-and-membership.md#your-clear-deed).
+- At 15,000 credits earned you can apply for an ELPA, the agreement that leads to your Clear Deed.
+  See [Your Clear Deed](./clear-deed-and-membership.md#your-clear-deed).
+- Once you've signed an ELPA, you can redeem them into your Housing Allowance toward the home, at $1
+  a credit, up to $54,000. Redeeming doesn't lower the 15,000 count. Not available yet.
 - They unlock your protections. See [Assurance](./assurance-and-disputes.md#your-protections).
 - **They can't be withdrawn, sold or redeemed for cash.**
 
