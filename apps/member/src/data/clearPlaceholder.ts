@@ -310,7 +310,9 @@ export const MILESTONES: Milestone[] = [
   { id: 'assurance', title: 'Unlock your protections', credits: 4000 },
   { id: 'community', title: 'Choose your community', credits: 8000 },
   { id: 'reserve', title: 'Reserve your home', credits: 12000 },
-  { id: 'deed', title: 'Sign your ELPA & Clear Deed', credits: 15000, note: 'move in' },
+  // 15,000 opens the housing path: the member may apply for an ELPA. The Clear Deed comes later, when the
+  // ELPA's equity balance reaches the home's price (cost plus 15%), so the step names the ELPA, not the deed.
+  { id: 'deed', title: 'Apply for your home (ELPA)', credits: 15000, note: 'housing path opens' },
 ];
 
 /**

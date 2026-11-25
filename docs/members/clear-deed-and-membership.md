@@ -30,8 +30,8 @@ credits can't be withdrawn or cashed in.
 
 **In the app.** Your Savings page shows your **home path**: your credits out of 15,000, a step for
 each protection you unlock on the way, and, with auto-save running, the month you're on track for.
-Every protection is unlocked by 4,000 credits, and at 15,000 the Savings page reads **Ready · Your
-Clear Deed**. Your housing allowance: Not available yet.
+Every protection is unlocked by 4,000 credits, and at 15,000 the last step, **Apply for your home
+(ELPA)**, is reached and the Savings page reads **Ready · Apply for your home**. Your housing allowance: Not available yet.
 
 ### 2. Your equity balance
 

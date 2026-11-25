@@ -508,7 +508,7 @@ export default function PayModal({
                 <Award className="h-4 w-4 shrink-0 text-positive" />
               </div>
               <div className="mt-2 border-t border-positive/15 pt-2 text-[11px] text-muted-foreground">
-                {isRent ? 'Counts toward your Clear Deed down-payment.' : 'Builds equity + reports to your credit history.'}
+                {isRent ? 'Counts toward your home path.' : 'Earns equity credits toward your home path.'}
               </div>
             </div>
 

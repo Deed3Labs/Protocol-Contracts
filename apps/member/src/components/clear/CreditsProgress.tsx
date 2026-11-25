@@ -20,7 +20,7 @@ export default function CreditsProgress({ savings }: { savings: Savings }) {
           <span className="text-foreground-secondary">of {count(savings.creditsGoal)} credits</span>
         </span>
         <span className="text-xs text-muted-foreground">
-          Clear Deed at {count(savings.creditsGoal)}
+          Home path opens at {count(savings.creditsGoal)}
         </span>
       </div>
 
