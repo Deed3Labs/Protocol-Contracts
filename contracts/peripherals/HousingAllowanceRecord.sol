@@ -213,7 +213,8 @@ contract HousingAllowanceRecord is IHousingAllowanceRecord, AccessControlUpgrade
         Record storage r = _signed(member, homeId);
         address payee = payeeOf[homeId];
         if (payee == address(0)) revert HousingNoPayee(homeId);
-        usdc.safeTransferFrom(member, payee, amount);
+        // Pulled from the caller only: the member's own account, straight to the payee.
+        usdc.safeTransferFrom(_msgSender(), payee, amount);
         r.memberPortion += uint128(amount);
         emit MemberPaid(member, homeId, amount, payee, keccak256(abi.encode(member, homeId, block.number, amount)));
     }
