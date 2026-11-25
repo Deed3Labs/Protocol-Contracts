@@ -23,23 +23,28 @@ Savings pay no interest; there is no rate to set.
 
 ## Equity credits
 
-**Equity credits are kept by Clear's server, not by any contract.** Their rules are set in the
-server's software, so they change only through a software change (see
-[How a rule changes](#how-a-rule-changes)).
+**Equity credits are recorded on the chain**, on a credits ledger of their own, by the Points
+Issuer contract. Clear's server works out what each member has earned and asks the Points Issuer to
+mint it. The match's limits are enforced by the contract itself. A change to any rule below takes
+two signers, waits in a timelock, and applies only after at least 30 days' notice, and only to
+credits earned after it.
 
 | Rule | Today |
 |---|---|
-| Match on savings | 1 credit for each whole dollar deposited, up to 1,500 credits a calendar month |
-| Match if the deposit leaves early | Redeem within 30 days and the matching credits still waiting are cancelled |
-| Rent paid on time | 200 credits, times your multiplier |
-| Other bills paid on time | 10% of the payment in credits, at most 500, times your multiplier |
+| Match on savings | 1 credit for each whole dollar, once it has been in savings 30 days without being borrowed against |
+| Match limits | First 36 months of membership, ending at ELPA signing; at most 1,500 credits a calendar month and 54,000 in all |
+| Rent and other bills paid on time | 2% of the payment in credits, at most 50 for one bill, times your multiplier |
+| Where a bill must be paid | Clear Pay, the Clear Visa card or the Clear card. A bill only seen in a linked bank earns nothing |
+| Paid with Clear credit | Earns once that credit is repaid in full |
 | On time | Paid no more than 3 days after the due date. A late payment earns nothing |
-| Vesting | 30 days from the payment or deposit |
-| Multiplier | 1×, plus 0.25× for every 6 months in a row with an on-time payment, up to 1.5× |
+| Arrival | 30 days from the payment or deposit. A reversed or refunded payment, or savings moved out sooner, earns nothing |
+| Multiplier | 1×, plus 0.25× for every 6 months in a row with an on-time payment, up to 1.5×. A membership plan never changes it |
+| Housing path | 15,000 credits earned, counting every credit ever earned |
+| Redemption | After signing an ELPA, 1 credit = $1 into the Housing Allowance, up to $54,000 in all |
 | Test networks | Credits earned there are recorded separately from live ones |
 
 The multiplier applies to rent and bills, not to the savings match. Equity credits can never be
-withdrawn or redeemed for cash; no rule above can change that.
+transferred, withdrawn or redeemed for cash; no rule above can change that.
 
 ## Assurance and the Clear Deed
 

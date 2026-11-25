@@ -25,8 +25,8 @@ leave, your balance leaves with you.
 On Standard, your equity credits on rent and bills grow with your on-time record: the multiplier
 starts at 1× and rises to 1.5×. The rules are in [Parameters](./parameters.md#equity-credits).
 
-Your plan doesn't change your savings, the match on your deposits, which protections you can unlock,
-or your credit.
+Your plan doesn't change your savings, how equity credits are earned (the match and the multiplier
+included), which protections you can unlock, or your credit.
 
 ## Bylaws, voting and patronage
 

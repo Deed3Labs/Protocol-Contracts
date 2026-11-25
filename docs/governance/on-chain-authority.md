@@ -239,5 +239,6 @@ own.
   Member Assurance grant to the co-op's disbursement address, each by two signers.
 - **Upgrade a credit, Earn, reserve or savings contract at once.** Every such upgrade waits 7 days
   in a timelock, in public.
-- **Hold equity credits.** No contract does; Clear's server keeps them
+- **Move equity credits or a Housing Allowance.** Credits move only from the Points Issuer to a
+  member and back to it when redeemed, and the Housing Allowance Record has no transfer at all
   ([Parameters](./parameters.md#equity-credits)).

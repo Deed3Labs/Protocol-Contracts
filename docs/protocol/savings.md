@@ -372,5 +372,6 @@ separate deployment.
 
 ## Not on-chain
 
-Equity credits are not recorded by any contract; no contract under `contracts/` refers to them.
+Equity credits are recorded on a credits ledger of their own by the Points Issuer, and the Housing
+Allowance on the Housing Allowance Record. Neither touches the savings vault or CLRUSD.
 Savings in this layer are CLRUSD balances and the reserve in the vault.

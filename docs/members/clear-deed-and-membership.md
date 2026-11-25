@@ -6,8 +6,7 @@
 isn't a mortgage, and it isn't bought with a loan. The land under it stays held in common by
 members, and your home sits on it under a ground lease.
 
-**Nothing here is an offer of a home.** It describes how the path works. Signing an ELPA and
-everything after it: Not available yet.
+**Nothing here is an offer of a home.** It describes how the path works.
 
 ### 1. Equity credits unlock the ELPA
 
@@ -32,8 +31,9 @@ credits can't be withdrawn or cashed in.
 **In the app.** Your Savings page shows your **home path**: your credits out of 15,000, a step for
 each protection you unlock on the way, and, with auto-save running, the month you're on track for.
 Every protection is unlocked by 4,000 credits, and at 15,000 the last step, **Apply for your home
-(ELPA)**, is reached and the Savings page reads **Ready · Apply for your home**. Redeeming credits
-and your Housing Allowance: Not available yet.
+(ELPA)**, is reached and the Savings page reads **Ready · Apply for your home**. Once you've
+signed an ELPA, your Housing Allowance appears on the Savings page, with **Redeem credits** and
+**Add savings or USDC**.
 
 ### 2. Your Housing Allowance
 
@@ -106,7 +106,7 @@ membership and the co-op's rules work is in [Membership and the co-op](../govern
 
 **Everyone is on Standard, and it is free.** On Standard, the multiplier on your rent and bill
 credits starts at 1× and rises 0.25× for every six months in a row you pay on time, up to 1.5×.
-Matched savings credits and your protections don't depend on your plan. See
+No plan changes how credits are earned, and your protections don't depend on your plan either. See
 [Assurance](./assurance-and-disputes.md#your-protections).
 
 **Accelerated**, an optional paid plan: Not available yet.

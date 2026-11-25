@@ -48,9 +48,10 @@ network, only. On Base: Not available yet.
 
 ## Equity credits
 
-Equity credits are a count Clear's server keeps for you, not money and not a token. New credits wait
-30 days before they count as yours ("vesting"). They can only go toward your home and your Clear Deed;
-there is no way to withdraw them or turn them into cash. The rules for earning them are in
+Equity credits are points, recorded on the chain on a ledger of their own. They are not money, and
+nobody can transfer them. New credits arrive 30 days after you earn them. They can only go toward
+your home and your Clear Deed: once you've signed an ELPA, you can redeem them into your Housing
+Allowance at $1 each, up to $54,000. There is no way to withdraw them or turn them into cash. The rules for earning them are in
 [Parameters and who sets them](../governance/parameters.md).
 
 ## Buying at a partner shop
