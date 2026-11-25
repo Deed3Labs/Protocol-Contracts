@@ -15,8 +15,9 @@ You earn equity credits by saving and by paying your rent on time. At **15,000 c
 apply for an Equity-Lease Participation Agreement (ELPA): the agreement under which you live in a
 Clear home and pay toward owning its structure.
 
-- **Credits are a key, not a payment.** Signing an ELPA doesn't spend them, and credits that have
-  vested are never taken back.
+- **Credits are points, and 15,000 is counted on everything you've ever earned.** Signing an ELPA
+  doesn't spend them. Once you've signed, you can redeem credits into your Housing Allowance (below),
+  and redeeming never lowers the count that got you there.
 - **Reaching 15,000 makes you eligible to apply.** It doesn't promise a home in a particular place,
   at a particular price or by a particular date.
 - **How homes are offered.** Each home is open for applications for at least 21 days. Members who
@@ -31,25 +32,30 @@ credits can't be withdrawn or cashed in.
 **In the app.** Your Savings page shows your **home path**: your credits out of 15,000, a step for
 each protection you unlock on the way, and, with auto-save running, the month you're on track for.
 Every protection is unlocked by 4,000 credits, and at 15,000 the last step, **Apply for your home
-(ELPA)**, is reached and the Savings page reads **Ready · Apply for your home**. Your housing allowance: Not available yet.
+(ELPA)**, is reached and the Savings page reads **Ready · Apply for your home**. Redeeming credits
+and your Housing Allowance: Not available yet.
 
-### 2. Your equity balance
+### 2. Your Housing Allowance
 
-**What redeems your home is your equity balance in it.** It is built from:
+**What redeems your home is your Housing Allowance: your equity balance in it.** It has two parts,
+shown as one total.
 
-- **Your housing allowance.** For each matched credit you earn in your first 36 months, Clear sets
-  aside $1 toward a home, up to $54,000. It has no cash value and can only be used toward the home
-  you live in. It goes into your equity balance in full when you sign an ELPA, and it waits for you
-  as long as you stay a member.
-- **Savings you choose to apply** when you sign. Whatever you don't apply stays in your savings,
-  yours to withdraw.
-- **Your monthly equity contribution.** You choose it, at least 0.30% of the home's price a month,
-  and every dollar goes to your balance.
+| Part | What goes in | If you leave before redeeming |
+|---|---|---|
+| **From credits** | Credits you redeem, at $1 a credit, once you've signed an ELPA. Up to $54,000 over your lifetime. Clear funds it | Never paid in cash. It is kept for 24 months in case you sign for another Clear home, then lapses |
+| **Your money** | Savings you choose to apply, CLRUSD or USDC you send from your account, and your monthly equity contribution: you choose it, at least 0.30% of the home's price a month | Comes back to you (see below) |
+
+Your own money goes in only once you've signed an ELPA. Until then it stays in your savings, yours
+to withdraw.
+
+**Your Housing Allowance is recorded on the chain,** against your own account, so the Deed contracts
+can read it when you redeem. Nobody can transfer it, including you, and the amounts are public, as
+savings balances already are. It holds no money itself: what you pay goes toward the home.
 
 Alongside it you pay a **community fee**, which covers ground rent, property taxes, insurance and
 shared costs.
 
-- **Your balance earns nothing and isn't revalued.** It is exactly what went into it.
+- **Your Housing Allowance earns nothing and isn't revalued.** It is exactly what went into it.
 - **It stays in the home while you live there.** You can't withdraw it, but it moves with you and
   comes back to you if you leave (see below).
 
@@ -62,7 +68,7 @@ inflation.
 
 ### Redeeming your Clear Deed
 
-**When your equity balance reaches the price, you redeem.** Clear transfers the house to you as
+**When your Housing Allowance reaches the price, you redeem.** Clear transfers the house to you as
 your Clear Deed, and pays the cost of the transfer. The land stays held in common by members: your
 ground lease and your community fee continue.
 
@@ -70,18 +76,18 @@ ground lease and your community fee continue.
 
 - **Missing an equity contribution is never a default.** It only pushes back the day you redeem.
   Only an unpaid community fee can lead to losing the home, and only after notice, a hardship plan
-  and a court order. Your equity balance is never kept as a penalty.
+  and a court order. Your Housing Allowance is never kept as a penalty.
 - **You can move** to a bigger or smaller Clear home, or another community, at any time before you
-  redeem, without reaching 15,000 again. Your whole balance moves with you. If it already covers the
+  redeem, without reaching 15,000 again. Your whole Housing Allowance moves with you. If it already covers the
   new home's price, you redeem that home when you move in and get the difference back.
-- **You can leave** at any time. Your equity balance comes back to you within 90 days, less only
-  unpaid community fees and the cost of damage beyond normal wear. It is never less because prices
-  fell. Your housing allowance isn't paid out in cash: it is kept for 24 months in case you sign for
-  another Clear home.
-- **If you leave membership before signing an ELPA,** your housing allowance lapses. Your savings
-  are still yours.
-- **If you die,** a joint member or a member of your household can take over, or your equity balance
-  goes to the beneficiary you name.
+- **You can leave** at any time. The part that is your money comes back to you within 90 days, less
+  only unpaid community fees and the cost of damage beyond normal wear. It is never less because
+  prices fell. The part from credits isn't paid out in cash: it is kept for 24 months in case you
+  sign for another Clear home.
+- **If you leave membership before signing an ELPA,** your credits end. Your savings are still
+  yours.
+- **If you die,** a joint member or a member of your household can take over, or the part that is your
+  money goes to the beneficiary you name.
 
 ### After you redeem
 

@@ -12,7 +12,7 @@ described under [Protocol](../protocol/README.md).
 | **Base, Base Sepolia** | Base is the public network the contracts run on. Base Sepolia is its test network, where nothing is real money |
 | **Carry** | The cost of credit. It builds up on what you have drawn |
 | **Clear card** | Clear's own wooden membership card, for paying at Clear shops without your phone. Planned; not available yet. See [Your cards](../members/cards.md) |
-| **Clear Deed** | The finish line: the title to your house, free of debt. Equity credits unlock an ELPA, and the ELPA's equity balance redeems the house at its cost plus 15%. Not a mortgage. On the chain, a T-Deed |
+| **Clear Deed** | The finish line: the title to your house, free of debt. Equity credits unlock an ELPA, and the member's Housing Allowance redeems the house at its cost plus 15%. Not a mortgage. On the chain, a T-Deed |
 | **Clear Financial Co.** | The program entity in the co-op's structure: accounts, cards and payments, where member money sits. Its Safe controls the savings vault and CLRUSD. See [The co-op's structure](../governance/structure.md) |
 | **Clear Lending** | The company in the co-op's structure that funds the credit book. See [The co-op's structure](../governance/structure.md) |
 | **Clear Pay** | Paying rent and bills through the app. Paying on time earns equity credits |
@@ -29,12 +29,12 @@ described under [Protocol](../protocol/README.md).
 | **Default** | When a member has fallen far enough behind that the debt is treated as unpaid. Only what was past due can then be collected from what backs it |
 | **Deployer key** | The wallet that put the contracts on the chain. It holds every role until they are handed over |
 | **Earn** | Where qualifying members hold bonds or put money in the lending pool. Both can back your credit line. See [Earn](../members/earn.md) |
-| **ELPA, Equity-Lease Participation Agreement** | The agreement a member can apply for at 15,000 equity credits. The member lives in a Clear home, and what they pay builds an equity balance in it. When the balance reaches the home's price (its cost plus 15%, fixed at signing), the house is theirs as a Clear Deed. Not credit, and not a mortgage. Not available yet. See [Your Clear Deed](../members/clear-deed-and-membership.md#your-clear-deed) |
-| **Equity credits** | A count of progress toward a home, earned by saving and by paying on time. At 15,000 you can apply for an ELPA, which leads to your Clear Deed. Never withdrawable or redeemable for cash. Kept by Clear's server, not on the chain |
+| **ELPA, Equity-Lease Participation Agreement** | The agreement a member can apply for at 15,000 equity credits. The member lives in a Clear home, and their Housing Allowance (credits redeemed plus their own payments) builds equity in it. When it reaches the home's price (its cost plus 15%, fixed at signing), the house is theirs as a Clear Deed. Not credit, and not a mortgage. Not available yet. See [Your Clear Deed](../members/clear-deed-and-membership.md#your-clear-deed) |
+| **Equity credits** | Points toward a home, earned by saving and by paying on time. At 15,000 earned you can apply for an ELPA, which leads to your Clear Deed. After signing, they can be redeemed into your Housing Allowance at $1 each, up to $54,000 (not available yet). Never withdrawable or redeemable for cash. Kept by Clear's server, not on the chain |
 | **ESA, Equity Savings Account** | Your savings account. USDC in, CLRUSD out, one for one |
 | **`ESADepositVault`** | The contract that holds the USDC behind CLRUSD |
 | **Float** | Dollars held with the card provider to pay card swipes at shops outside the network. Clear Lending funds the part on credit |
-| **Housing allowance** | Dollars Clear sets aside toward a member's home: $1 for each matched credit in their first 36 months, up to $54,000. No cash value; it goes into the equity balance when an ELPA is signed. Not available yet. See [Your Clear Deed](../members/clear-deed-and-membership.md#2-your-equity-balance) |
+| **Housing Allowance** | Your equity toward a Clear home under an ELPA, in two parts: credits you redeem ($1 each, up to $54,000, never paid in cash) and your own money (savings applied, CLRUSD or USDC, monthly contributions; refunded if you leave). When it reaches the home's price you redeem your Clear Deed. Recorded on the chain, non-transferable. Not available yet. See [Your Clear Deed](../members/clear-deed-and-membership.md#2-your-housing-allowance) |
 | **LendingPool** | The lending pool on Earn. Members and other contributors put money in, and it lends only to Clear Lending, which funds members' credit with it. A loss reaches it last, after Clear Lending's own layers, and nothing guarantees it |
 | **Lost debt** | Debt written off after a default. Clear Lending bears it, and can draw on the Credit Backstop for it |
 | **Member Assurance** | The part of the reserve that pays members' Assurance grants |
