@@ -6,7 +6,7 @@ const ONE = 10n ** 6n;
 const DAY = 24 * 60 * 60;
 
 /*
- * P0 spike (specs/credits-contract-and-api-requirements.md, section 0): can a second StableCredit
+ * P0 spike: can a second StableCredit
  * instance carry Clear Credits -- non-transferable points -- by configuration alone?
  *
  * The Credits Ledger here is a fresh `ClearCredit` proxy that shares only the AccessManager with the
