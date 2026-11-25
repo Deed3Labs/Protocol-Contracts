@@ -96,3 +96,10 @@ describe('sending', () => {
     expect(calls.some((c) => c.method === 'eth_sendTransaction')).toBe(false);
   });
 });
+
+describe('stage names', () => {
+  test('the card fee (CF) and Clear Lending’s routes (RT) have names of their own', () => {
+    expect(SGL.stageOf('CF')).toEqual(['CF', 'Card credit fee']);
+    expect(SGL.stageOf('RT')).toEqual(['RT', 'Lending routes']);
+  });
+});
