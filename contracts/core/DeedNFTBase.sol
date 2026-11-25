@@ -114,6 +114,14 @@ abstract contract DeedNFTBase is
     ///      the default of 7 days. Set by the admin (the Deed timelock), within bounds.
     uint64 internal _validatorReassignDelay;
 
+    // ============ Owner-Trustee (appended) ============
+
+    /// @dev Deeds whose Beneficiary may serve as trustee of its own trust, once appointed by the protector.
+    mapping(uint256 => bool) internal _ownerTrusteeAllowed;
+    /// @dev The holder who may accept the owner-trustee office: named on appointment, and again whenever the
+    ///      beneficial interest changes hands while the office is held by its holder.
+    mapping(uint256 => address) internal _ownerTrusteePending;
+
     // ============ Shared constants ============
 
     /// @dev Salted and trust IDs live in [2^127, 2^128): above any reachable sequential ID, and below 2^128

@@ -95,15 +95,17 @@ async function main() {
   //    DeedNFT cannot create them itself). Each checks in as the right kind in DeedNFT's constructor.
   const mintExt = await (await hre.ethers.getContractFactory("DeedNFTMintExtension")).deploy();
   const trustExt = await (await hre.ethers.getContractFactory("DeedTrustExtension")).deploy();
+  const rolesExt = await (await hre.ethers.getContractFactory("DeedRolesExtension")).deploy();
   await mintExt.waitForDeployment();
   await trustExt.waitForDeployment();
+  await rolesExt.waitForDeployment();
   const deedNFT = await hre.upgrades.deployProxy(
     await hre.ethers.getContractFactory("DeedNFT"),
     [await validator.getAddress(), await validatorRegistry.getAddress()],
     {
       initializer: "initialize",
       kind: "uups",
-      constructorArgs: [await mintExt.getAddress(), await trustExt.getAddress()],
+      constructorArgs: [await mintExt.getAddress(), await trustExt.getAddress(), await rolesExt.getAddress()],
       unsafeAllow: ["constructor", "delegatecall", "state-variable-immutable"],
     }
   );

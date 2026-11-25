@@ -8,6 +8,7 @@ import {EnumerableSetUpgradeable} from "@openzeppelin/contracts-upgradeable/util
 import "./DeedNFTBase.sol";
 import "./DeedNFTMintExtension.sol";
 import "./DeedTrustExtension.sol";
+import "./DeedRolesExtension.sol";
 import "./interfaces/IValidatorRegistry.sol";
 
 /**
@@ -35,19 +36,25 @@ contract DeedNFT is DeedNFTBase {
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable trustExtension;
 
+    /// @notice Serves the protector and standby roles and the owner-trustee office.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable rolesExtension;
+
     /// @dev Both extensions together are too large to create here (EIP-3860 caps init code at 48 KiB), so they
     ///      are deployed first and passed in; each must identify itself as the right kind.
     error ExtensionMismatch();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor(address mintExtension_, address trustExtension_) {
+    constructor(address mintExtension_, address trustExtension_, address rolesExtension_) {
         _disableInitializers();
         if (
             IDeedNFTExtensionKind(mintExtension_).deedExtensionKind() != keccak256("DeedNFTMintExtension.v5") ||
-            IDeedNFTExtensionKind(trustExtension_).deedExtensionKind() != keccak256("DeedTrustExtension.v5")
+            IDeedNFTExtensionKind(trustExtension_).deedExtensionKind() != keccak256("DeedTrustExtension.v5") ||
+            IDeedNFTExtensionKind(rolesExtension_).deedExtensionKind() != keccak256("DeedRolesExtension.v1")
         ) revert ExtensionMismatch();
         mintExtension = mintExtension_;
         trustExtension = trustExtension_;
+        rolesExtension = rolesExtension_;
     }
 
     /**
@@ -194,7 +201,13 @@ contract DeedNFT is DeedNFTBase {
             s == IDeedTrust.mintTrustDeed.selector || s == IDeedTrust.reserveId.selector || s == IDeedTrust.computeDeedId.selector
                 || s == IDeedTrust.freezeConsentDigest.selector
                 ? mintExtension
-                : trustExtension
+                : s == DeedRolesExtension.setProtector.selector || s == DeedRolesExtension.setStandbyTrustee.selector
+                    || s == DeedRolesExtension.appointOwnerTrustee.selector
+                    || s == DeedRolesExtension.acceptOwnerTrustee.selector
+                    || s == DeedRolesExtension.removeOwnerTrustee.selector
+                    || s == DeedRolesExtension.ownerTrusteeOf.selector
+                    ? rolesExtension
+                    : trustExtension
         );
     }
 

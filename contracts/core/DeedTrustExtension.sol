@@ -86,6 +86,13 @@ contract DeedTrustExtension is DeedTrustCommon {
         if (!(returning || intoFc || _policyAllows(r.transferPolicy, from, to))) {
             revert IDeedTrust.TransferPolicyBlocked(r.transferPolicy);
         }
+        // The owner-trustee office follows the beneficial interest: it ends when the holder serving in it
+        // transfers the deed (other than into a Functional Contract's custody); the new holder may accept.
+        if (r.trustee == from && !intoFc && _ownerTrusteeAllowed[tokenId]) {
+            _installTrustee(tokenId, r, address(0));
+            _ownerTrusteePending[tokenId] = to;
+            emit IDeedTrust.OwnerTrusteeVacated(tokenId, from, to);
+        }
         r.lastFrom = from;
     }
 
@@ -150,6 +157,8 @@ contract DeedTrustExtension is DeedTrustCommon {
         IDeedTrust.TrustRecord storage r = _liveTrust(tokenId);
         address holder = ownerOf(tokenId);
         if (msg.sender != _protector(r, holder)) revert IDeedTrust.NotProtector();
+        // A serving owner-trustee is removed only through the owner-trustee extension, for a permitted reason.
+        if (_ownerTrusteeAllowed[tokenId] && r.trustee == holder) revert IDeedTrust.OwnerTrusteeRemovalOnly();
         _requireEligible(newTrustee);
         if (newTrustee == holder || newTrustee == r.protector) revert IDeedTrust.RoleConflict();
         _consume(newTrustee, _trusteeAcceptanceHash(tokenId, newTrustee, r.nonce), acceptance);
@@ -159,40 +168,7 @@ contract DeedTrustExtension is DeedTrustCommon {
         emit IDeedTrust.TrusteeChanged(tokenId, previous, newTrustee);
     }
 
-    /**
-     * @notice The protector names its successor; while the record is zero the holder is protector and may name
-     *         one. Zero hands the role back to whoever holds the token. A protector is never the trustee or the
-     *         standby, so no one person both proposes and countersigns a correction.
-     */
-    function setProtector(uint256 tokenId, address newProtector) external {
-        IDeedTrust.TrustRecord storage r = _liveTrust(tokenId);
-        address previous = _protector(r, ownerOf(tokenId));
-        if (msg.sender != previous) revert IDeedTrust.NotProtector();
-        if (newProtector != address(0) && (newProtector == r.trustee || newProtector == r.standbyTrustee)) {
-            revert IDeedTrust.RoleConflict();
-        }
-        r.protector = newProtector;
-        r.nonce++; // consents the old protector gave lapse
-        _setTraitRaw(tokenId, KEY_PROTECTOR, abi.encode(newProtector));
-        emit IDeedTrust.ProtectorChanged(tokenId, previous, newProtector);
-    }
 
-    /// @notice Addendum 2: the protector names a standby trustee, who must be eligible and accept now. Zero clears it.
-    function setStandbyTrustee(uint256 tokenId, address standby, bytes calldata acceptance) external {
-        IDeedTrust.TrustRecord storage r = _liveTrust(tokenId);
-        address holder = ownerOf(tokenId);
-        if (msg.sender != _protector(r, holder)) revert IDeedTrust.NotProtector();
-        if (standby != address(0)) {
-            _requireEligible(standby);
-            if (standby == holder || standby == r.trustee || standby == r.protector) revert IDeedTrust.RoleConflict();
-            _consume(standby, keccak256(abi.encode(STANDBY_ACCEPTANCE_TYPEHASH, tokenId, standby, uint256(r.nonce))), acceptance);
-            r.nonce++;
-        }
-        address previous = r.standbyTrustee;
-        r.standbyTrustee = standby;
-        _setTraitRaw(tokenId, KEY_STANDBY, abi.encode(standby));
-        emit IDeedTrust.StandbyTrusteeChanged(tokenId, previous, standby);
-    }
 
     /**
      * @notice Addendum 2: records a licensing determination against the trustee. Callable by the protector, the
@@ -240,19 +216,6 @@ contract DeedTrustExtension is DeedTrustCommon {
         }
     }
 
-    function _installTrustee(uint256 tokenId, IDeedTrust.TrustRecord storage r, address trustee) internal {
-        r.trustee = trustee;
-        _setTraitRaw(tokenId, KEY_TRUSTEE, abi.encode(trustee));
-        if (r.trusteeSuspended) {
-            r.trusteeSuspended = false;
-            _setTraitRaw(tokenId, KEY_SUSPENDED, abi.encode(false));
-        }
-        if (r.standbyTrustee == trustee) {
-            r.standbyTrustee = address(0);
-            _setTraitRaw(tokenId, KEY_STANDBY, abi.encode(address(0)));
-            emit IDeedTrust.StandbyTrusteeChanged(tokenId, trustee, address(0));
-        }
-    }
 
     // =====================================================================
     // Agreement version and definition corrections (brief items 3 and 4)
@@ -553,13 +516,5 @@ contract DeedTrustExtension is DeedTrustCommon {
     // Internal helpers
     // =====================================================================
 
-    function _liveTrust(uint256 tokenId) internal view returns (IDeedTrust.TrustRecord storage r) {
-        if (!_exists(tokenId)) revert IDeedTrust.UnknownDeed();
-        r = _trust[tokenId];
-        if (r.agreementHash == bytes32(0)) revert IDeedTrust.NotTrustDeed();
-    }
 
-    function _protector(IDeedTrust.TrustRecord storage r, address holder) internal view returns (address) {
-        return r.protector != address(0) ? r.protector : holder;
-    }
 }

@@ -107,6 +107,12 @@ interface IDeedTrust {
         bytes32 ridersHash
     );
     event TrusteeChanged(uint256 indexed tokenId, address indexed previousTrustee, address indexed newTrustee);
+    /// @notice The protector appointed the holder owner-trustee; the holder accepts with acceptOwnerTrustee.
+    event OwnerTrusteeAppointed(uint256 indexed tokenId, address indexed holder);
+    /// @notice An owner-trustee's office ended when the deed changed hands; `next` may accept it.
+    event OwnerTrusteeVacated(uint256 indexed tokenId, address indexed previous, address indexed next);
+    /// @notice The protector removed an owner-trustee for a permitted reason and installed a successor.
+    event OwnerTrusteeRemoved(uint256 indexed tokenId, address indexed previous, address indexed successor, uint8 reason, bytes32 evidenceHash);
     event ProtectorChanged(uint256 indexed tokenId, address indexed previousProtector, address indexed newProtector);
     event StandbyTrusteeChanged(uint256 indexed tokenId, address indexed previousStandby, address indexed newStandby);
     event TrusteeSuspended(uint256 indexed tokenId, address indexed trustee);
@@ -134,6 +140,11 @@ interface IDeedTrust {
     error DeedIdUnavailable(uint256 deedId);
     error TrusteeNotEligible(address account);
     error RoleConflict();
+    /// @notice Only the holder named for the owner-trustee office may accept it.
+    error NotOwnerTrusteeCandidate();
+    /// @notice An owner-trustee is removed only by removeOwnerTrustee, for a permitted reason.
+    error OwnerTrusteeRemovalOnly();
+    error InvalidRemovalReason();
     error ConsentMissing(address signer);
     error NotProtector();
     error NotHolder();

@@ -1,13 +1,14 @@
 import { ethers, upgrades } from "hardhat";
 
 /**
- * DeedNFT takes its two delegatecall extensions as constructor arguments (they are too large to create in its
+ * DeedNFT takes its three delegatecall extensions as constructor arguments (they are too large to create in its
  * constructor under EIP-3860). Every test that deploys DeedNFT goes through here.
  */
-export async function deployDeedExtensions(): Promise<[string, string]> {
+export async function deployDeedExtensions(): Promise<[string, string, string]> {
   const mint = await (await ethers.getContractFactory("DeedNFTMintExtension")).deploy();
   const trust = await (await ethers.getContractFactory("DeedTrustExtension")).deploy();
-  return [await mint.getAddress(), await trust.getAddress()];
+  const roles = await (await ethers.getContractFactory("DeedRolesExtension")).deploy();
+  return [await mint.getAddress(), await trust.getAddress(), await roles.getAddress()];
 }
 
 export async function deployDeedNFT(initArgs: unknown[], opts: Record<string, unknown> = {}): Promise<any> {
