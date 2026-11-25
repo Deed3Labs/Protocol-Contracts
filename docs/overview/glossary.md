@@ -34,6 +34,7 @@ described under [Protocol](../protocol/README.md).
 | **ESA, Equity Savings Account** | Your savings account. USDC in, CLRUSD out, one for one |
 | **`ESADepositVault`** | The contract that holds the USDC behind CLRUSD |
 | **Float** | Dollars held with the card provider to pay card swipes at shops outside the network. Clear Lending funds the part on credit |
+| **Housing allowance** | Dollars Clear sets aside toward a member's home: $1 for each matched credit in their first 36 months, up to $54,000. No cash value; it goes into the equity balance when an ELPA is signed. Not available yet. See [Your Clear Deed](../members/clear-deed-and-membership.md#2-your-equity-balance) |
 | **LendingPool** | The lending pool on Earn. Members and other contributors put money in, and it lends only to Clear Lending, which funds members' credit with it. A loss reaches it last, after Clear Lending's own layers, and nothing guarantees it |
 | **Lost debt** | Debt written off after a default. Clear Lending bears it, and can draw on the Credit Backstop for it |
 | **Member Assurance** | The part of the reserve that pays members' Assurance grants |
