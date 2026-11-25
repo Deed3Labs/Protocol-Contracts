@@ -57,29 +57,25 @@ export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'pay
 /** On-time streak fallback when no summary is loaded yet. */
 export const ON_TIME_STREAK = 0;
 
-/** Non-rent bills earn 10% of the payment as base credits (capped); rent earns a flat base. */
-export const BILL_CREDIT_RATE = 0.1;
-export const BILL_CREDIT_CAP = 500;
-export const RENT_BASE_CREDITS = 200;
+/** Rent and other bills earn 2% of the payment as base credits, at most 50 for one bill. */
+export const BILL_CREDIT_RATE = 0.02;
+export const BILL_CREDIT_CAP = 50;
 export const MAX_MULTIPLIER = 1.5;
 
 /**
- * Reward multiplier: Accelerated-track members get the full 1.5×; standard members ramp toward it with
- * their on-time streak (+0.25× every 6 on-time months, capped at 1.5×). Mirrors the backend.
+ * Reward multiplier: 1×, plus 0.25× for every 6 on-time months in a row, up to 1.5×. A membership plan
+ * never changes it. Mirrors the backend.
  */
-export const rewardMultiplier = (streak = ON_TIME_STREAK, accelerated = false) =>
-  accelerated ? MAX_MULTIPLIER : Math.min(1 + Math.floor(Math.max(streak, 0) / 6) * 0.25, MAX_MULTIPLIER);
+export const rewardMultiplier = (streak = ON_TIME_STREAK) => Math.min(1 + Math.floor(Math.max(streak, 0) / 6) * 0.25, MAX_MULTIPLIER);
 
 /**
- * Clear Pay equity credits for paying a bill ON TIME (preview of what the backend awards). Rent: flat
- * 200 base. Non-rent bills: 10% of the payment (base capped at 500). Both × the reward multiplier
- * (1.0–1.5, from the on-time streak or Accelerated track). NON-redeemable — credits only count toward
- * the Clear Deed milestone. Never interest/APY. Pass `amount` for the exact payment; else the default.
+ * Credits for paying a bill ON TIME through Clear Pay (preview of what the backend awards): 2% of the
+ * payment, at most 50 for one bill, times the streak multiplier. A bill paid elsewhere and marked paid
+ * earns nothing. Never interest/APY. Pass `amount` for the exact payment; else the default.
  */
-export const creditsFor = (bill: Pick<Bill, 'type' | 'amount'>, streak = ON_TIME_STREAK, amount = 0, accelerated = false) => {
-  const mult = rewardMultiplier(streak, accelerated);
-  const base = bill.type === 'rent' ? RENT_BASE_CREDITS : Math.min((amount > 0 ? amount : bill.amount || 0) * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
-  return Math.round(base * mult);
+export const creditsFor = (bill: Pick<Bill, 'type' | 'amount'>, streak = ON_TIME_STREAK, amount = 0) => {
+  const base = Math.min((amount > 0 ? amount : bill.amount || 0) * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
+  return Math.round(base * rewardMultiplier(streak));
 };
 
 const ICONS: Record<BillType, LucideIcon> = { rent: Home, utility: Zap, subscription: Repeat, card: CreditCard, phone: Smartphone, other: Receipt };
@@ -366,7 +362,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
         amount: paidAmount,
         dueDate: bill.dueDay ? dueDateISO(bill.dueDay) : null,
         period,
-        source: 'in_app',
+        source: 'manual',
       });
       await load();
     },

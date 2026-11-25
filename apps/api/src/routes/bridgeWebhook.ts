@@ -6,6 +6,7 @@ import { emitRampStatus } from '../services/rampNotifications.js';
 import { recordDeposit } from '../services/deposits/depositReceiptService.js';
 import { sweepStore } from '../services/sweeps/sweepStore.js';
 import { markUsdcArrived } from '../services/sweeps/sweepService.js';
+import { payLedgerStore } from '../services/payLedgerStore.js';
 
 /*
  * Bridge webhooks (PUBLIC, signature-verified) — the app-closed-safe source of truth for money that
@@ -132,6 +133,11 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
       const status = TERMINAL_OUT[String(obj.state || objectStatus || '')];
       if (status) {
         await emitRampStatus({ wallet, type: 'sell', status, amount, ref: `btr:${ref}` });
+        // A bill payout that came back earns nothing: void its credits while they are still off chain.
+        if (status === 'failed') {
+          const voided = await payLedgerStore.voidPaymentCredits({ wallet, txRef: ref }).catch(() => 0);
+          if (voided > 0) console.log(`[bridge/webhook] transfer ${ref.slice(0, 8)} ${obj.state}: ${voided} credits voided`);
+        }
       }
     }
     // `customer` events (KYC transitions) are read on demand via /api/bridge/status, so nothing to do.

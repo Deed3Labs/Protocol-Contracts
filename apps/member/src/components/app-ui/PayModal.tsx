@@ -52,7 +52,7 @@ export default function PayModal({
   const { bills, getBill, addBiller, updateBiller, removeBiller, setBillerPayout, payViaUsdc, streak, recordBillPayment } = usePay();
   const { accounts } = useExternalAccounts();
   const bal = useClearBalances();
-  const { email, accelerated } = useMemberProfile();
+  const { email } = useMemberProfile();
   const [va, setVa] = useState<BridgeVirtualAccount | null>(null);
   const sources: Source[] = [
     // Cash = USDC balance, exposed as a Bridge virtual account (account/routing) for ACH-style pulls.
@@ -177,8 +177,10 @@ export default function PayModal({
   const bill = billId ? getBill(billId) : undefined;
   const source = sources.find((s) => s.id === sourceId) ?? sources[0];
   const isRent = bill?.type === 'rent';
-  const credits = bill ? creditsFor(bill, streak, amount, accelerated) : 0;
-  const mult = rewardMultiplier(streak, accelerated);
+  // Only a bill paid now through Clear Pay earns: a scheduled or marked-paid one is a record only.
+  const onClearRails = when === 'now' && sourceId === 'balance' && !!bill?.payable;
+  const credits = bill && onClearRails ? creditsFor(bill, streak, amount) : 0;
+  const mult = rewardMultiplier(streak);
 
   const saveBiller = () => {
     const amt = Number(draft.amount) || 0;
@@ -208,7 +210,7 @@ export default function PayModal({
 
   const creditsBadge = (b: Bill) => (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive/10 px-1.5 py-0.5 text-[10px] font-medium text-positive">
-      <Sparkles className="h-3 w-3" /> +{fmtInt(creditsFor(b, streak, 0, accelerated))}
+      <Sparkles className="h-3 w-3" /> +{fmtInt(creditsFor(b, streak, 0))}
     </span>
   );
 
@@ -500,9 +502,11 @@ export default function PayModal({
                   <Sparkles className="h-[18px] w-[18px]" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-foreground">+{fmtInt(credits)} Equity Credits</div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {onClearRails ? `+${fmtInt(credits)} Equity Credits` : 'No credits for this payment'}
+                  </div>
                   <div className="text-[11px] text-muted-foreground">
-                    {accelerated ? `Accelerated track · ${mult.toFixed(2)}×` : `Pay on time · ${streak}-mo streak (${mult.toFixed(2)}×)`}
+                    {onClearRails ? `Pay on time · ${streak}-mo streak (${mult.toFixed(2)}×)` : 'Credits are earned on bills paid now through Clear Pay'}
                   </div>
                 </div>
                 <Award className="h-4 w-4 shrink-0 text-positive" />
@@ -589,18 +593,20 @@ export default function PayModal({
                   <span className="font-medium text-foreground">{fmt(amount)}</span> {when === 'now' ? 'paid to' : 'to'} {bill.payee}.
                 </div>
 
-                <div className="mt-4 flex w-full items-center gap-2.5 rounded-xl border border-positive/20 bg-positive/5 p-3 text-left">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-positive/15 text-positive">
-                    <Sparkles className="h-[18px] w-[18px]" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-foreground">+{fmtInt(credits)} Equity Credits earned</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {isRent ? 'Toward your Clear Deed · ' : ''}On-time streak now {streak + (when === 'now' ? 1 : 0)} months
+                {credits > 0 && (
+                  <div className="mt-4 flex w-full items-center gap-2.5 rounded-xl border border-positive/20 bg-positive/5 p-3 text-left">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-positive/15 text-positive">
+                      <Sparkles className="h-[18px] w-[18px]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-foreground">+{fmtInt(credits)} Equity Credits earned</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {isRent ? 'Toward your Clear Deed · ' : ''}On-time streak now {streak + (when === 'now' ? 1 : 0)} months
+                      </div>
                     </div>
+                    <Zap className="h-4 w-4 shrink-0 text-positive" />
                   </div>
-                  <Zap className="h-4 w-4 shrink-0 text-positive" />
-                </div>
+                )}
 
                 <button
                   type="button"

@@ -2473,6 +2473,24 @@ export class MemberStore {
   }
 
   /** Membership plan for any of a member's wallets (LIFETIME = Accelerated track, YEARLY = Standard). */
+  /** When the member holding this wallet joined, or null if no member holds it. Starts the Match Period. */
+  async getJoinedAtByWallet(walletAddress: string): Promise<Date | null> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ created_at: Date | string }>(
+        `SELECT created_at FROM ${TABLE_MEMBERS}
+           WHERE primary_wallet = $1
+              OR id = (SELECT member_id FROM ${TABLE_WALLETS} WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+           LIMIT 1`,
+        [addr],
+      );
+    });
+    const v = result.rows[0]?.created_at;
+    return v ? new Date(v) : null;
+  }
+
   async getMembershipPlanByWallet(walletAddress: string): Promise<MemberMembershipPlan> {
     await this.ensureReady();
     const addr = normalizeWalletAddress(walletAddress);

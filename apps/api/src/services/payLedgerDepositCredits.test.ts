@@ -22,6 +22,7 @@ const pool = {
 };
 mock.module('../config/postgres.js', () => ({ getPostgresPool: () => pool, getPayPool: () => pool, closePostgresPool: async () => {} }));
 mock.module('./notificationStore.js', () => ({ notificationStore: { emit: async () => {} } }));
+mock.module('./memberStore.js', () => ({ memberStore: { getJoinedAtByWallet: async () => null } }));
 process.env.SEND_CONTACT_ENCRYPTION_KEY ||= `hex:${'22'.repeat(32)}`;
 
 const { payLedgerStore } = await import('./payLedgerStore');

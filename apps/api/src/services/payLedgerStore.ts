@@ -15,16 +15,36 @@ import { memberStore } from './memberStore.js';
 
 export type BillerType = 'rent' | 'utility' | 'subscription' | 'card' | 'phone' | 'other';
 export type CreditStatus = 'pending' | 'vested' | 'minted' | 'void';
-export type EarnSource = 'in_app' | 'detected';
+/**
+ * Where a payment was made. Only `clear_rails` earns: a bill paid through Clear Pay, the Clear Visa
+ * card or the Clear card. A payment the member marks paid (`manual`) or that a linked bank shows
+ * (`detected`) is recorded for the bill list and the streak, and earns nothing. `in_app` is the old
+ * name some stored rows still carry; nothing records it any more.
+ */
+export type EarnSource = 'clear_rails' | 'manual' | 'detected' | 'in_app';
 
 const GRACE_DAYS = 3; // paid within N days of due_date still counts as on-time
 const VEST_DAYS = 30; // pending → vested clawback/settlement window
-const BILL_CREDIT_RATE = 0.1; // non-rent bills earn 10% of the payment as BASE credits
-const BILL_CREDIT_CAP = 500; // max BASE credits from a single non-rent bill (before the multiplier)
-const RENT_BASE_CREDITS = 200; // rent earns a flat base per on-time payment
-const MAX_MULTIPLIER = 1.5; // Accelerated-plan members + top on-time streaks
-const DEPOSIT_MATCH_PER_USD = 1; // equity credits matched per $1 deposited into the ESA vault
-const DEPOSIT_MATCH_MONTHLY_CAP = 1500; // max deposit-match credits awarded per calendar month
+const BILL_CREDIT_RATE = 0.02; // rent and other bills earn 2% of the payment as BASE credits
+const BILL_CREDIT_CAP = 50; // max BASE credits from one bill (before the multiplier)
+const MAX_MULTIPLIER = 1.5; // top on-time streaks
+const DEPOSIT_MATCH_PER_USD = 1; // saving credits per whole $1 put into savings
+const DEPOSIT_MATCH_MONTHLY_CAP = 1500; // max saving credits per calendar month
+const SAVING_LIFETIME_CAP = 54_000; // max saving credits ever, per network
+const MATCH_PERIOD_MONTHS = 36; // saving credits are earned only in the member's first 36 months
+
+/**
+ * Whether `at` falls inside the member's Match Period: their first 36 months of membership. The
+ * period also ends at their first ELPA, which closes it on chain (the Points Issuer then refuses
+ * saving mints); this side only knows the join date. A wallet with no member record is not held back
+ * here: the Points Issuer refuses a saving mint outside an opened period anyway.
+ */
+export function inMatchPeriod(joinedAt: Date | null, at: Date = new Date()): boolean {
+  if (!joinedAt) return true;
+  const end = new Date(joinedAt);
+  end.setUTCMonth(end.getUTCMonth() + MATCH_PERIOD_MONTHS);
+  return at < end;
+}
 
 export type CreditNetwork = 'mainnet' | 'testnet';
 const MAINNET_CHAIN_IDS = new Set([1, 8453, 10, 42161, 137, 100]);
@@ -86,24 +106,20 @@ async function netSavingsUsd(pool: NonNullable<ReturnType<typeof getPayPool>>, w
 }
 
 /**
- * Reward multiplier on the base credits. Accelerated-plan members (membershipPlan LIFETIME) get the full
- * 1.5×; standard members ramp toward it with their on-time streak (+0.25× every 6 on-time months, capped
- * at 1.5×). Mirrors the frontend rewardMultiplier.
+ * Reward multiplier on the base credits: 1×, plus 0.25× for every 6 on-time months in a row, up to
+ * 1.5×. A membership plan never changes it.
  */
-function rewardMultiplier(streak: number, accelerated: boolean): number {
-  if (accelerated) return MAX_MULTIPLIER;
+export function rewardMultiplier(streak: number): number {
   return Math.min(1 + Math.floor(Math.max(streak, 0) / 6) * 0.25, MAX_MULTIPLIER);
 }
 
 /**
- * Equity credits for an on-time payment, rounded to the nearest credit:
- *  - Rent: a flat 200 base (× multiplier → 300 for Accelerated / 12-month streaks).
- *  - Non-rent bills: 10% of the payment, base capped at 500, × the multiplier.
+ * Credits for an on-time rent or bill payment made on Clear Rails, rounded to the nearest credit:
+ * 2% of the payment, at most 50 for one bill, times the streak multiplier.
  */
-function creditAmount(type: BillerType, streak: number, accelerated: boolean, paidAmount: number): number {
-  const mult = rewardMultiplier(streak, accelerated);
-  const base = type === 'rent' ? RENT_BASE_CREDITS : Math.min(Math.max(paidAmount, 0) * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
-  return Math.round(base * mult);
+export function creditAmount(streak: number, paidAmount: number): number {
+  const base = Math.min(Math.max(paidAmount, 0) * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
+  return Math.round(base * rewardMultiplier(streak));
 }
 
 async function ensureTables(): Promise<void> {
@@ -557,9 +573,10 @@ export const payLedgerStore = {
   },
 
   /**
-   * Record a payment and (if on-time) award an equity credit. Idempotent per (wallet, biller, period):
-   * a payment already recorded for that biller+period earns nothing further, so in-app and detected
-   * paths can't double-credit. Returns the credit amount awarded (0 if none/duplicate).
+   * Record a payment and, if it was made on Clear Rails and on time, award its credits. Idempotent per
+   * (wallet, biller, period): a payment already recorded for that biller+period earns nothing further,
+   * so the Clear Pay, manual and detected paths can't double-credit. Returns the credit amount awarded
+   * (0 if none/duplicate).
    */
   async recordPayment(input: {
     wallet: string;
@@ -598,11 +615,10 @@ export const payLedgerStore = {
       return { creditAwarded: 0, onTime, duplicate: true }; // already paid this period
     }
 
-    if (!onTime) return { creditAwarded: 0, onTime, duplicate: false };
+    if (!onTime || input.source !== 'clear_rails') return { creditAwarded: 0, onTime, duplicate: false };
 
     const streak = await computeStreak(input.wallet);
-    const accelerated = (await memberStore.getMembershipPlanByWallet(input.wallet).catch(() => null)) === 'LIFETIME';
-    const amount = creditAmount(input.type, streak, accelerated, input.amount);
+    const amount = creditAmount(streak, input.amount);
     const vestUntil = new Date(paidAt);
     vestUntil.setDate(vestUntil.getDate() + VEST_DAYS);
     await pool.query(
@@ -614,7 +630,7 @@ export const payLedgerStore = {
       void notificationStore.emit({
         wallet: input.wallet,
         kind: 'credit',
-        title: 'Equity credits earned',
+        title: 'Credits earned',
         body: `+${amount} credits for on-time ${input.type === 'rent' ? 'rent' : input.name}`,
         data: { amount, reason: input.type, href: '/' },
         dedupeKey: `credit:${paymentId}`,
@@ -624,8 +640,29 @@ export const payLedgerStore = {
   },
 
   /**
-   * Award equity-credit MATCH for a savings deposit (USDC → ESA vault): 1 credit per $1, capped at
-   * DEPOSIT_MATCH_MONTHLY_CAP credits per calendar month. Pending for 30 days and clawed back (voided)
+   * A payment that was reversed, returned or refunded earns nothing: its credits are voided while they
+   * are still off chain (pending or vested). Credits already minted are left alone; taking those back is
+   * the Points Issuer's two-reviewer reversal. Matched by the payment's provider reference. Returns the
+   * credits voided.
+   */
+  async voidPaymentCredits(input: { wallet: string; txRef: string }): Promise<number> {
+    const pool = getPayPool();
+    if (!pool || !input.txRef) return 0;
+    await ensureTables();
+    const r = await pool.query(
+      `UPDATE pay_credits c SET status = 'void'
+         FROM pay_payments p
+        WHERE c.payment_id = p.id AND p.wallet = $1 AND p.tx_ref = $2 AND c.status IN ('pending','vested')
+        RETURNING c.amount`,
+      [input.wallet, input.txRef],
+    );
+    return r.rows.reduce((t, row) => t + num(row.amount), 0);
+  },
+
+  /**
+   * Award saving credits for a savings deposit (USDC → ESA vault): 1 credit per $1, capped at
+   * DEPOSIT_MATCH_MONTHLY_CAP credits per calendar month and SAVING_LIFETIME_CAP in all, and only inside
+   * the member's Match Period. Pending for 30 days and clawed back (voided)
    * if the user redeems within that window — so only deposits that stay in ≥30 days vest. Idempotent
    * per deposit txRef.
    *
@@ -663,7 +700,10 @@ export const payLedgerStore = {
       [input.wallet, input.network],
     );
     const remaining = Math.max(0, DEPOSIT_MATCH_MONTHLY_CAP - num(mtd.rows[0]?.s));
-    const award = Math.min(usd, remaining, uncredited);
+    const lifetimeLeft = Math.max(0, SAVING_LIFETIME_CAP - (await depositCreditsEarned(pool, input.wallet, input.network)));
+    const joinedAt = await memberStore.getJoinedAtByWallet(input.wallet).catch(() => null);
+    if (!inMatchPeriod(joinedAt)) return { creditAwarded: 0, duplicate: false };
+    const award = Math.min(usd, remaining, uncredited, lifetimeLeft);
     if (award <= 0) return { creditAwarded: 0, duplicate: false };
 
     const vestUntil = new Date();
@@ -677,8 +717,8 @@ export const payLedgerStore = {
     void notificationStore.emit({
       wallet: input.wallet,
       kind: 'credit',
-      title: '1:1 match applied',
-      body: `+${award} equity credits matched on your savings deposit`,
+      title: 'Credits earned',
+      body: `+${award} credits for your savings deposit`,
       data: { amount: award, reason: 'deposit_match', href: '/' },
       dedupeKey: `credit:deposit:${input.txRef}`,
     }).catch(() => {});
