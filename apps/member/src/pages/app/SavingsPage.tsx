@@ -148,7 +148,7 @@ export default function SavingsPage({
     nextBar = (
       <div className="c-sv-next c-ok">
         <span>
-          Ready &middot; <b>Your Clear Deed</b>
+          Ready &middot; <b>Apply for your home</b>
         </span>
         {/* No ELPA flow exists in the app yet: the hand-off is drawn and waits on it. */}
         <Btn primary disabled title="The ELPA flow isn't built yet">

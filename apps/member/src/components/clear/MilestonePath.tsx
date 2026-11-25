@@ -65,7 +65,7 @@ export default function MilestonePath({ milestones, savings }: { milestones: Mil
       </CMain>
       <CFoot>
         <Line className="items-center!">
-          <span className="c-det">Clear Deed at {count(creditsGoal)}</span>
+          <span className="c-det">Home path opens at {count(creditsGoal)}</span>
           <span className="c-det">
             {done} of {milestones.length} done
           </span>
