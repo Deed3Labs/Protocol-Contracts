@@ -28,6 +28,7 @@ on-chain state: see [Governance](../../governance/README.md).
 | [CLRUSDTokenPool](./CLRUSDTokenPool.md) | Base Sepolia, Ethereum Sepolia | [savings](../savings.md) |
 | [CollateralAgent](./CollateralAgent.md) | Base Sepolia | — |
 | [CollateralRegistry](./CollateralRegistry.md) | Base Sepolia | [credit](../credit.md) |
+| [CoopTransferAgent](./CoopTransferAgent.md) | Base Sepolia | — |
 | [Create2Deployer](./Create2Deployer.md) | Base Sepolia, Base, Ethereum Sepolia | — |
 | [CreditsAccessManager](./CreditsAccessManager.md) | Base Sepolia | — |
 | [CreditsLedger](./CreditsLedger.md) | Base Sepolia | — |
@@ -40,6 +41,7 @@ on-chain state: see [Governance](../../governance/README.md).
 | [ESADepositVault](./ESADepositVault.md) | Base Sepolia, Base | [savings](../savings.md) |
 | [Fractionalize](./Fractionalize.md) | Base Sepolia | [fractionalization](../deed-track/fractionalization.md) |
 | [FractionTokenFactory](./FractionTokenFactory.md) | Base Sepolia | [fractionalization](../deed-track/fractionalization.md) |
+| [FunctionalContractRegistry](./FunctionalContractRegistry.md) | Base Sepolia | — |
 | [FundManager](./FundManager.md) | Base Sepolia | [smart-contracts](../deed-track/smart-contracts.md) |
 | [HolderDirections](./HolderDirections.md) | Base Sepolia | — |
 | [HousingAllowanceRecord](./HousingAllowanceRecord.md) | Base Sepolia | — |
@@ -57,6 +59,7 @@ on-chain state: see [Governance](../../governance/README.md).
 | [PointsIssuer](./PointsIssuer.md) | Base Sepolia | — |
 | [PoolShareEnforcer](./PoolShareEnforcer.md) | Base Sepolia | — |
 | [RateSchedule](./RateSchedule.md) | Base Sepolia | — |
+| [RedemptionAgent](./RedemptionAgent.md) | Base Sepolia | — |
 | [RevolvingIssuer](./RevolvingIssuer.md) | Base Sepolia | [credit](../credit.md) |
 | [RevolvingIssuerCardFee](./RevolvingIssuerCardFee.md) | Base Sepolia | — |
 | [SavingsIntentFactory](./SavingsIntentFactory.md) | Base Sepolia | [savings](../savings.md) |

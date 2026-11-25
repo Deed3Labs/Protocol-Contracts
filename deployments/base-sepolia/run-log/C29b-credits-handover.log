@@ -1,0 +1,36 @@
+network                  base-sepolia (84532)
+= CreditsAccessManager     0x2b85D9649d8aC4502Cbacdeb0541E77Bd78965be
+= CreditsLedger            0x6a46c688F0D84cB6c8e66D7E9546e2A236bAD3d5
+= CreditsNetworkRegistry   0xa204AB2bF9aaBCe38389051109Fdf22C37D8e545
+= CreditsMerchantRegistry  0x67AC0a3b927b2A43FA76827DA3074B33f7fe3700
+= PointsIssuer             0xd254Bd2C78791a666eEfC4A7B6163d5d47C842a3
+= HousingAllowanceRecord   0x26D8540881249bcD253810aBC2242b5a572729B5
+  = ledger is an operator of its AccessManager
+  = Points Issuer is an operator of the AccessManager
+  = ledger reads its network registry
+  = ledger applies its transfer policy (merchant registry set)
+  = Points Issuer is the ledger's only issuer
+  = Points Issuer is the ledger's only system recipient
+  = Points Issuer's line cap 10000000 credits
+  = Points Issuer redeems into the Housing Allowance Record
+  = merchant registry operator role renounced
+  = merchant registry admin role renounced
+  = CREDITS_MINTER_ROLE -> 0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd
+  = CREDITS_MEMBERS_ROLE -> 0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd
+  = CREDITS_REVIEW_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23
+  = CREDITS_REVIEW_ROLE -> 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+  = HOUSING_WRITER_ROLE -> 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+
+handing over to 0x39411C23825844c4B14ad964a661d1Cb8238d330
+  + AccessManager admin -> timelock
+  + HousingAllowanceRecord admin -> timelock
+  + PointsIssuer owner -> timelock
+  + CreditsNetworkRegistry admin -> timelock
+  + deployer renounces the record's admin
+  + deployer renounces the registry's admin
+  + deployer renounces the AccessManager's admin
+
+left to do:
+  - deploy 30 (Deed v5): the RedemptionAgent, then HousingAllowanceRecord.setDeedContract(agent)
+  - the API: CREDITS_LEDGER_84532=0x6a46c688F0D84cB6c8e66D7E9546e2A236bAD3d5, POINTS_ISSUER_84532=0xd254Bd2C78791a666eEfC4A7B6163d5d47C842a3,
+    HOUSING_ALLOWANCE_RECORD_84532=0x26D8540881249bcD253810aBC2242b5a572729B5

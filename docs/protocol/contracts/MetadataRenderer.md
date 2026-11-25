@@ -6,7 +6,7 @@ Source: [`contracts/core/MetadataRenderer.sol`](../../../contracts/core/Metadata
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x849e13500658a789311923b86b0eB60a87C870E5`](https://sepolia.basescan.org/address/0x849e13500658a789311923b86b0eB60a87C870E5) |
+| Base Sepolia | 84532 | [`0xC565a69A41b98482B437eB4182051196278EC240`](https://sepolia.basescan.org/address/0xC565a69A41b98482B437eB4182051196278EC240) |
 
 ## Functions that change state
 
@@ -55,6 +55,7 @@ Anyone can call these; they change nothing.
 | `getTokenGallery(uint256 tokenId)` | string[] |
 | `getTokenLegalInfo(uint256 tokenId)` | string jurisdiction, string registrationNumber, string registrationDate, string[] documents, string[] restrictions, string additionalInfo |
 | `hasRole(bytes32 role, address account)` | bool |
+| `legalRecordVersion(uint256)` | uint256 |
 | `owner()` | address |
 | `proxiableUUID()` | bytes32 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
@@ -66,19 +67,20 @@ Anyone can call these; they change nothing.
 | Event |
 |---|
 | `AdminChanged(address previousAdmin, address newAdmin)` |
+| `BatchMetadataUpdate(uint256 _fromTokenId indexed, uint256 _toTokenId indexed)` |
 | `BeaconUpgraded(address beacon indexed)` |
 | `CompatibleDeedContractAdded(address contractAddress indexed)` |
 | `CompatibleDeedContractRemoved(address contractAddress indexed)` |
+| `DocumentRecordUpdated(uint256 tokenId indexed, uint256 version indexed, string docType, string documentURI, bool removed, address editor indexed)` |
 | `Initialized(uint8 version)` |
+| `LegalRecordUpdated(uint256 tokenId indexed, uint256 version indexed, bytes32 recordHash, address editor indexed)` |
 | `MetadataInitialized(uint256 tokenId indexed, string ipfsHash)` |
 | `MetadataSynced(uint256 tokenId indexed, bytes32 traitKey indexed, bytes value)` |
+| `MetadataUpdate(uint256 tokenId indexed)` |
 | `OwnershipTransferred(address previousOwner indexed, address newOwner indexed)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
-| `TokenCustomMetadataUpdated(uint256 tokenId indexed)` |
-| `TokenGalleryUpdated(uint256 tokenId indexed)` |
-| `TokenMetadataUpdated(uint256 tokenId indexed)` |
 | `Upgraded(address implementation indexed)` |
 
 ## Errors

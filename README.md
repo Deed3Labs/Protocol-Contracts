@@ -276,7 +276,7 @@ only the surplus is redeemable.
 Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 
 <details>
-<summary><b>Base Sepolia</b> — the working network (53 contracts)</summary>
+<summary><b>Base Sepolia</b> — the working network (56 contracts)</summary>
 
 
 Each contract's page in the [contract reference](docs/protocol/contracts/README.md) lists its functions and who can call them.
@@ -297,6 +297,7 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [CLRUSDTokenPool](docs/protocol/contracts/CLRUSDTokenPool.md) | `0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1` |
 | [CollateralAgent](docs/protocol/contracts/CollateralAgent.md) | `0x48840620F9F4780e7d5986F6365A4acdD7D82825` |
 | [CollateralRegistry](docs/protocol/contracts/CollateralRegistry.md) | `0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A` |
+| [CoopTransferAgent](docs/protocol/contracts/CoopTransferAgent.md) | `0x8803f70f83D624D26935B03CfcAfbeAAf66a766A` |
 | [Create2Deployer](docs/protocol/contracts/Create2Deployer.md) | `0x2BFba336A1B5E79E4717CA00677C65DDCa63cB06` |
 | [CreditsAccessManager](docs/protocol/contracts/CreditsAccessManager.md) | `0x2b85D9649d8aC4502Cbacdeb0541E77Bd78965be` |
 | [CreditsLedger](docs/protocol/contracts/CreditsLedger.md) | `0x6a46c688F0D84cB6c8e66D7E9546e2A236bAD3d5` |
@@ -307,9 +308,10 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [EarnControls](docs/protocol/contracts/EarnControls.md) | `0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97` |
 | [EarnTimelock](docs/protocol/contracts/EarnTimelock.md) | `0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911` |
 | [ESADepositVault](docs/protocol/contracts/ESADepositVault.md) | `0x836401Ed3e2bF7CAb5e2721188E74B834511413b` |
-| [Fractionalize](docs/protocol/contracts/Fractionalize.md) | `0xeC464847C664Cc208478adbe377f7Db19e199823` |
-| [FractionTokenFactory](docs/protocol/contracts/FractionTokenFactory.md) | `0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc` |
-| [FundManager](docs/protocol/contracts/FundManager.md) | `0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e` |
+| [Fractionalize](docs/protocol/contracts/Fractionalize.md) | `0x6C896EeE9D3c6984a6B0225B0c17c9Df914Fbd76` |
+| [FractionTokenFactory](docs/protocol/contracts/FractionTokenFactory.md) | `0xc7E3234E058cc7793Ac68F471c09693f14cb166E` |
+| [FunctionalContractRegistry](docs/protocol/contracts/FunctionalContractRegistry.md) | `0xAAb503A7ccd33CBD1FC7e669D6FAAdfF3a923c5C` |
+| [FundManager](docs/protocol/contracts/FundManager.md) | `0xe5E038A44DaAfE88fA20902489E4308ADD72e453` |
 | [HolderDirections](docs/protocol/contracts/HolderDirections.md) | `0x8ec35b88CCb59576957917a4F4B937b491815Cda` |
 | [HousingAllowanceRecord](docs/protocol/contracts/HousingAllowanceRecord.md) | `0x26D8540881249bcD253810aBC2242b5a572729B5` |
 | [LendingPool](docs/protocol/contracts/LendingPool.md) | `0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23` |
@@ -318,7 +320,7 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [Liquidator](docs/protocol/contracts/Liquidator.md) | `0x621784117C037b3D20AF54e04589818e919e33f3` |
 | [MembershipRegistry](docs/protocol/contracts/MembershipRegistry.md) | `0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8` |
 | [MerchantRegistry](docs/protocol/contracts/MerchantRegistry.md) | `0x8f4C6f9472359BF749c12C840c4269341a423c1b` |
-| [MetadataRenderer](docs/protocol/contracts/MetadataRenderer.md) | `0x849e13500658a789311923b86b0eB60a87C870E5` |
+| [MetadataRenderer](docs/protocol/contracts/MetadataRenderer.md) | `0xC565a69A41b98482B437eB4182051196278EC240` |
 | [NetworkRegistry](docs/protocol/contracts/NetworkRegistry.md) | `0xee10a0d79a718cd13c49b68ce6ccCda398781164` |
 | [OffersIssuer](docs/protocol/contracts/OffersIssuer.md) | `0x52EDD619B18D537B4c880d6Ff0925891ea05Edb1` |
 | [PauseClock](docs/protocol/contracts/PauseClock.md) | `0x794Acc0c1BD0effaa7B413F60C5B56F60A229959` |
@@ -326,15 +328,16 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [PointsIssuer](docs/protocol/contracts/PointsIssuer.md) | `0xd254Bd2C78791a666eEfC4A7B6163d5d47C842a3` |
 | [PoolShareEnforcer](docs/protocol/contracts/PoolShareEnforcer.md) | `0xEB6f2c654d078Df56D78946767d5A43307eb4fa1` |
 | [RateSchedule](docs/protocol/contracts/RateSchedule.md) | `0xdb73Ae35D0A22A4CA6bc03F263CF006D16a28b97` |
+| [RedemptionAgent](docs/protocol/contracts/RedemptionAgent.md) | `0xBbBdf1302ED3Ef7861D757eAC28AcEEa019FAB84` |
 | [RevolvingIssuer](docs/protocol/contracts/RevolvingIssuer.md) | `0xBec598bee24cF2973d42eA85e6028621180fE2F0` |
 | [RevolvingIssuerCardFee](docs/protocol/contracts/RevolvingIssuerCardFee.md) | `0x7eDe0306a079cc473DD8298C6bCe727e2497d71f` |
 | [SavingsIntentFactory](docs/protocol/contracts/SavingsIntentFactory.md) | `0xF8074182d9ec61970bBC9E4aaE182B42dF7Bb74B` |
 | [SettlementForwarder](docs/protocol/contracts/SettlementForwarder.md) | `0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c` |
-| [Subdivide](docs/protocol/contracts/Subdivide.md) | `0x3c947D71cb1698dFd4D7551b87E17306865C923F` |
+| [Subdivide](docs/protocol/contracts/Subdivide.md) | `0xfB54f5F05d63FF80Bc94d5810321355c4Ee30f60` |
 | [TermIssuer](docs/protocol/contracts/TermIssuer.md) | `0x1b1695353f14E889906237D9b9C386eD0393da57` |
 | [TokenRegistry](docs/protocol/contracts/TokenRegistry.md) | `0x4B13b49167941d128DB56008AdfDac805f868a86` |
-| [Validator](docs/protocol/contracts/Validator.md) | `0x18C53C0D046f98322954f971c21125E4443c79b9` |
-| [ValidatorRegistry](docs/protocol/contracts/ValidatorRegistry.md) | `0x979E6cC741A8481f96739A996D06EcFb9BA2bc91` |
+| [Validator](docs/protocol/contracts/Validator.md) | `0x5036ca87256f7526Fc2374dD2Bf8697e4Cd98f9A` |
+| [ValidatorRegistry](docs/protocol/contracts/ValidatorRegistry.md) | `0x9E5c7D64bF3EB1fa3B7338608bbBD30ae64717ec` |
 | [VaultTimelock](docs/protocol/contracts/VaultTimelock.md) | `0xb49c85E8E7eFB4401aaAb2745C9198a239071994` |
 
 23 older records (names ending in `PreAudit`, `Pre2d`, `Pre2f`, `Legacy` or `V1`) are kept in `deployments/base-sepolia/` for history. They are retired and replaced by the contracts above. So are `AssurancePool` (`0xf5E4…5840`) and `AssuranceOracle` (`0x2E52…Fe38`), the Phase 1 reserve, and `BurnerBondDeposit` (`0xA030…dB8c`), a record left under the retired bond deposit contract's name.

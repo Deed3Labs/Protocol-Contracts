@@ -1,0 +1,282 @@
+{
+  "address": "0xBbBdf1302ED3Ef7861D757eAC28AcEEa019FAB84",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "deedNFT_"
+        },
+        {
+          "type": "address",
+          "name": "housingRecord_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NotCoopDeed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "NotDeedNFT",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "NotDepositor",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "NotHeld",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NotOccupant",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId"
+        },
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NotSponsor",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "StillLive",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "WrongMember",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId"
+        },
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Deposited",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "depositor",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Redeemed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Released",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "depositor",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "beneficialOwnerOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tokenId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deedNFT",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "address",
+              "name": "member"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "housingRecord",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "onERC721Received",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": "from"
+        },
+        {
+          "type": "uint256",
+          "name": "tokenId"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes4",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "redeemHome",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "release",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "homeId"
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "blockNumber": 0
+}
