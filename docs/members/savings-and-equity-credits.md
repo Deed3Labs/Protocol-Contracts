@@ -26,44 +26,53 @@ credits still vesting, and shows what your savings add to your credit line.
 
 ### How you earn them
 
-**Matched savings.** Every whole dollar you move into savings earns one equity credit — up to 1,500
-matched credits in a calendar month. Auto-save deposits count the same as any other.
+**Equity credits are points.** They are recorded on the chain, on a ledger of their own, against
+your account. Nobody can transfer them, including you, and the amounts are public, as savings
+balances already are.
 
-**On-time rent and bills through Clear Pay.** A payment counts as on time if it is made no more than
-three days after its due date.
+**Saving: the match.** In your first 36 months, every whole dollar you move into savings earns one
+equity credit once it has been in savings for 30 days without being borrowed against. You can earn
+up to 1,500 credits this way in a calendar month, and 54,000 in all. Signing an ELPA ends the match.
+Auto-save deposits count the same as any other.
+
+**On-time rent and bills paid through Clear**: Clear Pay, the Clear Visa card or the Clear card. A
+payment counts as on time if it is made no more than three days after its due date.
 
 | Payment | Base credits |
 |---|---|
-| Rent | 200 for each on-time payment |
-| Any other bill | 10% of the amount paid, up to 500 for one bill |
+| Rent, or any other bill | 2% of the amount paid, up to 50 credits for one bill |
 
 The base is then multiplied by your **multiplier**. It starts at 1× and rises by 0.25× for every six
-months in a row you've paid on time, up to 1.5×.
+months in a row you've paid on time, up to 1.5×. So on-time rent of $1,500 earns 30 credits, rising
+to 45 with a long streak. The multiplier applies to rent and bills, not to the match, and your
+membership plan never changes it.
 
-So on-time rent earns between 200 and 300 credits. The multiplier applies to rent and bill credits,
-not to matched savings. Plans are explained in
-[Membership and settings](./clear-deed-and-membership.md#membership-plans).
+- **Paid with your Clear credit line or a term plan?** The bill earns credits once that credit is
+  repaid in full.
+- **Paid outside Clear?** A bill the app only sees in a linked bank account earns nothing.
 
-### Vesting
+### When credits arrive
 
-**New credits vest after 30 days.** Until then they show as vesting, beside your vested credits in
-**What you hold**. Each award also arrives as a notification saying how many credits you earned.
+**New credits arrive after 30 days.** Until then they show as vesting, beside the credits you hold
+in **What you hold**, and each award arrives as a notification saying how many credits you earned.
 
-Matched credits are the ones that can be undone while they vest: move savings back out within those
-30 days and the matching credits are cancelled, newest first, up to the amount you moved. Vested
-credits are kept.
+- Move savings back out within those 30 days, and those dollars earn nothing.
+- A payment that is reversed, returned or refunded before then earns nothing.
+- If your savings are backing credit you've drawn, the 30 days pause on that amount until you repay,
+  and the Savings page shows your home path as **Paused** and offers **Top off**.
 
-If your savings are backing credit you've drawn, the Savings page shows your home path as **Paused**
-and offers **Top off** to put money back into savings.
+Credits that have arrived are kept.
 
 ### What credits do
 
-- At 15,000 credits earned you can apply for an ELPA, the agreement that leads to your Clear Deed.
-  See [Your Clear Deed](./clear-deed-and-membership.md#your-clear-deed).
-- Once you've signed an ELPA, you can redeem them into your Housing Allowance toward the home, at $1
-  a credit, up to $54,000. Redeeming doesn't lower the 15,000 count. Not available yet.
-- They unlock your protections. See [Assurance](./assurance-and-disputes.md#your-protections).
-- **They can't be withdrawn, sold or redeemed for cash.**
+- **They count toward 15,000.** At 15,000 credits earned, counting every credit you've ever had, you
+  can apply for an ELPA, the agreement that leads to your Clear Deed. See
+  [Your Clear Deed](./clear-deed-and-membership.md#your-clear-deed).
+- **They redeem into your Housing Allowance.** Once you've signed an ELPA, you can redeem them into
+  your Housing Allowance toward the home, at $1 a credit, up to $54,000. Redeeming doesn't lower the
+  15,000 count.
+- **They unlock your protections.** See [Assurance](./assurance-and-disputes.md#your-protections).
+- **They can't be withdrawn, sold, transferred or redeemed for cash.**
 
 ### On track for
 

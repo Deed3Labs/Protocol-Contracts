@@ -56,14 +56,17 @@ agreement that leads to your Clear Deed.
 
 You earn them two ways:
 
-- **Matched savings.** Each dollar you deposit is matched with an equity credit, up to a monthly
-  limit. A match settles after 30 days; take that deposit out sooner and its match is cancelled.
-- **Paying on time through Clear Pay.** Rent paid on time earns credits, and so do other bills.
+- **Matched savings.** In your first 36 months, each dollar you deposit is matched with an equity
+  credit, up to a monthly limit. A match arrives after 30 days; take that deposit out sooner and it
+  earns nothing.
+- **Paying on time through Clear.** Rent and other bills paid on time through Clear Pay, the Clear
+  Visa card or the Clear card earn credits.
 
 A record of paying on time makes the bill and rent credits add up faster. The exact rules are in
 [Parameters and who sets them](../governance/parameters.md).
 
-Equity credits are kept by Clear's server, not by a contract. No contract on the chain holds them.
+Equity credits are points, recorded on the chain on a ledger of their own. Nobody can transfer them,
+including you.
 
 ### Clear Deed
 
