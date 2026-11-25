@@ -471,7 +471,10 @@ describe("AUDIT deed: trust agreement v5", function () {
       // swapped extensions are refused at construction
       const mint = await (await ethers.getContractFactory("DeedNFTMintExtension")).deploy();
       const tr = await (await ethers.getContractFactory("DeedTrustExtension")).deploy();
-      await expect((await ethers.getContractFactory("DeedNFT")).deploy(await tr.getAddress(), await mint.getAddress()))
+      const ot = await (await ethers.getContractFactory("DeedRolesExtension")).deploy();
+      await expect((await ethers.getContractFactory("DeedNFT")).deploy(await tr.getAddress(), await mint.getAddress(), await ot.getAddress()))
+        .to.be.revertedWithCustomError(deed, "ExtensionMismatch");
+      await expect((await ethers.getContractFactory("DeedNFT")).deploy(await mint.getAddress(), await tr.getAddress(), await tr.getAddress()))
         .to.be.revertedWithCustomError(deed, "ExtensionMismatch");
       // the trust registries are set once
       await expect(ctx.trust.setTrustRegistries(ctx.alice.address, ethers.ZeroAddress)).to.be.revertedWithCustomError(ctx.trust, "RegistryAlreadySet");

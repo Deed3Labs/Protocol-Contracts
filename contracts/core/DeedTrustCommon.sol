@@ -42,6 +42,7 @@ interface IDeedNFTExtensionKind {
 abstract contract DeedTrustCommon is DeedNFTBase {
     bytes32 internal constant MINT_EXTENSION_KIND = keccak256("DeedNFTMintExtension.v5");
     bytes32 internal constant TRUST_EXTENSION_KIND = keccak256("DeedTrustExtension.v5");
+    bytes32 internal constant ROLES_EXTENSION_KIND = keccak256("DeedRolesExtension.v1");
 
     uint8 internal constant POLICY_OPEN = 0;
     uint8 internal constant POLICY_VERIFIED = 1;
@@ -154,5 +155,29 @@ abstract contract DeedTrustCommon is DeedNFTBase {
 
     function _trusteeAcceptanceHash(uint256 tokenId, address trustee, uint256 nonce) internal pure returns (bytes32) {
         return keccak256(abi.encode(TRUSTEE_ACCEPTANCE_TYPEHASH, tokenId, trustee, nonce));
+    }
+
+    function _liveTrust(uint256 tokenId) internal view returns (IDeedTrust.TrustRecord storage r) {
+        if (!_exists(tokenId)) revert IDeedTrust.UnknownDeed();
+        r = _trust[tokenId];
+        if (r.agreementHash == bytes32(0)) revert IDeedTrust.NotTrustDeed();
+    }
+
+    function _protector(IDeedTrust.TrustRecord storage r, address holder) internal view returns (address) {
+        return r.protector != address(0) ? r.protector : holder;
+    }
+
+    function _installTrustee(uint256 tokenId, IDeedTrust.TrustRecord storage r, address trustee) internal {
+        r.trustee = trustee;
+        _setTraitRaw(tokenId, KEY_TRUSTEE, abi.encode(trustee));
+        if (r.trusteeSuspended) {
+            r.trusteeSuspended = false;
+            _setTraitRaw(tokenId, KEY_SUSPENDED, abi.encode(false));
+        }
+        if (r.standbyTrustee == trustee) {
+            r.standbyTrustee = address(0);
+            _setTraitRaw(tokenId, KEY_STANDBY, abi.encode(address(0)));
+            emit IDeedTrust.StandbyTrusteeChanged(tokenId, trustee, address(0));
+        }
     }
 }

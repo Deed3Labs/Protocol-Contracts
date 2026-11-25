@@ -46,7 +46,9 @@ async function main() {
   await mintExt.waitForDeployment();
   const trustExt = await (await ethers.getContractFactory("DeedTrustExtension")).deploy();
   await trustExt.waitForDeployment();
-  const impl = await DeedNFT.deploy(await mintExt.getAddress(), await trustExt.getAddress());
+  const rolesExt = await (await ethers.getContractFactory("DeedRolesExtension")).deploy();
+  await rolesExt.waitForDeployment();
+  const impl = await DeedNFT.deploy(await mintExt.getAddress(), await trustExt.getAddress(), await rolesExt.getAddress());
   await impl.waitForDeployment();
   const implAddress = await impl.getAddress();
   console.log(`New implementation ${implAddress} (extensions ${await mintExt.getAddress()}, ${await trustExt.getAddress()})`);
@@ -68,7 +70,7 @@ async function main() {
   // Register the proxy and its new implementation in the manifest for future upgrades.
   await upgrades.forceImport(proxy, DeedNFT, {
     kind: "uups",
-    constructorArgs: [await mintExt.getAddress(), await trustExt.getAddress()],
+    constructorArgs: [await mintExt.getAddress(), await trustExt.getAddress(), await rolesExt.getAddress()],
   } as any);
   console.log("Manifest updated.");
 }

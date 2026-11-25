@@ -33,14 +33,16 @@ async function main() {
   console.log("Deploying DeedNFT extensions...");
   const mintExt = await (await hre.ethers.getContractFactory("DeedNFTMintExtension")).deploy();
   const trustExt = await (await hre.ethers.getContractFactory("DeedTrustExtension")).deploy();
+  const rolesExt = await (await hre.ethers.getContractFactory("DeedRolesExtension")).deploy();
   await mintExt.waitForDeployment();
   await trustExt.waitForDeployment();
+  await rolesExt.waitForDeployment();
   console.log("Deploying DeedNFT...");
   const DeedNFT = await hre.ethers.getContractFactory("DeedNFT");
   const deedNFT = await hre.upgrades.deployProxy(DeedNFT, [validatorAddress, validatorRegistryAddress], {
     initializer: "initialize",
     kind: "uups",
-    constructorArgs: [await mintExt.getAddress(), await trustExt.getAddress()],
+    constructorArgs: [await mintExt.getAddress(), await trustExt.getAddress(), await rolesExt.getAddress()],
     unsafeAllow: ["constructor", "delegatecall", "state-variable-immutable"],
   });
   await deedNFT.waitForDeployment();
