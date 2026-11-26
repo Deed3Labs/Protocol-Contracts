@@ -1,4 +1,5 @@
 import { merchantDb } from '../../config/merchantDb.js';
+import { liveCreditsSource } from './creditsLive.js';
 import { requireIdentity } from '../../middleware/auth.js';
 import { limitByAddress } from '../../middleware/rateLimiter.js';
 import { commandCatalogRouter, commandJoinRouter, commandRouter, commandSharedRouter, commandWebhookRouter } from '../../routes/command.js';
@@ -69,6 +70,7 @@ export function liveCommandRouter() {
     deploys: readDeploys,
     legal: liveLegal(),
     signing: liveSigning(),
+    credits: liveCreditsSource,
     adminEmails: () => (process.env.COMMAND_ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).filter(Boolean),
     appUrl: () => process.env.COMMAND_APP_URL || 'https://command.useclear.org',
     limits: {

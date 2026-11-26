@@ -283,6 +283,8 @@ const apply = {
     replace(COOP_W, d.COOP_W);
     vars.coop = d.COOP ?? null;
     vars.offers = d.OFFERS ?? null;
+    // Clear Credits (the points line, the ledger) and the Housing Allowance's totals (Money → Credit)
+    vars.credits = d.CREDITS ?? null;
     // Clear Lending's accounts' addresses (Where it sits, each account's panel)
     vars.clAccounts = d.CL ?? null;
     // what Clear Lending pays into the new Assurance Pool (the Assurance fees card); null when the API couldn't read it

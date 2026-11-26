@@ -202,6 +202,24 @@ afterAll(() => {
 
 const read = () => ({ level: TOTALS, reveal: false, now: NOW, chain: reader }) as const;
 
+describe('Clear Credits and the Housing Allowance, live', () => {
+  test('Money reads them only when given a source, and keeps each part on its own', async () => {
+    expect((await moneySection(db, read())).CREDITS).toBeNull();
+    const housing = { records: 2, live: 1, creditPortion: 100, memberPortion: 900, price: 250000, redeemable: 0, refundsDue: 0, lapsesDue: { count: 0, creditPortion: 0 }, held: { count: 0, creditPortion: 0 } };
+    const m: any = await moneySection(db, {
+      ...read(),
+      credits: {
+        ledger: async () => ({ minted: { saving: 100, rent: 0, bill: 20 }, pending: 30, vested: 0, voided: 0, byDay: [{ day: '2026-10-24', minted: 120 }] }),
+        housing: async () => housing,
+      },
+    });
+    // the fake chain has no Points Issuer: its line is unread, the ledger and the records stand
+    expect(m.CREDITS.line).toBeNull();
+    expect(m.CREDITS.ledger).toMatchObject({ mintedTotal: 120, mintedWeek: 120, pending: 30 });
+    expect(m.CREDITS.housing).toEqual(housing);
+  });
+});
+
 describe('the yield pool, live', () => {
   test('stands where the contract says; its rate is the Funding Rate the pool charges, annual', async () => {
     const m: any = await moneySection(db, read());

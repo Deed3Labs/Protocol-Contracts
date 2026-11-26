@@ -132,6 +132,8 @@ export function moneyLive() {
     COOP: vars.coop ?? null,
     // what the co-op owes for $10 offers on their own line; null until OffersIssuer is deployed
     OFFERS: vars.offers ?? null,
+    // Clear Credits and the Housing Allowance: { line, ledger, housing }, each null when it couldn't be read; null until read
+    CREDITS: vars.credits ?? null,
     // Clear Lending's accounts' addresses on chain, and whether the Loss Reserve's is the pool's or the rollout's
     CL: vars.clAccounts ?? null,
     // the Assurance fees card: the fee, its items and their states, advances outstanding, interchange; read when drawn, as Money reloads

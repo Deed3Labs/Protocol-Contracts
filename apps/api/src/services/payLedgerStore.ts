@@ -269,6 +269,15 @@ export interface Biller {
   reminders: boolean;
 }
 
+/** Every credit on a network, by state, for Command. Whole credits. */
+export interface CreditsTotals {
+  minted: { saving: number; rent: number; bill: number };
+  pending: number;
+  vested: number;
+  voided: number;
+  byDay: { day: string; minted: number }[];
+}
+
 /** A vested credit row the minting job may send to the Points Issuer. */
 export interface MintableCredit {
   id: string;
@@ -817,6 +826,46 @@ export const payLedgerStore = {
       reason: String(row.reason),
       createdAt: new Date(row.created_at),
     }));
+  },
+
+  /**
+   * Every credit on a network, for Command: minted by why it was earned, what is still in its 30 days
+   * or vested and waiting for the minting job, what was voided, and what was minted each of the last
+   * `days` days (UTC).
+   */
+  async creditsTotals(network: CreditNetwork, days = 14): Promise<CreditsTotals> {
+    const pool = getPayPool();
+    if (!pool) return { minted: { saving: 0, rent: 0, bill: 0 }, pending: 0, vested: 0, voided: 0, byDay: [] };
+    await ensureTables();
+    const [t, d] = await Promise.all([
+      pool.query(
+        `SELECT
+           COALESCE(SUM(amount) FILTER (WHERE status = 'minted' AND reason = 'deposit_match'),0) AS saving,
+           COALESCE(SUM(amount) FILTER (WHERE status = 'minted' AND reason = 'rent_on_time'),0) AS rent,
+           COALESCE(SUM(amount) FILTER (WHERE status = 'minted' AND reason = 'bill_on_time'),0) AS bill,
+           COALESCE(SUM(amount) FILTER (WHERE status = 'pending'),0) AS pending,
+           COALESCE(SUM(amount) FILTER (WHERE status = 'vested'),0) AS vested,
+           COALESCE(SUM(amount) FILTER (WHERE status = 'void'),0) AS voided
+         FROM pay_credits WHERE network = $1`,
+        [network],
+      ),
+      pool.query(
+        `SELECT to_char(g.day, 'YYYY-MM-DD') AS day, COALESCE(SUM(c.amount),0) AS minted
+           FROM generate_series(date_trunc('day', now() AT TIME ZONE 'UTC') - make_interval(days => $2::int - 1), date_trunc('day', now() AT TIME ZONE 'UTC'), interval '1 day') AS g(day)
+           LEFT JOIN pay_credits c
+             ON c.network = $1 AND c.status = 'minted' AND date_trunc('day', c.minted_at AT TIME ZONE 'UTC') = g.day
+          GROUP BY g.day ORDER BY g.day`,
+        [network, days],
+      ),
+    ]);
+    const r = t.rows[0] ?? {};
+    return {
+      minted: { saving: num(r.saving), rent: num(r.rent), bill: num(r.bill) },
+      pending: num(r.pending),
+      vested: num(r.vested),
+      voided: num(r.voided),
+      byDay: d.rows.map((row) => ({ day: String(row.day), minted: num(row.minted) })),
+    };
   },
 
   /** The Points Issuer minted this row (or had already, under its ref). */

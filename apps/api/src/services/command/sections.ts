@@ -28,6 +28,7 @@ import { shopModelPayload } from './shopModel.js';
 import { shopPins } from './geocode.js';
 import type { Deploys } from './deploys.js';
 import { autoJobs, type AutoJobsDeps } from './autoJobs.js';
+import { creditsLive, type CreditsSource } from './creditsLive.js';
 import { auxRows, retiredRows, timelocksOf } from './inventoryCards.js';
 import type { Signing } from './signing.js';
 
@@ -68,6 +69,8 @@ export interface ReadOptions {
   jobs?: AutoJobsDeps;
   /** Build → Signing: the committed signing plan, or the newest plan run's log (signing.ts); none unless given. */
   signing?: () => Promise<Signing>;
+  /** Money → Credit: the pay ledger's credits and the Housing Allowance's totals (creditsLive.ts); none unless given. */
+  credits?: CreditsSource;
 }
 
 const chainOf = (o: ReadOptions, source: string) => {
@@ -1350,6 +1353,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const coop = provider === 'live' && safe ? await coopLive(chainOf(o, 'money'), safe).catch(() => null) : null;
   // live, what the co-op owes for $10 offers on their own line (null until OffersIssuer is deployed)
   const offers = provider === 'live' ? await offersLive(chainOf(o, 'money')).catch(() => null) : null;
+  // live, Clear Credits and the Housing Allowance: the points line, the ledger's credits, every record together
+  const credits = provider === 'live' && o.credits ? await creditsLive({ reader: chainOf(o, 'money'), ...o.credits }) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
@@ -1511,6 +1516,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     COOP,
     // the $10 offers' line: what the co-op owes for them, apart from its balance
     OFFERS: offers,
+    // Clear Credits (the points line, the ledger) and the Housing Allowance's totals; null until read live
+    CREDITS: credits,
     ...(chainPool
       ? { YD: chainPool.days.map(dayMon), Y_ASSETS: chainPool.assetsByDay, Y_LENT: chainPool.lentByDay }
       : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),

@@ -33,6 +33,7 @@ export const RECORD_ABI = [
   'function lifetimeCreditPortion(address member) view returns (uint256)',
   'function creditCap() view returns (uint256)',
   'function usdc() view returns (address)',
+  'function HOLD() view returns (uint64)',
   'function contribute(uint256 homeId, uint256 amount)',
   'event RecordOpened(address indexed member, uint256 indexed homeId, uint256 structurePrice, uint256 carriedCredit, bytes32 ref)',
   'event Moved(address indexed member, uint256 indexed fromHome, uint256 indexed toHome, uint256 deductions, uint256 credit, uint256 refundDue, bytes32 ref)',
@@ -104,6 +105,10 @@ export interface HousingChain {
   issuer: string;
   /** Every home this member has had a record on: opened, or moved into or out of. */
   homesOf(member: string): Promise<bigint[]>;
+  /** Every (member, home) with a record, for the totals. */
+  allRecords(): Promise<{ member: string; homeId: bigint }[]>;
+  /** How long an ended record's Credit Portion is held before it may lapse (the contract's HOLD). */
+  holdSeconds(): Promise<bigint>;
   recordOf(member: string, homeId: bigint): Promise<Raw>;
   occupantOf(homeId: bigint): Promise<string>;
   payeeOf(homeId: bigint): Promise<string>;
@@ -241,6 +246,57 @@ export async function prepareContribute(chain: HousingChain, member: string, hom
   };
 }
 
+/** Every Housing Allowance record together, for Command. Dollars. */
+export interface HousingTotals {
+  records: number;
+  /** Records live on a home (signed, not yet redeemed, moved or ended). */
+  live: number;
+  /** On live records: the Credit Portion, the Member Portion, and the prices they count toward. */
+  creditPortion: number;
+  memberPortion: number;
+  price: number;
+  /** Live records that have reached their price and wait for the RedemptionAgent. */
+  redeemable: number;
+  /** Member money marked for refund: after a move, an end or a redemption. */
+  refundsDue: number;
+  /** Ended records whose hold is over and whose Credit Portion may lapse now. */
+  lapsesDue: { count: number; creditPortion: number };
+  /** Ended records still in their hold: the Credit Portion that lapses if no new ELPA carries it. */
+  held: { count: number; creditPortion: number };
+}
+
+export async function housingTotals(chain: HousingChain): Promise<HousingTotals> {
+  const [all, hold] = await Promise.all([chain.allRecords(), chain.holdSeconds()]);
+  const t: HousingTotals = { records: all.length, live: 0, creditPortion: 0, memberPortion: 0, price: 0, redeemable: 0, refundsDue: 0, lapsesDue: { count: 0, creditPortion: 0 }, held: { count: 0, creditPortion: 0 } };
+  const now = BigInt(chain.now());
+  const rows = await Promise.all(all.map(async ({ member, homeId }) => ({ homeId, r: await chain.recordOf(member, homeId) })));
+  for (const { homeId, r } of rows) {
+    const status = STATUS[Number(r.status)];
+    t.refundsDue += dollars(r.refundDue);
+    if (status === 'signed') {
+      t.live += 1;
+      t.creditPortion += dollars(r.creditPortion);
+      t.memberPortion += dollars(r.memberPortion);
+      t.price += dollars(r.structurePrice);
+      if (r.creditPortion + r.memberPortion >= r.structurePrice && (await chain.isRedeemable(homeId))) t.redeemable += 1;
+    } else if (status === 'ended' && r.creditPortion > 0n) {
+      const bucket = now > r.endedAt + hold ? t.lapsesDue : t.held;
+      bucket.count += 1;
+      bucket.creditPortion += dollars(r.creditPortion);
+    }
+  }
+  const cents = (v: number) => Math.round(v * 100) / 100;
+  return {
+    ...t,
+    creditPortion: cents(t.creditPortion),
+    memberPortion: cents(t.memberPortion),
+    price: cents(t.price),
+    refundsDue: cents(t.refundsDue),
+    lapsesDue: { ...t.lapsesDue, creditPortion: cents(t.lapsesDue.creditPortion) },
+    held: { ...t.held, creditPortion: cents(t.held.creditPortion) },
+  };
+}
+
 /** The live chain, from the configured addresses; null where the record isn't deployed. */
 export function liveHousingChain(env: Record<string, string | undefined> = process.env): HousingChain | null {
   const chainId = keeperChainId(env);
@@ -252,30 +308,38 @@ export function liveHousingChain(env: Record<string, string | undefined> = proce
   const iss = new ethers.Contract(issuer, ISSUER_REDEEM_ABI as unknown as string[], provider);
   const key = (env.CREDIT_OPERATOR_PRIVATE_KEY || '').trim();
   const start = RECORD_START_BLOCK[chainId];
+  /** Every (member, home) a record was opened on or moved into or out of: one scan of each event for everyone, cached. */
+  const everyRecord = async () => {
+    const [opened, moved] = await Promise.all([
+      scanLogs(`housing:${record}:opened`, rec, rec.filters.RecordOpened(), chainId, start),
+      scanLogs(`housing:${record}:moved`, rec, rec.filters.Moved(), chainId, start),
+    ]);
+    const seen = new Map<string, { member: string; homeId: bigint }>();
+    const add = (member: string, homeId: bigint) => seen.set(`${member.toLowerCase()}:${homeId}`, { member: member.toLowerCase(), homeId });
+    for (const log of opened) {
+      const p = RECORD.parseLog(log);
+      if (p) add(p.args.member, p.args.homeId as bigint);
+    }
+    for (const log of moved) {
+      const p = RECORD.parseLog(log);
+      if (p) {
+        add(p.args.member, p.args.fromHome as bigint);
+        add(p.args.member, p.args.toHome as bigint);
+      }
+    }
+    return [...seen.values()];
+  };
   return {
     chainId,
     record,
     issuer,
     homesOf: async (member) => {
-      // One scan of each event for everyone, cached; filtered to the member here.
-      const [opened, moved] = await Promise.all([
-        scanLogs(`housing:${record}:opened`, rec, rec.filters.RecordOpened(), chainId, start),
-        scanLogs(`housing:${record}:moved`, rec, rec.filters.Moved(), chainId, start),
-      ]);
       const ids = new Set<bigint>();
-      for (const log of opened) {
-        const p = RECORD.parseLog(log);
-        if (p && same(p.args.member, member)) ids.add(p.args.homeId as bigint);
-      }
-      for (const log of moved) {
-        const p = RECORD.parseLog(log);
-        if (p && same(p.args.member, member)) {
-          ids.add(p.args.fromHome as bigint);
-          ids.add(p.args.toHome as bigint);
-        }
-      }
+      for (const r of await everyRecord()) if (same(r.member, member)) ids.add(r.homeId);
       return [...ids].sort((a, b) => (a < b ? -1 : 1));
     },
+    allRecords: () => everyRecord(),
+    holdSeconds: () => rec.HOLD(),
     recordOf: async (member, homeId) => {
       const r = await rec.recordOf(member, homeId);
       return { creditPortion: r.creditPortion, memberPortion: r.memberPortion, structurePrice: r.structurePrice, refundDue: r.refundDue, signedAt: r.signedAt, endedAt: r.endedAt, status: r.status };

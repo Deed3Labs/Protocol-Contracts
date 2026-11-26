@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { ethers } from 'ethers';
-import { HousingError, parseHomeId, prepareContribute, prepareRedeem, readHousing, submitRedeem, ISSUER_REDEEM_ABI, RECORD_ABI, type HousingChain } from './housingService';
+import { HousingError, housingTotals, parseHomeId, prepareContribute, prepareRedeem, readHousing, submitRedeem, ISSUER_REDEEM_ABI, RECORD_ABI, type HousingChain } from './housingService';
 import type { Simulation } from '../chain/keeperKit';
 
 /*
@@ -27,6 +27,8 @@ function fake(over: Partial<HousingChain> = {}, sim: Simulation = { kind: 'ok', 
     record: '0x26D8540881249bcD253810aBC2242b5a572729B5',
     issuer: '0xd254Bd2C78791a666eEfC4A7B6163d5d47C842a3',
     homesOf: async (m) => (m === M ? [9n, 12n] : []),
+    allRecords: async () => [{ member: M, homeId: 9n }, { member: M, homeId: 12n }],
+    holdSeconds: async () => 730n * 86_400n,
     recordOf: async (m, id) => (m === M ? records[id.toString()] : undefined) ??{ creditPortion: 0n, memberPortion: 0n, structurePrice: 0n, refundDue: 0n, signedAt: 0n, endedAt: 0n, status: 0 },
     occupantOf: async (id) => (id === 12n ? M : ethers.ZeroAddress),
     payeeOf: async (id) => (id === 12n ? PAYEE : ethers.ZeroAddress),
@@ -126,5 +128,33 @@ describe('paying toward a home', () => {
     await expect(prepareContribute(fake().chain, OTHER, 12n, 100)).rejects.toMatchObject({ code: 'NOT_SIGNED' });
     await expect(prepareContribute(fake({ payeeOf: async () => ethers.ZeroAddress }).chain, M, 12n, 100)).rejects.toMatchObject({ code: 'NO_PAYEE' });
     await expect(prepareContribute(fake().chain, M, 12n, -5)).rejects.toMatchObject({ code: 'BAD_AMOUNT' });
+  });
+});
+
+describe('every record together, for Command', () => {
+  test('live portions and prices, refunds due, and an ended Credit Portion held or due to lapse', async () => {
+    const records: Record<string, any> = {
+      '12': { creditPortion: 1_000n * U, memberPortion: 4_000n * U, structurePrice: 250_000n * U, refundDue: 0n, signedAt: 1n, endedAt: 0n, status: 1 },
+      '13': { creditPortion: 0n, memberPortion: 210_000n * U, structurePrice: 200_000n * U, refundDue: 0n, signedAt: 1n, endedAt: 0n, status: 1 },
+      '9': { creditPortion: 700n * U, memberPortion: 0n, structurePrice: 200_000n * U, refundDue: 300n * U, signedAt: 1n, endedAt: 1_700_000_000n, status: 4 },
+      '8': { creditPortion: 50n * U, memberPortion: 0n, structurePrice: 1n, refundDue: 25n * U, signedAt: 1n, endedAt: 1_789_000_000n, status: 4 },
+      '7': { creditPortion: 0n, memberPortion: 0n, structurePrice: 1n, refundDue: 10n * U, signedAt: 1n, endedAt: 1n, status: 2 },
+    };
+    const f = fake({
+      allRecords: async () => ['12', '13', '9', '8', '7'].map((id) => ({ member: M, homeId: BigInt(id) })),
+      recordOf: async (_m, id) => records[id.toString()],
+      isRedeemable: async (id) => id === 13n,
+    });
+    expect(await housingTotals(f.chain)).toEqual({
+      records: 5,
+      live: 2,
+      creditPortion: 1000,
+      memberPortion: 214000,
+      price: 450000,
+      redeemable: 1,
+      refundsDue: 335,
+      lapsesDue: { count: 1, creditPortion: 700 },
+      held: { count: 1, creditPortion: 50 },
+    });
   });
 });
