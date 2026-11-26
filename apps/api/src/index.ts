@@ -32,6 +32,7 @@ import memberWalletLinksPublicRouter from './routes/memberWalletLinksPublic.js';
 import avatarRouter from './routes/avatar.js';
 import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
+import housingRouter from './routes/housing.js';
 import creditRouter from './routes/credit.js';
 import assuranceRouter from './routes/assurance.js';
 import disputesRouter from './routes/disputes.js';
@@ -306,6 +307,7 @@ async function startServer() {
     app.use('/api/savings', requireAuth, savingsRouter);
     app.use('/api/portfolio', requireAuth, portfolioRouter);
     app.use('/api/pay', requireAuth, payRouter);
+    app.use('/api/housing', requireAuth, housingRouter);
     app.use('/api/credit', requireAuth, creditRouter);
     // A claim is money and a member's own account of a bad day; both halves need the member.
     app.use('/api/assurance', requireAuth, assuranceRouter);

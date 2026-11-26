@@ -417,7 +417,50 @@ const subject = z.string().trim().regex(/^[MW]-\d{4,9}$/, 'A member number, like
 const noContact = (v: string) => !/[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(v) && !/(\d[\s().-]*){7,}/.test(v);
 const NO_CONTACT = 'Leave out emails and phone numbers: they stay masked, and Show name is the way to see them';
 
+/*
+ * The Housing Allowance Record's writer actions (services/housing for what a member does themselves).
+ * Each is a Safe transaction from the Clear Treasury Safe, which holds HOUSING_WRITER_ROLE, so each
+ * waits for a second person and goes to the outbox; safeTx.ts builds the call. Amounts are dollars.
+ */
+const wallet = z.string().trim().regex(/^0x[0-9a-fA-F]{40}$/, 'A wallet address');
+const homeId = z.string().trim().regex(/^[1-9]\d{0,77}$/, 'A home is its Clear Deed’s token id');
+const dollars = z.number().positive().max(100_000_000);
+const shortWallet = (w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`;
+const housingActions: Record<string, Action> = {
+  'housing-open': {
+    body: z.object({ member: wallet, homeId, price: dollars, carryFromHome: z.string().trim().regex(/^\d{1,78}$/).default('0') }),
+    summary: (b) => `Open ${shortWallet(b.member)}’s Housing Allowance on home ${b.homeId} at $${b.price.toFixed(2)} (ELPA signed)`,
+    second: () => true,
+    outbox: true,
+  },
+  'housing-payment': {
+    body: z.object({ member: wallet, homeId, usd: dollars, reference: text(120).min(1) }),
+    summary: (b) => `Record a $${b.usd.toFixed(2)} payment toward home ${b.homeId} for ${shortWallet(b.member)} (${b.reference})`,
+    second: () => true,
+    outbox: true,
+  },
+  'housing-move': {
+    body: z.object({ member: wallet, fromHome: homeId, toHome: homeId, price: dollars, deductions: money.default(0), credit: money.default(0) }),
+    summary: (b) => `Move ${shortWallet(b.member)}’s Housing Allowance from home ${b.fromHome} to ${b.toHome} at $${b.price.toFixed(2)}`,
+    second: () => true,
+    outbox: true,
+  },
+  'housing-end': {
+    body: z.object({ member: wallet, homeId, deductions: money.default(0) }),
+    summary: (b) => `End ${shortWallet(b.member)}’s Housing Allowance on home ${b.homeId}${b.deductions ? `, less $${b.deductions.toFixed(2)}` : ''}`,
+    second: () => true,
+    outbox: true,
+  },
+  'housing-price': {
+    body: z.object({ member: wallet, homeId, price: dollars, reason: text(500).min(1) }),
+    summary: (b) => `Lower home ${b.homeId}’s price to $${b.price.toFixed(2)} for ${shortWallet(b.member)}`,
+    second: () => true,
+    outbox: true,
+  },
+};
+
 const members: Record<string, Action> = {
+  ...housingActions,
   export: exportAction('members', 'the member list'),
   // notes and tags, Command's own record of a person (migration 0068), by their masked number
   note: {

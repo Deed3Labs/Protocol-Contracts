@@ -177,6 +177,21 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error PointsIssuerMonthlyCap(address member, uint256 wanted, uint256 left)',
   'error PointsIssuerLifetimeCap(address member, uint256 wanted, uint256 left)',
   'error PointsIssuerMatchPeriodSet(address member)',
+  'error PointsIssuerBadSignature()',
+  'error PointsIssuerExpired()',
+  'error PointsIssuerInsufficient(address member, uint256 wanted, uint256 held)',
+  'error PointsIssuerNoHousingRecord()',
+  // HousingAllowanceRecord: what a redemption into it, or a payment toward a home, can be refused for
+  'error HousingNotSigned(address member, uint256 homeId)',
+  'error HousingOverCap(address member, uint256 wanted, uint256 left)',
+  'error HousingNoPayee(uint256 homeId)',
+  'error HousingAlreadyOpen(address member, uint256 homeId)',
+  'error HousingHomeOccupied(uint256 homeId, address occupant)',
+  'error HousingRefUsed(bytes32 ref)',
+  'error HousingPriceRaise(uint256 current, uint256 wanted)',
+  'error HousingDeductionsTooLarge(uint256 deductions, uint256 memberPortion)',
+  'error HousingNotEnded(address member, uint256 homeId)',
+  'error HousingHoldNotOver(uint64 until)',
 ] as const;
 
 export const CHAIN_ERRORS = new ethers.Interface(CHAIN_ERROR_FRAGMENTS as unknown as string[]);
@@ -269,6 +284,26 @@ export function describeRedeemRefusal(decoded: DecodedChainError | null): string
       return 'Your shop is not active right now, so payouts are paused. Nothing has left your balance.';
     case 'PayoutPoolNothingToRedeem':
       return 'There is nothing to withdraw from what you are owed.';
+    default:
+      return null;
+  }
+}
+
+/** Why redeeming credits into a home's Housing Allowance was refused, in words a member can act on. */
+export function describeHousingRefusal(decoded: DecodedChainError | null): string | null {
+  switch (decoded?.name) {
+    case 'HousingNotSigned':
+      return 'Credits go into a home’s Housing Allowance once your ELPA for that home is signed. Nothing was redeemed.';
+    case 'HousingOverCap':
+      return 'This would take your Housing Allowance from credits past $54,000 in all. Nothing was redeemed.';
+    case 'PointsIssuerInsufficient':
+      return 'You don’t have that many credits. Nothing was redeemed.';
+    case 'PointsIssuerExpired':
+      return 'The signature took too long to arrive. Nothing was redeemed. Try again.';
+    case 'PointsIssuerBadSignature':
+      return 'The signature didn’t match this wallet. Nothing was redeemed.';
+    case 'HousingNoPayee':
+      return 'Payments toward this home aren’t set up yet. Nothing was paid.';
     default:
       return null;
   }

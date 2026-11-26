@@ -1,5 +1,5 @@
 import chain from '@clear/command-types/src/chain/base-sepolia.json';
-import { concatHex, encodeFunctionData, encodePacked, getAddress, hashTypedData, isAddress, isHex, parseUnits, size, zeroAddress, type Abi, type AbiFunction, type Address, type Hex } from 'viem';
+import { concatHex, encodeFunctionData, encodePacked, getAddress, hashTypedData, isAddress, isHex, keccak256, parseUnits, size, stringToHex, zeroAddress, type Abi, type AbiFunction, type Address, type Hex } from 'viem';
 import type { Queryable } from '../../db/db.js';
 import { safeConfig, type SafeConfig } from './safe.js';
 import { assuranceFeeConfig } from '../assuranceFees/config.js';
@@ -103,6 +103,23 @@ export function argFor(type: string, raw: unknown): unknown {
 
 type Builder = (b: any, ctx: { db: Queryable; chain: ChainRead }) => Promise<Call[]>;
 
+/*
+ * The Housing Allowance Record's writer is the Clear Treasury Safe. A call from any other Safe would
+ * revert, so it is refused here rather than signed. Each write carries a ref the record uses once,
+ * made from what the write is, so the same proposal built twice is the same transaction.
+ */
+async function housingWriter(chain: ChainRead): Promise<void> {
+  const ops = safeConfig();
+  if (!ops) throw new BuildError('NO_SAFE', 'Command has no Safe configured');
+  const role = await read(chain, 'HousingAllowanceRecord', 'HOUSING_WRITER_ROLE', []);
+  if (!(await read(chain, 'HousingAllowanceRecord', 'hasRole', [role, ops.address]))) {
+    throw new BuildError('NOT_WRITER', 'Command’s Safe isn’t the Housing Allowance Record’s writer: the Clear Treasury Safe signs these');
+  }
+}
+export const housingRef = (...parts: unknown[]): Hex => keccak256(stringToHex(['housing', ...parts].map(String).join(':').toLowerCase()));
+const usd6 = (d: number) => parseUnits(Number(d).toFixed(6), 6);
+const housing = (fn: string, args: unknown[], label: string) => call('HousingAllowanceRecord', fn, args, label);
+
 /** The outbox kinds that are on-chain, and how each becomes calls. */
 export const BUILDERS: Record<string, Builder> = {
   'merchants.cap': async (b, { db, chain }) => {
@@ -141,6 +158,37 @@ export const BUILDERS: Record<string, Builder> = {
     const pool = getAddress(cfg.pool);
     const token = getAddress(String(await chain.read(pool, POOL_ASSET, 'asset', [])));
     return interchangeCalls(pool, token, row.amount).map((c) => ({ to: getAddress(c.to), value: 0n, data: c.data as Hex, label: c.label }));
+  },
+  'members.housing-open': async (b, { chain }) => {
+    await housingWriter(chain);
+    const m = getAddress(b.member);
+    return [housing('open', [m, BigInt(b.homeId), usd6(b.price), BigInt(b.carryFromHome ?? '0'), housingRef('open', m, b.homeId)], `Open the Housing Allowance on home ${b.homeId} at $${Number(b.price).toFixed(2)}`)];
+  },
+  'members.housing-payment': async (b, { chain }) => {
+    await housingWriter(chain);
+    const m = getAddress(b.member);
+    return [housing('recordPayment', [m, BigInt(b.homeId), usd6(b.usd), housingRef('payment', m, b.homeId, b.reference)], `Record $${Number(b.usd).toFixed(2)} toward home ${b.homeId}`)];
+  },
+  'members.housing-move': async (b, { chain }) => {
+    await housingWriter(chain);
+    const m = getAddress(b.member);
+    return [
+      housing(
+        'move',
+        [m, BigInt(b.fromHome), BigInt(b.toHome), usd6(b.price), usd6(b.deductions ?? 0), usd6(b.credit ?? 0), housingRef('move', m, b.fromHome, b.toHome)],
+        `Move the Housing Allowance from home ${b.fromHome} to ${b.toHome}`,
+      ),
+    ];
+  },
+  'members.housing-end': async (b, { chain }) => {
+    await housingWriter(chain);
+    const m = getAddress(b.member);
+    return [housing('end', [m, BigInt(b.homeId), usd6(b.deductions ?? 0), housingRef('end', m, b.homeId)], `End the Housing Allowance on home ${b.homeId}`)];
+  },
+  'members.housing-price': async (b, { chain }) => {
+    await housingWriter(chain);
+    const m = getAddress(b.member);
+    return [housing('lowerPrice', [m, BigInt(b.homeId), usd6(b.price), keccak256(stringToHex(String(b.reason)))], `Lower home ${b.homeId}’s price to $${Number(b.price).toFixed(2)}`)];
   },
   'contracts.propose': async (b) => {
     if (!b.fn) throw new BuildError('NO_CALL', 'Pick the function and its arguments first');
