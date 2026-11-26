@@ -177,3 +177,21 @@ describe('the minting job\'s rows', () => {
     expect((await payLedgerStore.mintableCredits('testnet', 500)).filter((x) => x.wallet === who)).toHaveLength(0);
   });
 });
+
+describe('credits totals for Command', () => {
+  test('minted by why, waiting, voided, and each day’s mints', async () => {
+    const before = await payLedgerStore.creditsTotals('testnet', 3);
+    const who = wallet();
+    await pay(who, 2_500, 'clear_rails', tx()); // 50, pending
+    await pay(who, 1_000, 'clear_rails', tx()); // 20
+    await pg.query(`UPDATE pay_credits SET vest_until = now() - interval '1 day' WHERE wallet = $1 AND amount = 20`, [who]);
+    const [r] = (await payLedgerStore.mintableCredits('testnet', 500)).filter((x) => x.wallet === who);
+    await payLedgerStore.markCreditMinted(r.id, '0xm');
+    const t = await payLedgerStore.creditsTotals('testnet', 3);
+    expect(t.minted.bill - before.minted.bill).toBe(20);
+    expect(t.pending - before.pending).toBe(50);
+    expect(t.byDay).toHaveLength(3);
+    expect(t.byDay[2].day).toBe(new Date().toISOString().slice(0, 10));
+    expect(t.byDay[2].minted - before.byDay[2].minted).toBe(20);
+  });
+});

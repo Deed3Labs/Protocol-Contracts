@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { CreditsSource } from '../services/command/creditsLive.js';
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { z } from 'zod';
 import type { Db, Queryable } from '../db/db.js';
@@ -81,6 +82,8 @@ export interface CommandDeps {
   legal?: { off(): string | null; read(): Promise<Legal> };
   /** Build → Signing: the committed signing plan, read from the repo (signing.ts). */
   signing?: { read(): Promise<Signing> };
+  /** Money → Credit: the pay ledger's credits and the Housing Allowance's totals (creditsLive.ts). */
+  credits?: () => Promise<CreditsSource>;
   /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
   feeds?: Feed[];
   /** The member app's records, for Members when it's live (Phase 7b). */
@@ -564,7 +567,7 @@ export function commandRouter(deps: CommandDeps) {
     const c = req.command!;
     deps.indexer?.catchUp();
     try {
-      res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now(), chain: deps.chain, memberSource: deps.memberSource }));
+      res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now(), chain: deps.chain, memberSource: deps.memberSource, credits: deps.credits ? await deps.credits() : undefined }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;

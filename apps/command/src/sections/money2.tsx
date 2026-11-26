@@ -991,11 +991,57 @@ function makeMoney() {
           top = [...CR.limits].sort((a, b) => b[1] - a[1])[0];
         const limL = cell('s5', 'Limit sizes', <span className="lbl">{CR.limits.reduce((a, x) => a + x[1], 0)}{" with a limit"}</span>, CR.limits.length ? <div className="nlm">{CR.limits.map(([k, v], __k) => <div key={__k}><span>{v}</span><i style={css(`height:${v / lmxL * 100}%`)} className={v === lmxL ? 'hi' : ''} /><s>{k}</s></div>)}</div> : <p className="nmv-e">No member has a limit yet.</p>, <><span>{top ? `Most common limit ${top[0]} · ${top[1]} ${top[1] === 1 ? 'member' : 'members'}` : 'No limits set'}</span><span /></>);
         // live, Phase 2b: Liquidation Holds and shortfall notices, each hold step sent from the signer's own wallet
-        return html(document.getElementById('nv'), <>{band(octL, 1)}{band(<>{back}{ageL}{lossL}</>)}{band(<>{shops}{limL}</>)}<LiquidationHolds /></>);
+        return html(document.getElementById('nv'), <>{band(octL, 1)}{band(<>{back}{ageL}{lossL}</>)}{band(<>{shops}{limL}</>)}{creditsBand()}<LiquidationHolds /></>);
       }
       // live, before the API reads the chain's book: it says so
-      if (L) return html(document.getElementById('nv'), <>{band(notReal('s12', CR.month ?? 'This month', 'Needs the credit ledger for the month: what was owed on the 1st, what was spent and repaid, and what’s on autopay.'), 1)}{band(<>{back}{notReal('s4', 'How old', 'Needs how late each member’s balance is: current, 1–30, 31–60 and over 60 days.')}{notReal('s4', 'Losses', 'Needs the credit ledger’s charge-offs: each balance written off and what the AssurancePool paid.')}</>)}{band(<>{shops}{notReal('s5', 'Limit sizes', 'Needs each member’s credit limit.')}</>)}<LiquidationHolds /></>);
+      if (L) return html(document.getElementById('nv'), <>{band(notReal('s12', CR.month ?? 'This month', 'Needs the credit ledger for the month: what was owed on the 1st, what was spent and repaid, and what’s on autopay.'), 1)}{band(<>{back}{notReal('s4', 'How old', 'Needs how late each member’s balance is: current, 1–30, 31–60 and over 60 days.')}{notReal('s4', 'Losses', 'Needs the credit ledger’s charge-offs: each balance written off and what the AssurancePool paid.')}</>)}{band(<>{shops}{notReal('s5', 'Limit sizes', 'Needs each member’s credit limit.')}</>)}{creditsBand()}<LiquidationHolds /></>);
       html(document.getElementById('nv'), <>{band(oct, 1)}{band(<>{back}{age}{loss}</>)}{band(<>{shops}{lim}</>)}</>);
+    }
+
+
+    /* Clear Credits and the Housing Allowance (live only): the points line the co-op owes on, the ledger's
+       credits by why they were earned and each day's mints, and every Housing Allowance record together. */
+    function creditsBand() {
+      if (!L) return '';
+      const K = L.CREDITS;
+      if (!K) return band(<>{notReal('s7', 'Clear Credits', 'Needs the Points Issuer and the credits ledger (CREDITS in the money section).')}{notReal('s5', 'Housing Allowance', 'Needs the Housing Allowance Record.')}</>);
+      const n = v => Math.round(v).toLocaleString('en-US');
+      const SC = [['saving', 'Saving', 'var(--land)'], ['rent', 'Rent', 'var(--underway)'], ['bill', 'Bills', 'color-mix(in srgb,var(--fg) 45%,transparent)']];
+      const lrow = (col, k, sub, v) => <div><span><i className="nsw" style={css(`background:${col}`)} />{k}{sub ? <em>{sub}</em> : ''}</span><b>{v}</b></div>;
+      const led = rows => <div className="led">{rows.map(([k, v], i) => <div key={i}><span>{k}</span><b>{v}</b></div>)}</div>;
+      const ln = K.line, lg = K.ledger;
+      const days = lg ? lg.byDay : [];
+      const dmx = Math.max(1, ...days.map(d => d.minted));
+      const creditsCell = cell('s7', 'Clear Credits', <span className="lbl">{`Points Issuer · ${srcTxt('protocol')}`}</span>, <div className="ncb">
+        <div className="m-big">{ln ? n(ln.outstanding) : '—'}{" "}<small>{ln ? `credits the points line owes now · ${n(ln.cap)} cap` : 'the points line isn’t read yet'}</small></div>
+        {lg && lg.mintedTotal ? <div className="ncb-bar">{SC.filter(([k]) => lg.minted[k]).map(([k, , col]) => <i key={k} style={css(`flex:${lg.minted[k]};background:${col}`)} />)}</div> : ''}
+        {lg ? <><div className="led ncb-l">{SC.map(([k, label, col]) => <Fragment key={k}>{lrow(col, label, 'minted', n(lg.minted[k]))}</Fragment>)}</div>
+          {led([
+            ...(ln ? [['Redeemed, spent or reversed · minted, less what the line owes', n(Math.max(0, lg.mintedTotal - ln.outstanding))]] : []),
+            ['Earned, still in their 30 days', n(lg.pending)],
+            ['Vested, waiting for the minting job', n(lg.vested)],
+            ['Voided · reversed payments and refused mints', n(lg.voided)],
+          ])}</> : <p className="nmv-e">The credits ledger isn’t read yet.</p>}
+        {lg && days.length ? <>{lbl(`Minted each day · ${n(lg.mintedWeek)} in the last 7`)}<div className="nlm">{days.map(d => <div key={d.day}><span>{d.minted ? n(d.minted) : ''}</span><i style={css(`height:${d.minted / dmx * 100}%`)} className={d.minted === dmx && d.minted ? 'hi' : ''} /><s>{d.day.slice(8)}</s></div>)}</div></> : ''}
+      </div>, <><span>1 credit redeems for $1 into a Housing Allowance, after an ELPA</span><span /></>);
+      const H = K.housing;
+      const both = H ? H.creditPortion + H.memberPortion : 0;
+      const housingCell = cell('s5', 'Housing Allowance', <span className="lbl">{`Housing Allowance Record · ${srcTxt('protocol')}`}</span>, H ? <div className="ncb">
+        <div className="m-big">{money(both)}{" "}<small>{H.live ? `toward ${money(H.price)} on ${H.live} ${H.live === 1 ? 'home' : 'homes'}` : 'no home has a live record yet'}</small></div>
+        {both ? <div className="ncb-bar"><i style={css(`flex:${H.creditPortion};background:var(--land)`)} /><i style={css(`flex:${H.memberPortion};background:var(--fg)`)} /></div> : ''}
+        <div className="led ncb-l">
+          {lrow('var(--land)', 'Credit Portion', 'from credits · never cash', money(H.creditPortion))}
+          {lrow('var(--fg)', 'Member Portion', 'their own payments', money(H.memberPortion))}
+        </div>
+        {led([
+          ['Reached the price · waiting for the RedemptionAgent', String(H.redeemable)],
+          ['Refunds due · after a move, an end or a redemption', money(H.refundsDue)],
+          [`Lapses due · ${H.lapsesDue.count ? `${H.lapsesDue.count} past the 2-year hold` : 'none past the hold'}`, money(H.lapsesDue.creditPortion)],
+          [`Held after an end · ${H.held.count ? `${H.held.count} in the 2-year hold` : 'none'}`, money(H.held.creditPortion)],
+          ['Records · every home, live or not', String(H.records)],
+        ])}
+      </div> : <p className="nmv-e">The Housing Allowance Record isn’t read yet.</p>, <><span>Opened, moved and ended in Members, by two people and the Clear Treasury Safe</span><button data-ngo="members">Members →</button></>);
+      return band(<>{creditsCell}{housingCell}</>);
     }
 
     /* ══ Pools ═════════════════════════════════════════════════════════════════════════ */
