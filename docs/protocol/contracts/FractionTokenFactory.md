@@ -6,7 +6,7 @@ Source: [`contracts/core/factories/FractionTokenFactory.sol`](../../../contracts
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc`](https://sepolia.basescan.org/address/0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc) |
+| Base Sepolia | 84532 | [`0xc7E3234E058cc7793Ac68F471c09693f14cb166E`](https://sepolia.basescan.org/address/0xc7E3234E058cc7793Ac68F471c09693f14cb166E) |
 
 ## Functions that change state
 

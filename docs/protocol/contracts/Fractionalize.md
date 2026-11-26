@@ -6,7 +6,7 @@ Source: [`contracts/extensions/Fractionalize.sol`](../../../contracts/extensions
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0xeC464847C664Cc208478adbe377f7Db19e199823`](https://sepolia.basescan.org/address/0xeC464847C664Cc208478adbe377f7Db19e199823) |
+| Base Sepolia | 84532 | [`0x6C896EeE9D3c6984a6B0225B0c17c9Df914Fbd76`](https://sepolia.basescan.org/address/0x6C896EeE9D3c6984a6B0225B0c17c9Df914Fbd76) |
 
 ## Functions that change state
 
@@ -33,9 +33,11 @@ Anyone can call these; they change nothing.
 | Function | Returns |
 |---|---|
 | `ADMIN_ROLE()` | bytes32 |
+| `beneficialOwnerOf(uint256 tokenId)` | address |
 | `canReceiveShares(uint256 fractionId, address account)` | bool |
 | `deedNFT()` | address |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
+| `fractionOfDeed(uint256)` | uint256 |
 | `fractionTokenFactory()` | address |
 | `getApprovals(uint256 fractionId, address account)` | bool transferApproved, bool adminApproved |
 | `getAssetInformation(uint256 fractionId)` | string assetType, bool isValidated, address validator, string metadata |
@@ -53,6 +55,8 @@ Anyone can call these; they change nothing.
 | `getVotingPower(uint256 fractionId, address account)` | uint256 |
 | `hasRole(bytes32 role, address account)` | bool |
 | `nextFractionId()` | uint256 |
+| `onERC1155BatchReceived(address, address, uint256[], uint256[], bytes)` | bytes4 |
+| `onERC1155Received(address operator, address, uint256, uint256, bytes)` | bytes4 |
 | `paused()` | bool |
 | `proxiableUUID()` | bytes32 |
 | `subdivideNFT()` | address |

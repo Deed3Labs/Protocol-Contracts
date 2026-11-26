@@ -213,6 +213,44 @@
     ]
    ]
   },
+  "CoopTransferAgent": {
+   "source": "contracts/extensions/CoopTransferAgent.sol",
+   "sha256": "5da6f539af6cd1a69ca0445237330180f70cd4d34f32728c4da5413310105be8",
+   "immutables": [
+    [
+     413,
+     32
+    ],
+    [
+     688,
+     32
+    ],
+    [
+     1127,
+     32
+    ],
+    [
+     1609,
+     32
+    ],
+    [
+     1956,
+     32
+    ],
+    [
+     2365,
+     32
+    ],
+    [
+     3183,
+     32
+    ],
+    [
+     4250,
+     32
+    ]
+   ]
+  },
   "Create2Deployer": {
    "source": "contracts/peripherals/Create2Deployer.sol",
    "sha256": "f3c177405f61fe5bff4bf54be9dbd1a6967b6a6fc1488f2f471b035bdba78240",
@@ -355,6 +393,11 @@
      32
     ]
    ]
+  },
+  "FunctionalContractRegistry": {
+   "source": "contracts/core/FunctionalContractRegistry.sol",
+   "sha256": "4d890dc8a41068d794a2e7c8ced3b7ab5764955636901d6f9d5d9d554b8c8d81",
+   "immutables": []
   },
   "FundManager": {
    "source": "contracts/core/FundManager.sol",
@@ -823,6 +866,44 @@
     ],
     [
      5168,
+     32
+    ]
+   ]
+  },
+  "RedemptionAgent": {
+   "source": "contracts/extensions/RedemptionAgent.sol",
+   "sha256": "c1a731db4da51129f69212a96b608bedb7d340acf81dfe830995d075984eb42f",
+   "immutables": [
+    [
+     131,
+     32
+    ],
+    [
+     203,
+     32
+    ],
+    [
+     371,
+     32
+    ],
+    [
+     474,
+     32
+    ],
+    [
+     1064,
+     32
+    ],
+    [
+     1173,
+     32
+    ],
+    [
+     1592,
+     32
+    ],
+    [
+     1949,
      32
     ]
    ]

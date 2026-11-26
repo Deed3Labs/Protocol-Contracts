@@ -7,8 +7,12 @@ import { getDeployment, requireMainnetConfirmation, saveDeployment } from "./hel
  *   1. DeedNFT upgrade. Deploys DeedNFTMintExtension, DeedTrustExtension and DeedRolesExtension, validates the
  *      new implementation against the network's manifest and, with DEED_V5=1, upgrades the proxy from
  *      DEFAULT_ADMIN_ROLE (the deployer on Base Sepolia today; after deed_admin_handover.ts it is the Deed
- *      timelock, and this prints the call to propose instead). Recorded as DeedNFTV5.json.
- *   2. FunctionalContractRegistry, recorded. Subdivide and Fractionalize are registered as custody.
+ *      timelock, and this prints the call to propose instead). DeedNFT.json takes the v5 ABI; a prepared,
+ *      not yet executed, implementation is recorded as DeedNFTV5.json.
+ *   2. Fresh v5 satellites (deployFreshDeedSatellites): the old Validator, ValidatorRegistry and the rest predate
+ *      v5 and the upgrades manifest, so new proxies replace them and the deed is pointed at them. The old ones
+ *      lose every power over the deed and stay for the legacy deeds that name them (records: <Name>Legacy).
+ *   2b. FunctionalContractRegistry, recorded. The new Subdivide and Fractionalize are registered as custody.
  *   3. CoopTransferAgent: the only route by which a Coop-policy deed changes hands, with the program
  *      sponsor's first-refusal window. Registered as custody + Coop agent.
  *   4. RedemptionAgent: holds a home's deed while its member pays toward it and hands it over when the
@@ -61,7 +65,14 @@ export async function prepareDeedUpgrade(o: { proxy: string; network?: string; e
     log(`  to ${o.proxy}  data ${DeedNFT.interface.encodeFunctionData("upgradeTo", [implementation])}`);
   }
   if (o.network) {
-    saveDeployment(o.network, "DeedNFTV5", implementation, JSON.parse(DeedNFT.interface.formatJson()));
+    // Upgraded: the proxy's record takes the v5 ABI (DeedNFT plus the functions its extensions serve).
+    // Only prepared: the implementation is recorded on its own until the timelock executes the upgrade.
+    const abi = [
+      ...JSON.parse(DeedNFT.interface.formatJson()),
+      ...JSON.parse((await ethers.getContractAt("IDeedTrust", o.proxy)).interface.formatJson()),
+    ];
+    if (isAdmin) saveDeployment(o.network, "DeedNFT", o.proxy, abi);
+    else saveDeployment(o.network, "DeedNFTV5", implementation, abi);
   }
   return { implementation, extensions: ext, upgraded: isAdmin };
 }
@@ -131,6 +142,114 @@ export async function deployDeedV5Agents(o: {
   return { fc, coop, redemption };
 }
 
+const DEED_IMAGES = {
+  land: "ipfs://bafkreihdwdcbvm3ph3hg4bxplmyqhybmuwgiaroxnqmup76ixlqy4pf6gi",
+  vehicle: "ipfs://bafkreig42cjzl6gn4w7q4sltmildfyh3m3wojrjp4egoqvfnxqcrmv5z3i",
+  equipment: "ipfs://bafkreifo4ugpkguglxwalzrznhvip5gqvgzqyqcqvz2lecwubsu7t4qhyq",
+  invalidated: "ipfs://bafkreiabag3ztnhe5pg7js4bj6sxuvkz3sdf34utvoyk7q7bhngrgxqxym",
+};
+
+/**
+ * Fresh v5 satellites around an upgraded DeedNFT: ValidatorRegistry, MetadataRenderer, Validator, FundManager,
+ * Subdivide, FractionTokenFactory and Fractionalize, wired to the deed and the deed to them. The old satellites
+ * predate v5 (no agreement versions, no trustee eligibility) and are left in place for the legacy deeds that name
+ * them, but lose every power over the deed: the old validator's VALIDATOR_ROLE and the old Subdivide's and
+ * Fractionalize's marketplace approvals are withdrawn. Their records are kept as <Name>Legacy.
+ *
+ * Needs DEFAULT_ADMIN_ROLE on the deed. Adopting the trust agreement version is a separate step
+ * (scripts/adopt_trust_agreement.ts) once its content hash and URI are fixed.
+ */
+export async function deployFreshDeedSatellites(o: {
+  deed: string;
+  validatorBaseUri: string;
+  agreementUri: string;
+  oldValidator?: string;
+  oldSubdivide?: string;
+  oldFractionalize?: string;
+  network?: string;
+  log?: (m: string) => void;
+}) {
+  const { ethers, upgrades } = require("hardhat");
+  const log = o.log ?? console.log;
+  const [deployer] = await ethers.getSigners();
+  const deed = await ethers.getContractAt("DeedNFT", o.deed);
+  if (!(await deed.hasRole(ethers.ZeroHash, deployer.address))) throw new Error(`${deployer.address} is not DeedNFT's admin`);
+
+  const keepLegacy = (name: string) => {
+    if (!o.network) return;
+    const old = getDeployment(o.network, name);
+    if (old && !getDeployment(o.network, `${name}Legacy`)) saveDeployment(o.network, `${name}Legacy`, old.address, old.abi);
+  };
+  const proxy = async (name: string, args: unknown[]) => {
+    const c = await upgrades.deployProxy(await ethers.getContractFactory(name), args, { initializer: "initialize", kind: "uups" });
+    await c.waitForDeployment();
+    if (o.network) {
+      keepLegacy(name);
+      saveDeployment(o.network, name, await c.getAddress(), JSON.parse(c.interface.formatJson()));
+    }
+    log(`+ ${name.padEnd(26)} ${await c.getAddress()}`);
+    return c;
+  };
+  const send = async (label: string, txp: Promise<any>) => {
+    await (await txp).wait();
+    log(`  + ${label}`);
+  };
+
+  const registry = await proxy("ValidatorRegistry", []);
+  const renderer = await proxy("MetadataRenderer", []);
+  const validator = await proxy("Validator", [o.validatorBaseUri, o.agreementUri]);
+  const R = await registry.getAddress();
+  const V = await validator.getAddress();
+
+  await send("registry -> DeedNFT", registry.setDeedNFT(o.deed));
+  await send("validator -> DeedNFT", validator.setDeedNFT(o.deed));
+  await send("renderer -> DeedNFT", renderer.setDeedNFT(o.deed));
+  await send("DeedNFT -> registry", deed.setValidatorRegistry(R));
+  await send("DeedNFT -> renderer", deed.setMetadataRenderer(await renderer.getAddress()));
+  await send("image Land", renderer.setAssetTypeImageURI(0, DEED_IMAGES.land));
+  await send("image Vehicle", renderer.setAssetTypeImageURI(1, DEED_IMAGES.vehicle));
+  await send("image Estate", renderer.setAssetTypeImageURI(2, DEED_IMAGES.land));
+  await send("image Equipment", renderer.setAssetTypeImageURI(3, DEED_IMAGES.equipment));
+  await send("image invalidated", renderer.setInvalidatedImageURI(DEED_IMAGES.invalidated));
+
+  const fundManager = await proxy("FundManager", [R, 500, deployer.address]);
+  const FM = await fundManager.getAddress();
+  await send("registry -> FundManager", registry.setFundManager(FM));
+  await send("FundManager accepts DeedNFT", fundManager.addCompatibleDeedNFT(o.deed));
+  await send("validator -> FundManager", validator.setFundManager(FM));
+  // A FundManager on the deed makes every mint charge a fee; only move the deed to the new one if it had one.
+  if ((await deed.fundManager()) !== ethers.ZeroAddress) await send("DeedNFT -> FundManager", deed.setFundManager(FM));
+
+  for (const t of [0, 1, 2, 3]) await send(`criteria for asset type ${t}`, validator.setupValidationCriteria(t));
+  await send("register default agreement", validator.registerOperatingAgreement(o.agreementUri, "Deed Trust Agreement"));
+  // Activation grants the validator DeedNFT's VALIDATOR_ROLE through the registry.
+  await send("register validator", registry.registerValidator(V, "Default Validator", "Default deed validator", [0, 1, 2, 3]));
+  await send("activate validator", registry.updateValidatorStatus(V, true));
+  await send("DeedNFT default validator", deed.setDefaultValidator(V));
+
+  const subdivide = await proxy("Subdivide", [o.deed, R]);
+  const S = await subdivide.getAddress();
+  await send("Subdivide VALIDATOR_ROLE -> validator", subdivide.grantRole(await subdivide.VALIDATOR_ROLE(), V));
+  await send("validator accepts Subdivide units", validator.addCompatibleDeedNFT(S));
+  await send("DeedNFT approves Subdivide (custody)", deed.setApprovedMarketplace(S, true));
+  const factory = await proxy("FractionTokenFactory", [deployer.address]);
+  const fractionalize = await proxy("Fractionalize", [o.deed, S, await factory.getAddress()]);
+  const F = await fractionalize.getAddress();
+  await send("factory -> Fractionalize", factory.updateFractionalizeContract(F));
+  await send("DeedNFT approves Fractionalize (custody)", deed.setApprovedMarketplace(F, true));
+  await send("Subdivide approves Fractionalize (custody)", subdivide.setApprovedMarketplace(F, true));
+
+  // The old satellites keep no power over the deed.
+  const VALIDATOR_ROLE = await deed.VALIDATOR_ROLE();
+  if (o.oldValidator && (await deed.hasRole(VALIDATOR_ROLE, o.oldValidator))) {
+    await send("old validator loses VALIDATOR_ROLE", deed.removeValidator(o.oldValidator));
+  }
+  for (const [what, a] of [["old Subdivide", o.oldSubdivide], ["old Fractionalize", o.oldFractionalize]] as const) {
+    if (a && (await deed.isApprovedMarketplace(a))) await send(`${what} loses marketplace approval`, deed.setApprovedMarketplace(a, false));
+  }
+  return { registry, renderer, validator, fundManager, subdivide, factory, fractionalize };
+}
+
 async function main() {
   const { ethers } = require("hardhat");
   const net = await ethers.provider.getNetwork();
@@ -143,26 +262,45 @@ async function main() {
   };
   const execute = process.env.DEED_V5 === "1";
   const deed = need("DeedNFT");
+  // Read the old satellites before the upgrade, and before their records move to <Name>Legacy.
+  const oldValidator = need("Validator");
+  const oldV = await ethers.getContractAt("Validator", oldValidator);
+  const validatorBaseUri = process.env.DEED_VALIDATOR_URI || (await oldV.baseUri());
+  const agreementUri = process.env.DEED_AGREEMENT_URI || (await oldV.defaultOperatingAgreementUri());
+  console.log(`validator URI ${validatorBaseUri}, default agreement URI ${agreementUri}`);
   const up = await prepareDeedUpgrade({ proxy: deed, network, execute });
   if (!execute) {
     console.log(`\nValidated only: nothing deployed. DEED_V5=1 would deploy the three extensions and upgrade DeedNFT,
-then deploy FunctionalContractRegistry, CoopTransferAgent and RedemptionAgent, register them (and Subdivide,
-Fractionalize), set DeedNFT's trust registries once, and name the RedemptionAgent the record's deed contract.`);
+deploy fresh v5 satellites (ValidatorRegistry, MetadataRenderer, Validator, FundManager, Subdivide,
+FractionTokenFactory, Fractionalize) and point the deed at them, withdraw the old ones' powers over the deed,
+then deploy FunctionalContractRegistry, CoopTransferAgent and RedemptionAgent, register them with the new
+Subdivide and Fractionalize, set DeedNFT's trust registries once, and name the RedemptionAgent the record's
+deed contract.`);
     return;
   }
   if (!up.upgraded) {
     console.log("\nDeedNFT is not upgraded yet (propose the call above); run this again once it is.");
     return;
   }
+  const sat = await deployFreshDeedSatellites({
+    deed,
+    validatorBaseUri,
+    agreementUri,
+    oldValidator,
+    oldSubdivide: getDeployment(network, "Subdivide")?.address,
+    oldFractionalize: getDeployment(network, "Fractionalize")?.address,
+    network,
+  });
   await deployDeedV5Agents({
     deed,
     membershipRegistry: need("MembershipRegistry"),
     housingRecord: need("HousingAllowanceRecord"),
-    subdivide: getDeployment(network, "Subdivide")?.address,
-    fractionalize: getDeployment(network, "Fractionalize")?.address,
+    subdivide: await sat.subdivide.getAddress(),
+    fractionalize: await sat.fractionalize.getAddress(),
     network,
   });
-  console.log("\nleft to do: deed_admin_handover.ts (DeedNFT and the registry to the Deed timelock), when Kai chooses.");
+  console.log(`\nleft to do: adopt the trust agreement version for Land and Estate (scripts/adopt_trust_agreement.ts),
+then deed_admin_handover.ts (the Deed track to the Deed timelock), when Kai chooses.`);
 }
 
 if (require.main === module) {

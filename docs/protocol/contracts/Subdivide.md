@@ -6,7 +6,7 @@ Source: [`contracts/extensions/Subdivide.sol`](../../../contracts/extensions/Sub
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x3c947D71cb1698dFd4D7551b87E17306865C923F`](https://sepolia.basescan.org/address/0x3c947D71cb1698dFd4D7551b87E17306865C923F) |
+| Base Sepolia | 84532 | [`0xfB54f5F05d63FF80Bc94d5810321355c4Ee30f60`](https://sepolia.basescan.org/address/0xfB54f5F05d63FF80Bc94d5810321355c4Ee30f60) |
 
 ## Functions that change state
 
@@ -33,7 +33,6 @@ Source: [`contracts/extensions/Subdivide.sol`](../../../contracts/extensions/Sub
 | `setRoyaltyEnforcement(bool enforced)` | `onlyRole(ADMIN_ROLE)` |  |
 | `setSubdivisionValidator(uint256 deedId, address validator)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
 | `setToDefaultSecurityPolicy()` | `onlyRole(ADMIN_ROLE)` |  |
-| `setTransferValidator(address validator)` | Not in the current source |  |
 | `setUnitMetadata(uint256 deedId, uint256 unitId, string metadata)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
 | `setUnitTrait(uint256 deedId, uint256 unitId, bytes32 traitKey, bytes traitValue)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
 | `setUnitTraitFlexible(uint256 deedId, uint256 unitId, bytes traitKey, bytes traitValue, uint8 valueType)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
@@ -53,14 +52,13 @@ Anyone can call these; they change nothing.
 | `ADMIN_ROLE()` | bytes32 |
 | `balanceOf(address account, uint256 id)` | uint256 |
 | `balanceOfBatch(address[] accounts, uint256[] ids)` | uint256[] |
+| `beneficialOwnerOf(uint256 deedId)` | address |
 | `deedNFT()` | address |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
 | `defaultValidator()` | address |
 | `ESTATE_ASSET_TYPE()` | uint8 |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
 | `getSubdivisionValidator(uint256 deedId)` | address validator |
-| `getTransferValidationFunction()` | bytes4 functionSignature, bool isViewFunction |
-| `getTransferValidator()` | address validator |
 | `getUnitAssetType(uint256 deedId, uint256 unitId)` | uint8 |
 | `getUnitMetadata(uint256 deedId, uint256 unitId)` | string |
 | `getUnitTraitKeys(uint256 deedId, uint256 unitId)` | bytes32[] |
@@ -124,6 +122,9 @@ Anyone can call these; they change nothing.
 | Error |
 |---|
 | `AlreadyValidated()` |
+| `IdOutOfRange()` |
 | `InvalidParameter()` |
+| `NotUnitValidator(address caller)` |
+| `ReservedUnitTrait(bytes32 traitKey)` |
 | `SubdivisionDoesNotExist()` |
 | `Unauthorized()` |

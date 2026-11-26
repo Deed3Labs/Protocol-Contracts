@@ -68,6 +68,9 @@ export const JOBS = {
   Fractionalize: 'Holds a deed and issues ERC-20 shares against it',
   Subdivide: 'Splits a validated land or estate deed into ERC-1155 units',
   FractionTokenFactory: 'Clones a share token for each fraction',
+  FunctionalContractRegistry: 'Lists the contracts that may hold or move trust deeds',
+  CoopTransferAgent: 'The only route for a Coop deed to change hands, with the first refusal window',
+  RedemptionAgent: 'Holds a home deed until the Housing Allowance reaches the price, then hands it over',
   AccessManager: 'Admin, operator and member roles',
   AssuranceOracle: 'Retired with the Phase 1 reserve',
   BondValuer: "Tells CollateralRegistry what a member's pledged bonds are worth",
@@ -268,7 +271,7 @@ export function contractMap(deployments, contractIds) {
     actions: `<div class="cd-actions"><div class="cd-seg" role="group" aria-label="Network" data-seg>${seg}</div><a class="cd-btn" data-variant="ghost" href="https://github.com/Deed3Labs/Protocol-Contracts/tree/dev/contracts">Source</a></div>`,
     body:
       `<h2 id="credit-and-money-contracts">Credit and money contracts</h2>${graph(CREDIT, 'credit', deployments)}` +
-      `<h2 id="deed-track-contracts">Deed track contracts</h2><p>The Deed track stands mostly on its own. <code>DeedNFT</code> reads the <code>MembershipRegistry</code> (for the Verified transfer policy) and its own <code>FunctionalContractRegistry</code>, and <code>CoopTransferAgent</code> moves Coop deeds. It shares the optional <code>TokenRegistry</code> lookup with the rest of the protocol. The deployed Base Sepolia Deed contracts are an earlier build than the source.</p>${graph(DEED, 'deed', deployments)}` +
+      `<h2 id="deed-track-contracts">Deed track contracts</h2><p>The Deed track stands mostly on its own. <code>DeedNFT</code> reads the <code>MembershipRegistry</code> (for the Verified transfer policy) and its own <code>FunctionalContractRegistry</code>, and <code>CoopTransferAgent</code> moves Coop deeds. <code>RedemptionAgent</code> holds a home deed until the <code>HousingAllowanceRecord</code> shows the price reached. It shares the optional <code>TokenRegistry</code> lookup with the rest of the protocol.</p>${graph(DEED, 'deed', deployments)}` +
       `<h2 id="deployed-addresses">Deployed addresses</h2>${tables}`,
     text: 'Contract map. The main contracts, how they connect, and where each one lives. Credit and money contracts. Deed track contracts. Deployed addresses. ' + Object.keys(JOBS).join(' '),
   };

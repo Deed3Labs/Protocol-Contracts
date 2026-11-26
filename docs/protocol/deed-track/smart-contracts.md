@@ -2,15 +2,15 @@
 
 Each Deed track contract: what it is for, what it stores, its public functions and who may call
 them, its events, and how it upgrades. The lifecycle that ties them together is in
-[`protocol-overview.md`](./protocol-overview.md). These pages describe the contracts on `dev`; the
-Base Sepolia deployment is an earlier build (see the note at the top of the overview). Deployed
+[`protocol-overview.md`](./protocol-overview.md). These pages describe the contracts on `dev`, which
+is also what runs on Base Sepolia since deploy 30 (see the note at the top of the overview). Deployed
 addresses are in the root [`README.md`](../../../README.md#deployed-addresses) (**Deployed
 addresses**); who holds each role is in [Governance](../../governance/README.md).
 
 | Contract | Source | Standard | Upgrade |
 |---|---|---|---|
 | `DeedNFT` | `contracts/core/DeedNFT.sol`, `DeedNFTBase.sol` | ERC-721, ERC-7496, ERC-2981 | UUPS, `DEFAULT_ADMIN_ROLE` |
-| `DeedNFTMintExtension`, `DeedTrustExtension` | `contracts/core/DeedNFTMintExtension.sol`, `DeedTrustExtension.sol`, `DeedTrustCommon.sol` | — | Not upgradeable on their own: pinned as immutables in the `DeedNFT` implementation, so replacing one is a `DeedNFT` upgrade |
+| `DeedNFTMintExtension`, `DeedTrustExtension`, `DeedRolesExtension` | `contracts/core/DeedNFTMintExtension.sol`, `DeedTrustExtension.sol`, `DeedRolesExtension.sol`, `DeedTrustCommon.sol` | — | Not upgradeable on their own: pinned as immutables in the `DeedNFT` implementation, so replacing one is a `DeedNFT` upgrade |
 | `Validator` | `contracts/core/Validator.sol` | ERC-165 (`IValidator`) | UUPS, owner |
 | `ValidatorRegistry` | `contracts/core/ValidatorRegistry.sol` | — | UUPS, owner |
 | `FundManager` | `contracts/core/FundManager.sol` | — | UUPS, `DEFAULT_ADMIN_ROLE` |
@@ -21,6 +21,7 @@ addresses**); who holds each role is in [Governance](../../governance/README.md)
 | `FractionTokenFactory` | `contracts/core/factories/FractionTokenFactory.sol` | — | UUPS, owner |
 | `FunctionalContractRegistry` | `contracts/core/FunctionalContractRegistry.sol` | — | Not upgradeable |
 | `CoopTransferAgent` | `contracts/extensions/CoopTransferAgent.sol` | ERC-721 receiver | Not upgradeable, no admin |
+| `RedemptionAgent` | `contracts/extensions/RedemptionAgent.sol` | ERC-721 receiver | Not upgradeable, no admin |
 | `ValidatorFactory` | `contracts/core/factories/ValidatorFactory.sol` | — | UUPS, owner. Not deployed |
 
 Their interfaces are in `contracts/core/interfaces/`: `IDeedNFT`, `IDeedTrust`, `IDeedCustody`,
@@ -458,6 +459,26 @@ both kinds, so `DeedNFT` lets deeds into it and lets it send them on.
 
 ---
 
+## `RedemptionAgent`
+
+**Holds a home's trust deed while its member pays toward it, and hands it to them when their Housing
+Allowance reaches the price.** It serves one `DeedNFT` and one `HousingAllowanceRecord`, both set in
+its constructor, holds no funds and has no admin. It is registered as custody and Coop agent, like
+the `CoopTransferAgent`, and it is the record's deed contract: the only caller that may mark a home
+redeemed.
+
+| Function | Who | What it does |
+|---|---|---|
+| `onERC721Received` | `DeedNFT` | The program sponsor deposits a Coop trust deed with `safeTransferFrom(sponsor, agent, homeId, abi.encode(member))`. The sender must be the deed's program sponsor (`NotSponsor`) and the member must hold the live record for that home (`NotOccupant`). Event: `Deposited` |
+| `redeemHome(homeId)` | Anyone | Asks the record to mark the home redeemed, which it refuses until the member's Housing Allowance has reached the price, then sends the deed to that member. Event: `Redeemed` |
+| `release(homeId)` | The depositor (`NotDepositor`) | Takes the deed back once the member's record is no longer live on the home (`StillLive`). Event: `Released` |
+| `beneficialOwnerOf(tokenId)`, `holdOf(homeId)` | Anyone | The depositor; the hold |
+
+Redemption is the sponsor's own transfer, so it has no first-refusal window. A member's later sale
+goes through the `CoopTransferAgent` as usual.
+
+---
+
 ## `ValidatorFactory`
 
 **Deploys a configured `Validator` and hands it to the caller.** It has no deploy script and is not
@@ -522,6 +543,41 @@ What `deploy_all.ts` does, in order:
     default to the admin); the Safe gets `REMOVER_ROLE` on the registry. The deployer renounces
     everything, and the script checks it holds nothing afterwards. On a live network it refuses an
     admin that is not a timelock with at least a 7-day delay.
+
+### Upgrading an existing deployment: deploy 30
+
+**`deploy/30_deploy_DeedV5.ts` brings a Deed track that predates v5 up to it, keeping the `DeedNFT`
+proxy and its address.** Without `DEED_V5=1` it only validates the upgrade. With it, run by the
+`DeedNFT` admin:
+
+1. Deploys `DeedNFTMintExtension`, `DeedTrustExtension` and `DeedRolesExtension` and upgrades
+   `DeedNFT` in place. Deeds minted before the upgrade have no trust record and stay legacy deeds.
+2. Deploys fresh `ValidatorRegistry`, `MetadataRenderer`, `Validator`, `FundManager`, `Subdivide`,
+   `FractionTokenFactory` and `Fractionalize` proxies with the same wiring as `deploy_all.ts` steps
+   3–5, 7, 9 and 10, and points `DeedNFT` at them (`setValidatorRegistry`, `setMetadataRenderer`,
+   `setDefaultValidator`). The old ones stay deployed for the legacy deeds that name them, but lose
+   every power over `DeedNFT`: the old validator's `VALIDATOR_ROLE` and the old `Subdivide`'s and
+   `Fractionalize`'s marketplace approvals. Their records are kept as `<Name>Legacy`.
+3. Deploys the `FunctionalContractRegistry`, `CoopTransferAgent` and `RedemptionAgent`, registers the
+   new `Subdivide` and `Fractionalize` as custody and both agents as custody and Coop agent, calls
+   `DeedNFT.setTrustRegistries` once, and names the `RedemptionAgent` the `HousingAllowanceRecord`'s
+   deed contract.
+
+### Trust deed setup
+
+A trust deed mints only when three things are in place:
+
+- **An adopted agreement version.** `scripts/adopt_trust_agreement.ts` calls
+  `Validator.adoptAgreementVersion` for Land and Estate with `DEED_AGREEMENT_V5_HASH` (the
+  agreement's content hash, or `DEED_AGREEMENT_FILE` to hash a file) and `DEED_AGREEMENT_V5_URI`.
+  It prints the calls unless `EXECUTE=1`, and prints them to propose once the Deed timelock holds the
+  roles.
+- **An eligible trustee.** `ValidatorRegistry.isEligibleTrustee` accepts a signer (a `VALIDATOR_ROLE`
+  holder) of an active validator, or a licensed trustee the registry owner has listed with
+  `setLicensedTrustee` (the same script, `DEED_LICENSED_TRUSTEES`). A validator contract is never
+  eligible. The trustee signs a `TrusteeAcceptance`, which `mintTrustDeed` checks.
+- **A program**, for Coop deeds: its sponsor becomes the protector and its title administrator is the
+  default trustee.
 
 What is left for later:
 

@@ -1,10 +1,9 @@
 # The Deed track
 
 > **Which build these pages describe.** They describe the Deed track contracts on `dev`: the Deed
-> audit fixes (findings D-1 to D-23) and trust agreement v5. The `DeedNFT` deployed on Base Sepolia
-> (`deployments/base-sepolia/DeedNFT.json`) is an earlier build without the trust surface: its ABI has
-> no `mintTrustDeed` and still has `setTransferValidator`. The other Deed track ABIs saved in
-> `deployments/base-sepolia/` predate the audit fixes too.
+> audit fixes (findings D-1 to D-23) and trust agreement v5. Base Sepolia runs this build since
+> deploy 30, which upgraded `DeedNFT` in place and replaced the other Deed track contracts. Deeds
+> minted there before the upgrade have no trust record and stay legacy deeds.
 
 The Deed track is the part of the Clear Protocol for real-world assets. A **T-Deed** is an ERC-721
 token from `DeedNFT` (name `DeedNFT`, symbol `DEED`) that stands for one asset: land, a vehicle, an
@@ -298,11 +297,13 @@ them now is in [Governance](../../governance/README.md).
 
 ## Networks
 
-**The Deed track is deployed on Base Sepolia only, as an earlier build.** `deployments/base-sepolia/`
-records `DeedNFT`, `Validator`, `ValidatorRegistry`, `FundManager`, `MetadataRenderer`, `Subdivide`,
-`Fractionalize` and `FractionTokenFactory`; their saved ABIs predate the audit fixes and the trust
-surface. `FunctionalContractRegistry`, `CoopTransferAgent` and the Deed timelock are not deployed
-there. `FractionToken`s are clones made per fraction. `ValidatorFactory` has no deploy script and is
+**The Deed track is deployed on Base Sepolia only, at v5.** `deployments/base-sepolia/` records
+`DeedNFT`, `Validator`, `ValidatorRegistry`, `FundManager`, `MetadataRenderer`, `Subdivide`,
+`Fractionalize`, `FractionTokenFactory`, `FunctionalContractRegistry`, `CoopTransferAgent` and
+`RedemptionAgent`. The contracts they replaced are recorded as `<Name>Legacy`. The deployer is still
+the Deed admin; the Deed timelock is not deployed yet, and no trust agreement version is adopted yet,
+so `mintTrustDeed` reverts `AgreementNotAdopted` until one is. `FractionToken`s are clones made per
+fraction. `ValidatorFactory` has no deploy script and is
 not deployed. Nothing on Base mainnet or Ethereum Sepolia belongs to the Deed track.
 
 How the contracts are deployed and wired, and what the scripts leave for an admin to do afterwards,

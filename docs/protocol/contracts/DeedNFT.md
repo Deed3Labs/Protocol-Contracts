@@ -14,17 +14,28 @@ Source: [`contracts/core/DeedNFT.sol`](../../../contracts/core/DeedNFT.sol) · G
 |---|---|---|
 | `addMinter(address minter)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `addValidator(address validator)` | `onlyAdminOrRegistry` |  |
+| `applyLicensingDetermination(uint256 tokenId, bytes32 docHash, string uri, bytes protectorConsent)` | Not in the current source |  |
 | `approve(address to, uint256 tokenId)` | Anyone |  |
+| `approveTrustAction(bytes32 digest)` | Not in the current source |  |
 | `burnAsset(uint256 tokenId)` | Checked inside the function |  |
 | `burnBatchAssets(uint256[] tokenIds)` | Anyone |  |
+| `completeValidatorReassignment(uint256 tokenId)` | Checked inside the function | `whenNotPaused` |
+| `correctDefinition(uint256 tokenId, string newDefinition, string reasonURI, bytes protectorConsent)` | Not in the current source |  |
+| `electAgreementVersion(uint256 tokenId, bytes32 agreementHash, bytes32[] riderHashes, bytes protectorConsent)` | Not in the current source |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address _defaultValidator, address _validatorRegistry)` | Once, when the proxy is initialised |  |
-| `mintAsset(address owner, uint8 assetType, string uri, string definition, string configuration, address validatorAddress, address token, uint256 salt)` | Anyone |  |
+| `markVoid(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri, address cosigner, bytes cosignerConsent)` | Not in the current source |  |
+| `mintAsset(address, uint8, string, string, string, address, address, uint256)` | Anyone |  |
+| `mintTrustDeed((address,uint8,string,bytes32,uint256,bytes32,bytes32[],string,string,address,address,address,address,uint8,(bytes32,address,address,bytes32,uint16,uint16,bool)) p, bytes trusteeAcceptance)` | Not in the current source |  |
 | `pause()` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `postNotice(uint256 tokenId, bytes32 docHash, string uri)` | Not in the current source |  |
+| `reassignValidator(uint256 tokenId, address newValidator)` | Checked inside the function | `whenNotPaused` |
 | `removeMinter(address minter)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `removeTrait(uint256 tokenId, string traitName)` | Anyone |  |
+| `removeTrait(uint256, string)` | Anyone |  |
 | `removeValidator(address validator)` | `onlyAdminOrRegistry` |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
+| `reserveId(uint8 assetType, bytes32 definitionHash, bytes32 parcelRef, uint256 salt, bytes32 agreementHash, bytes32[] riderHashes)` | Not in the current source |  |
+| `restoreFromVoid(uint256 tokenId, string reasonURI, bytes protectorConsent)` | Not in the current source |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `safeTransferFrom(address from, address to, uint256 tokenId, bytes data)` | The holder, or an approved operator |  |
 | `safeTransferFrom(address from, address to, uint256 tokenId)` | The holder, or an approved operator |  |
@@ -34,11 +45,15 @@ Source: [`contracts/core/DeedNFT.sol`](../../../contracts/core/DeedNFT.sol) · G
 | `setDefaultValidator(address validator)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setFundManager(address _fundManager)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setMetadataRenderer(address renderer)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setProtector(uint256 tokenId, address newProtector)` | Not in the current source |  |
 | `setRoyaltyEnforcement(bool enforced)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setStandbyTrustee(uint256 tokenId, address standby, bytes acceptance)` | Not in the current source |  |
 | `setToDefaultSecurityPolicy()` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setTrait(uint256 tokenId, bytes traitKey, bytes traitValue, uint8 valueType)` | Anyone |  |
+| `setTrait(uint256, bytes, bytes, uint8)` | Anyone |  |
 | `setTraitName(bytes32 traitKey, string traitName)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setTransferValidator(address validator)` | Not in the current source |  |
+| `setTrustee(uint256 tokenId, address newTrustee, bytes acceptance)` | Not in the current source |  |
+| `setTrustRegistries(address functionalContractRegistry, address membershipRegistry)` | Not in the current source |  |
+| `setValidatorReassignDelay(uint64 delay)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setValidatorRegistry(address registry)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `transferFrom(address from, address to, uint256 tokenId)` | The holder, or an approved spender |  |
 | `unpause()` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
@@ -53,69 +68,154 @@ Anyone can call these; they change nothing.
 
 | Function | Returns |
 |---|---|
+| `agreementConsentDigest(uint256 tokenId, bytes32 agreementHash, bytes32[] riderHashes)` | bytes32 |
 | `balanceOf(address owner)` | uint256 |
+| `beneficialOwnerOf(uint256 tokenId)` | address |
+| `computeDeedId(uint8 assetType, bytes32 definitionHash, bytes32 parcelRef, address reserver, uint256 salt, bytes32 agreementHash, bytes32[] riderHashes)` | uint256 deedId, bytes32 identityHash |
 | `contractURI()` | string |
+| `correctionConsentDigest(uint256 tokenId, string newDefinition, string reasonURI)` | bytes32 |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
+| `freezeConsentDigest(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri)` | bytes32 |
 | `fundManager()` | address |
 | `generateUniqueTokenId(address owner, uint8 assetType, string definition, uint256 salt)` | uint256 |
 | `getApproved(uint256 tokenId)` | address |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
-| `getTraitKeys(uint256 tokenId)` | bytes32[] |
+| `getTraitKeys(uint256 tokenId)` | bytes32[] traitKeys |
 | `getTraitMetadataURI()` | string |
 | `getTraitName(bytes32 traitKey)` | string |
 | `getTraitValue(uint256 tokenId, bytes32 traitKey)` | bytes |
-| `getTraitValues(uint256 tokenId, bytes32[] traitKeys)` | bytes[] |
-| `getTransferValidationFunction()` | bytes4 functionSignature, bool isViewFunction |
-| `getTransferValidator()` | address validator |
+| `getTraitValues(uint256 tokenId, bytes32[] traitKeys)` | bytes[] values |
 | `getValidationStatus(uint256 tokenId)` | bool isValidated, address validator |
 | `hasRole(bytes32 role, address account)` | bool |
 | `isApprovedForAll(address owner, address operator)` | bool |
 | `isApprovedMarketplace(address marketplace)` | bool |
+| `isDeedValidator(uint256 tokenId, address account)` | bool |
+| `isRetired(uint256 tokenId)` | bool |
 | `isRoyaltyEnforced()` | bool |
+| `isTrustDeed(uint256 tokenId)` | bool |
+| `lastFromOf(uint256 tokenId)` | address |
+| `licensingConsentDigest(uint256 tokenId, address standby, bytes32 docHash)` | bytes32 |
 | `metadataRenderer()` | address |
 | `MINTER_ROLE()` | bytes32 |
+| `mintExtension()` | address |
 | `name()` | string |
 | `nexttokenId()` | uint256 |
 | `ownerOf(uint256 tokenId)` | address |
 | `paused()` | bool |
+| `pendingValidatorOf(uint256 tokenId)` | address validator, uint64 effectiveAt |
+| `protectorOf(uint256 tokenId)` | address |
 | `proxiableUUID()` | bytes32 |
+| `reservationOf(uint256 deedId)` | (address,bytes32,bytes32) |
+| `restoreConsentDigest(uint256 tokenId, string reasonURI)` | bytes32 |
+| `rolesExtension()` | address |
 | `royaltyInfo(uint256 tokenId, uint256 salePrice)` | address receiver, uint256 royaltyAmount |
+| `standbyAcceptanceDigest(uint256 tokenId, address standby)` | bytes32 |
+| `statusOf(uint256 tokenId)` | uint8 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 | `symbol()` | string |
 | `tokenByIndex(uint256 index)` | uint256 |
 | `tokenOfOwnerByIndex(address owner, uint256 index)` | uint256 |
 | `tokenURI(uint256 tokenId)` | string |
 | `totalSupply()` | uint256 |
+| `trusteeAcceptanceDigest(uint256 tokenId, address trustee)` | bytes32 |
+| `trustExtension()` | address |
+| `trustRecordOf(uint256 tokenId)` | (bytes32,bytes32,address,bool,uint8,uint8,uint8,bool,uint16,uint16,address,uint64,address,address,bytes32,address,address,bytes32) |
+| `trustRegistries()` | address functionalContractRegistry, address membershipRegistry |
 | `VALIDATOR_ROLE()` | bytes32 |
+| `validatorReassignDelay()` | uint64 |
+| `wasEverMinted(uint256 tokenId)` | bool |
 
 ## Events
 
 | Event |
 |---|
 | `AdminChanged(address previousAdmin, address newAdmin)` |
+| `AgreementVersionElected(uint256 tokenId indexed, bytes32 previousAgreementHash, bytes32 agreementHash, bytes32 ridersHash)` |
 | `Approval(address owner indexed, address approved indexed, uint256 tokenId indexed)` |
 | `ApprovalForAll(address owner indexed, address operator indexed, bool approved)` |
 | `BatchMetadataUpdate(uint256 _fromTokenId, uint256 _toTokenId)` |
 | `BeaconUpgraded(address beacon indexed)` |
 | `ContractURIUpdated(string newURI)` |
+| `DeedFreezeConfirmed(uint256 tokenId indexed, address proposer indexed, address confirmer indexed)` |
+| `DeedIdReserved(uint256 deedId indexed, address reserver indexed, bytes32 agreementHash, bytes32 ridersHash, bytes32 identityHash)` |
 | `DeedNFTBurned(uint256 tokenId indexed)` |
 | `DeedNFTMinted(uint256 tokenId indexed, uint8 assetType, address minter indexed, address validator)` |
+| `DeedRestored(uint256 tokenId indexed, address validator indexed, string reasonURI)` |
+| `DeedRetired(uint256 tokenId indexed, address holder indexed, bytes32 definitionHash, bytes32 operatingAgreementHash, bytes32 configurationHash, bytes32 agreementHash, bytes32 ridersHash)` |
 | `DeedValidated(uint256 tokenId indexed, bool isValid)` |
+| `DeedVoided(uint256 tokenId indexed, uint8 reasonCode, bytes32 recordingRefHash, string uri, bool transferable)` |
 | `Initialized(uint8 version)` |
 | `MarketplaceApproved(address marketplace indexed, bool approved)` |
+| `MetadataCorrected(uint256 tokenId indexed, bytes32 field indexed, bytes32 oldHash, bytes32 newHash, string reasonURI)` |
 | `MetadataRendererUpdated(address renderer indexed)` |
 | `MetadataUpdate(uint256 _tokenId)` |
+| `NoticePosted(uint256 tokenId indexed, address sender indexed, bytes32 docHash, string uri, address trustee, address protector)` |
+| `OwnerTrusteeAppointed(uint256 tokenId indexed, address holder indexed)` |
+| `OwnerTrusteeRemoved(uint256 tokenId indexed, address previous indexed, address successor indexed, uint8 reason, bytes32 evidenceHash)` |
+| `OwnerTrusteeVacated(uint256 tokenId indexed, address previous indexed, address next indexed)` |
 | `Paused(address account)` |
+| `ProtectorChanged(uint256 tokenId indexed, address previousProtector indexed, address newProtector indexed)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoyaltyEnforcementChanged(bool enforced)` |
+| `StandbyPromoted(uint256 tokenId indexed, address previousTrustee indexed, address newTrustee indexed)` |
+| `StandbyTrusteeChanged(uint256 tokenId indexed, address previousStandby indexed, address newStandby indexed)` |
 | `TraitUpdated(bytes32 traitKey indexed, uint256 tokenId indexed, bytes traitValue)` |
 | `Transfer(address from indexed, address to indexed, uint256 tokenId indexed)` |
-| `TransferValidatorUpdated(address oldValidator, address newValidator)` |
+| `TrustActionApproved(address signer indexed, bytes32 digest indexed)` |
+| `TrustDeedMinted(uint256 tokenId indexed, address owner indexed, bytes32 agreementHash, bytes32 ridersHash, bytes32 identityHash, bytes32 mintParamsHash)` |
+| `TrusteeChanged(uint256 tokenId indexed, address previousTrustee indexed, address newTrustee indexed)` |
+| `TrusteeSuspended(uint256 tokenId indexed, address trustee indexed)` |
+| `TrustRegistriesSet(address functionalContractRegistry, address membershipRegistry)` |
 | `Unpaused(address account)` |
 | `Upgraded(address implementation indexed)` |
+| `ValidatorReassignDelayUpdated(uint64 delay)` |
+| `ValidatorReassigned(uint256 tokenId indexed, address newValidator indexed)` |
+| `ValidatorReassignmentCancelled(uint256 tokenId indexed, address validator indexed)` |
+| `ValidatorReassignmentRequested(uint256 tokenId indexed, address newValidator indexed, uint64 effectiveAt)` |
 
 ## Errors
 
-No custom errors; failures revert with a reason string.
+| Error |
+|---|
+| `AgreementNotAdopted(bytes32 hash)` |
+| `AgreementViaUpdateMetadata()` |
+| `AssetTypeOutsideAgreement()` |
+| `ConsentMissing(address signer)` |
+| `DeedFrozen()` |
+| `DeedIdUnavailable(uint256 deedId)` |
+| `DefinitionLocked()` |
+| `ExtensionMismatch()` |
+| `FreezeNeedsSecondSigner(address cosigner)` |
+| `FreezeNeedsValidator()` |
+| `HookOnly()` |
+| `InvalidRemovalReason()` |
+| `InvalidTransferPolicy()` |
+| `NoReassignmentPending()` |
+| `NotActive()` |
+| `NotActive()` |
+| `NotDeedEditor()` |
+| `NotDeedValidator()` |
+| `NotHolder()` |
+| `NotOwnerTrusteeCandidate()` |
+| `NotProtector()` |
+| `NotTrustDeed()` |
+| `NotTrustParty()` |
+| `NotVoid()` |
+| `OwnerTrusteeRemovalOnly()` |
+| `ProgramRequired()` |
+| `ProtectorNotSponsor()` |
+| `ReassignDelayOutOfRange(uint64 delay)` |
+| `ReassignmentNotDue(uint64 effectiveAt)` |
+| `RegistryAlreadySet()` |
+| `RoleConflict()` |
+| `TransferPolicyBlocked(uint8 policy)` |
+| `TransferToTrustee()` |
+| `TrustDeedRequired()` |
+| `TrusteeNotEligible(address account)` |
+| `UnknownDeed()` |
+| `UseTrustPaths()` |
+| `UseTrustPaths()` |
+| `ValidatedTraitLocked()` |
+| `ValidatorNotUsable()` |

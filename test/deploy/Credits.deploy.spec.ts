@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployCredits, handOverCredits } from "../../deploy/29_deploy_Credits";
-import { deployDeedV5Agents, KIND_CUSTODY, KIND_COOP_AGENT } from "../../deploy/30_deploy_DeedV5";
+import { deployDeedV5Agents, deployFreshDeedSatellites, KIND_CUSTODY, KIND_COOP_AGENT } from "../../deploy/30_deploy_DeedV5";
 import { deployDeedNFT } from "../helpers/deed";
 
 const ONE = 10n ** 6n;
@@ -95,5 +95,40 @@ describe("DEPLOY credits (29) and Deed v5 agents (30)", function () {
     // The registries are set once, ever.
     const trust = await ethers.getContractAt("DeedTrustExtension", await deed.getAddress());
     await expect(trust.setTrustRegistries(s[9].address, ethers.ZeroAddress)).to.be.reverted;
+  });
+  it("deploys fresh v5 satellites, points the deed at them and strips the old ones of their powers", async function () {
+    const oldRegistry: any = await upgrades.deployProxy(await ethers.getContractFactory("ValidatorRegistry"), [], { kind: "uups" });
+    const oldValidator: any = await upgrades.deployProxy(await ethers.getContractFactory("Validator"), ["https://v/", "https://a/"], { kind: "uups" });
+    const deed: any = await deployDeedNFT([await oldValidator.getAddress(), await oldRegistry.getAddress()]);
+    const D = await deed.getAddress();
+    await deed.addValidator(await oldValidator.getAddress());
+    const oldSub = s[6].address;
+    await deed.setApprovedMarketplace(oldSub, true);
+
+    const f = await deployFreshDeedSatellites({
+      deed: D,
+      validatorBaseUri: "https://v/",
+      agreementUri: "https://a/",
+      oldValidator: await oldValidator.getAddress(),
+      oldSubdivide: oldSub,
+      log: quiet,
+    });
+    const V = await f.validator.getAddress();
+    // The deed keeps its registry and default validator internal: the new registry granting the role below
+    // shows the deed now answers to it, and setDefaultValidator only accepts a validator that registry knows.
+    expect(await deed.metadataRenderer()).to.equal(await f.renderer.getAddress());
+    expect(await deed.hasRole(await deed.VALIDATOR_ROLE(), V)).to.equal(true);
+    expect(await deed.hasRole(await deed.VALIDATOR_ROLE(), await oldValidator.getAddress())).to.equal(false);
+    expect(await deed.isApprovedMarketplace(oldSub)).to.equal(false);
+    expect(await deed.isApprovedMarketplace(await f.subdivide.getAddress())).to.equal(true);
+    expect(await deed.isApprovedMarketplace(await f.fractionalize.getAddress())).to.equal(true);
+    // Validator signers are eligible trustees; the validator contract itself never is.
+    expect(await f.registry.isEligibleTrustee(s[0].address)).to.equal(true);
+    expect(await f.registry.isEligibleTrustee(V)).to.equal(false);
+    // The v5 validator adopts agreement versions for Land and Estate only.
+    const h = ethers.id("trust agreement text");
+    await f.validator.adoptAgreementVersion(0, h, "ipfs://agreement", "Deed Trust Agreement v5");
+    expect(await f.validator.agreementVersionURI(0, h)).to.equal("ipfs://agreement");
+    await expect(f.validator.adoptAgreementVersion(1, h, "ipfs://agreement", "x")).to.be.reverted;
   });
 });

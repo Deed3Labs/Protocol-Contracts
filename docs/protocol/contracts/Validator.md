@@ -6,7 +6,7 @@ Source: [`contracts/core/Validator.sol`](../../../contracts/core/Validator.sol) 
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x18C53C0D046f98322954f971c21125E4443c79b9`](https://sepolia.basescan.org/address/0x18C53C0D046f98322954f971c21125E4443c79b9) |
+| Base Sepolia | 84532 | [`0x5036ca87256f7526Fc2374dD2Bf8697e4Cd98f9A`](https://sepolia.basescan.org/address/0x5036ca87256f7526Fc2374dD2Bf8697e4Cd98f9A) |
 
 ## Functions that change state
 
@@ -14,6 +14,7 @@ Source: [`contracts/core/Validator.sol`](../../../contracts/core/Validator.sol) 
 |---|---|---|
 | `addCompatibleDeedNFT(address _deedNFT)` | `onlyOwner` |  |
 | `addWhitelistedToken(address token)` | `onlyRole(FEE_MANAGER_ROLE)` |  |
+| `adoptAgreementVersion(uint256 assetTypeId, bytes32 versionHash, string uri, string name)` | `onlyRole(METADATA_ROLE)` |  |
 | `grantRole(bytes32 role, address account)` | Checked inside the function |  |
 | `initialize(string _baseUri, string _defaultOperatingAgreementUri)` | Once, when the proxy is initialised |  |
 | `registerOperatingAgreement(string uri, string name)` | `onlyRole(METADATA_ROLE)` |  |
@@ -22,6 +23,7 @@ Source: [`contracts/core/Validator.sol`](../../../contracts/core/Validator.sol) 
 | `removeWhitelistedToken(address token)` | `onlyRole(FEE_MANAGER_ROLE)` |  |
 | `renounceOwnership()` | The owner |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
+| `revokeAgreementVersion(uint256 assetTypeId, bytes32 versionHash)` | `onlyRole(METADATA_ROLE)` |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `setAssetTypeSupport(uint256 _assetTypeId, bool _isSupported)` | `onlyRole(CRITERIA_MANAGER_ROLE)` |  |
 | `setBaseUri(string _newBaseUri)` | `onlyOwner` |  |
@@ -33,6 +35,7 @@ Source: [`contracts/core/Validator.sol`](../../../contracts/core/Validator.sol) 
 | `setRoyaltyFeePercentage(uint96 percentage)` | `onlyRole(FEE_MANAGER_ROLE)` |  |
 | `setRoyaltyReceiver(address receiver)` | `onlyRole(FEE_MANAGER_ROLE)` |  |
 | `setServiceFee(address token, uint256 _serviceFee)` | `onlyRole(FEE_MANAGER_ROLE)` |  |
+| `setTokenRegistry(address _tokenRegistry)` | `onlyOwner` |  |
 | `setupValidationCriteria(uint256 assetTypeId)` | `onlyRole(CRITERIA_MANAGER_ROLE)` |  |
 | `setValidationCriteria(uint256 assetTypeId, string[] requiredTraits_, string additionalCriteria_, bool requireOperatingAgreement_, bool requireDefinition_)` | `onlyRole(CRITERIA_MANAGER_ROLE)` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
@@ -50,6 +53,7 @@ Anyone can call these; they change nothing.
 | Function | Returns |
 |---|---|
 | `ADMIN_ROLE()` | bytes32 |
+| `agreementVersionURI(uint256, bytes32)` | string |
 | `baseUri()` | string |
 | `compatibleDeedNFTs(address)` | bool |
 | `CRITERIA_MANAGER_ROLE()` | bytes32 |
@@ -68,6 +72,7 @@ Anyone can call these; they change nothing.
 | `getValidationCriteria(uint256 assetTypeId)` | string[] requiredTraits_, string additionalCriteria_, bool requireOperatingAgreement_, bool requireDefinition_ |
 | `hasRole(bytes32 role, address account)` | bool |
 | `isCompatibleDeedNFT(address _deedNFT)` | bool |
+| `isRequiredTrait(uint256 assetTypeId, bytes32 traitKey)` | bool |
 | `isTokenWhitelisted(address token)` | bool |
 | `isWhitelisted(address)` | bool |
 | `METADATA_ROLE()` | bytes32 |
@@ -85,6 +90,7 @@ Anyone can call these; they change nothing.
 | `supportedAssetTypes(uint256)` | bool |
 | `supportsAssetType(uint256 assetTypeId)` | bool |
 | `supportsInterface(bytes4 interfaceId)` | bool |
+| `tokenRegistry()` | address |
 | `validateOperatingAgreement(string operatingAgreement)` | bool |
 | `validationCriteria(uint256)` | string additionalCriteria, bool requireOperatingAgreement, bool requireDefinition |
 | `VALIDATOR_ROLE()` | bytes32 |
@@ -94,6 +100,8 @@ Anyone can call these; they change nothing.
 | Event |
 |---|
 | `AdminChanged(address previousAdmin, address newAdmin)` |
+| `AgreementVersionAdopted(uint256 assetTypeId indexed, bytes32 versionHash indexed, string uri)` |
+| `AgreementVersionRevoked(uint256 assetTypeId indexed, bytes32 versionHash indexed)` |
 | `BeaconUpgraded(address beacon indexed)` |
 | `CompatibleDeedNFTUpdated(address deedNFTAddress indexed, bool isCompatible)` |
 | `DeedNFTUpdated(address newDeedNFT indexed)` |
@@ -115,4 +123,7 @@ Anyone can call these; they change nothing.
 
 ## Errors
 
-No custom errors; failures revert with a reason string.
+| Error |
+|---|
+| `AgreementOutsideAssetScope(uint256 assetTypeId)` |
+| `EmptyAgreementVersion()` |

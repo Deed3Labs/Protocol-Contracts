@@ -6,7 +6,7 @@ Source: [`contracts/core/FundManager.sol`](../../../contracts/core/FundManager.s
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e`](https://sepolia.basescan.org/address/0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e) |
+| Base Sepolia | 84532 | [`0xe5E038A44DaAfE88fA20902489E4308ADD72e453`](https://sepolia.basescan.org/address/0xe5E038A44DaAfE88fA20902489E4308ADD72e453) |
 
 ## Functions that change state
 
@@ -23,6 +23,8 @@ Source: [`contracts/core/FundManager.sol`](../../../contracts/core/FundManager.s
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `setCommissionPercentage(uint256 newCommissionPercentage)` | `onlyRole(ADMIN_ROLE)` |  |
 | `setFeeReceiver(address _feeReceiver)` | `onlyRole(ADMIN_ROLE)` |  |
+| `setMaxFee(address token, uint256 maxFee)` | Anyone; acts on the caller's own account |  |
+| `setTokenRegistry(address _tokenRegistry)` | `onlyRole(ADMIN_ROLE)` |  |
 | `setValidatorRegistry(address _validatorRegistry)` | `onlyRole(ADMIN_ROLE)` |  |
 | `updateValidatorRoles()` | Checked inside the function |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
@@ -51,9 +53,11 @@ Anyone can call these; they change nothing.
 | `getWhitelistedTokens()` | address[] |
 | `hasRole(bytes32 role, address account)` | bool |
 | `isCompatibleDeedNFT(address _deedNFT)` | bool |
+| `maxFeeOf(address, address)` | uint256 |
 | `MINTER_ROLE()` | bytes32 |
 | `proxiableUUID()` | bytes32 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
+| `tokenRegistry()` | address |
 | `validatorRegistry()` | address |
 
 ## Events
@@ -66,6 +70,7 @@ Anyone can call these; they change nothing.
 | `CompatibleDeedNFTUpdated(address deedNFT indexed, bool isCompatible)` |
 | `FeeReceiverUpdated(address newFeeReceiver indexed)` |
 | `Initialized(uint8 version)` |
+| `MaxFeeSet(address payer indexed, address token indexed, uint256 maxFee)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
@@ -77,4 +82,6 @@ Anyone can call these; they change nothing.
 
 ## Errors
 
-No custom errors; failures revert with a reason string.
+| Error |
+|---|
+| `FeeAboveMax(uint256 fee, uint256 maxFee)` |

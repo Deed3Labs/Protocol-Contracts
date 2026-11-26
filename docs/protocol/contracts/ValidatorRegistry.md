@@ -6,7 +6,7 @@ Source: [`contracts/core/ValidatorRegistry.sol`](../../../contracts/core/Validat
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x979E6cC741A8481f96739A996D06EcFb9BA2bc91`](https://sepolia.basescan.org/address/0x979E6cC741A8481f96739A996D06EcFb9BA2bc91) |
+| Base Sepolia | 84532 | [`0x9E5c7D64bF3EB1fa3B7338608bbBD30ae64717ec`](https://sepolia.basescan.org/address/0x9E5c7D64bF3EB1fa3B7338608bbBD30ae64717ec) |
 
 ## Functions that change state
 
@@ -22,6 +22,7 @@ Source: [`contracts/core/ValidatorRegistry.sol`](../../../contracts/core/Validat
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `setDeedNFT(address _deedNFT)` | `onlyOwner` |  |
 | `setFundManager(address _fundManager)` | `onlyOwner` |  |
+| `setLicensedTrustee(address account, bool licensed, bytes32 licenseRef)` | `onlyOwner` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
 | `updateValidatorName(address validator, string newName)` | `onlyOwner` |  |
 | `updateValidatorStatus(address validator, bool isActive)` | `onlyOwner` |  |
@@ -43,8 +44,11 @@ Anyone can call these; they change nothing.
 | `getSupportedAssetTypes(address validator)` | uint256[] |
 | `getValidatorName(address validator)` | string |
 | `hasRole(bytes32 role, address account)` | bool |
+| `isEligibleTrustee(address account)` | bool |
+| `isLicensedTrustee(address)` | bool |
 | `isValidatorActive(address validator)` | bool |
 | `isValidatorRegistered(address validator)` | bool |
+| `isValidatorSigner(address validator, address account)` | bool |
 | `owner()` | address |
 | `proxiableUUID()` | bytes32 |
 | `REGISTRY_ADMIN_ROLE()` | bytes32 |
@@ -59,6 +63,7 @@ Anyone can call these; they change nothing.
 | `BeaconUpgraded(address beacon indexed)` |
 | `DeedNFTUpdated(address deedNFT indexed)` |
 | `Initialized(uint8 version)` |
+| `LicensedTrusteeUpdated(address account indexed, bool licensed, bytes32 licenseRef)` |
 | `OwnershipTransferred(address previousOwner indexed, address newOwner indexed)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
@@ -70,4 +75,6 @@ Anyone can call these; they change nothing.
 
 ## Errors
 
-No custom errors; failures revert with a reason string.
+| Error |
+|---|
+| `ValidatorCannotBeTrustee(address account)` |

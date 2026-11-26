@@ -3,7 +3,7 @@
 The calls that take a T-Deed through its life, in order, with who makes each one. The rules behind
 each step are in [`protocol-overview.md`](./protocol-overview.md); every function's access and
 events are in [`smart-contracts.md`](./smart-contracts.md). These describe the contracts on `dev`,
-not the earlier build deployed on Base Sepolia.
+which Base Sepolia runs since deploy 30.
 
 All of these are direct contract calls. The Clear app has no screens for minting, validating,
 subdividing or fractionalizing T-Deeds, and no service mints them yet.
