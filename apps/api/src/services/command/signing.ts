@@ -20,6 +20,11 @@ import { signingStatus, type SigningLive } from './signingStatus.js';
  * follows (COMMAND_GITHUB_REPO, COMMAND_GITHUB_BRANCH: Deed3Labs/Protocol-Contracts at dev), with the GitHub
  * poller's GITHUB_TOKEN when it's set (the repo is public, so it works without one at 60 requests an hour).
  * The branch's head is checked at most once a minute, and the files are read again only when it moves.
+ *
+ * A token GitHub refuses (401: expired or revoked) doesn't take Signing down. The repo is public, so the plan is
+ * read without it from raw.githubusercontent.com, which isn't held to the API's 60 requests an hour, and read
+ * again every five minutes (the live check's own pace) since there's no head to watch. The run-log fallback needs
+ * the API's folder listing, so it's skipped then. The API logs the refusal once; a new GITHUB_TOKEN fixes it.
  * COMMAND_SIGNING_DIR (a deployments/<network> folder on disk) reads a checkout instead, for local runs.
  */
 
@@ -27,6 +32,9 @@ type Env = Record<string, string | undefined>;
 export const PLAN_FORMAT = 'clear-signing-plan/1';
 const BASE_SEPOLIA = 84532;
 const CHECK_MS = 60_000;
+/** Without a token GitHub accepts: how often the plan is read again from the public repo. */
+export const PUBLIC_READ_MS = 5 * 60_000;
+const PUBLIC = 'public@';
 
 /** The plan as scripts/signing_plan.ts writes it (SigningPlan there); served as-is. */
 export interface SigningPlanFile {
@@ -140,7 +148,7 @@ const RUN_LOG = /signing-plan.*\.log$/;
 export async function readSigning(files: PlanFiles, network: string, now: number, version?: string | null): Promise<Signing> {
   const v = version === undefined ? await files.version() : version;
   const base = `deployments/${network}`;
-  const at = { readAt: now, ...(v ? { commit: v } : {}) };
+  const at = { readAt: now, ...(v && !v.startsWith(PUBLIC) ? { commit: v } : {}) };
   const planFile = `${base}/signing-plan.json`;
   const text = await files.read(planFile, v);
   let problem: string | undefined;
@@ -171,9 +179,26 @@ export function diskFiles(dir: string): PlanFiles {
 }
 
 /** The repo on GitHub, at the commit the branch's head was when asked. */
-export function githubFiles(env: Env = process.env, f: typeof fetch = fetch): PlanFiles & { head(): Promise<string> } {
+export function githubFiles(env: Env = process.env, f: typeof fetch = fetch, now = () => Date.now()): PlanFiles & { head(): Promise<string>; refused(): boolean } {
   const { repo, branch } = codeConfig(env);
   const token = env.GITHUB_TOKEN?.trim();
+  // GitHub refused the token (401): from then on the public repo's files are read without it
+  let refused = false;
+  const refuse = () => {
+    if (!refused) console.warn(`[command] GitHub refused GITHUB_TOKEN (401): Signing reads ${repo}@${branch} without it until a new token is set`);
+    refused = true;
+  };
+  const rawFile = async (path: string) => {
+    const r = await f(`https://raw.githubusercontent.com/${repo}/${encodeURIComponent(branch)}/${path.split('/').map(encodeURIComponent).join('/')}`, {
+      headers: { 'User-Agent': 'clear-command-center' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`GitHub ${r.status} on ${path}`);
+    return r.text();
+  };
+  /** Without the token: a version that changes every five minutes, so the plan is read again at that pace. */
+  const publicVersion = () => `${PUBLIC}${Math.floor(now() / PUBLIC_READ_MS)}`;
   const headers = (raw = false) => ({
     Accept: raw ? 'application/vnd.github.raw' : 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -184,21 +209,38 @@ export function githubFiles(env: Env = process.env, f: typeof fetch = fetch): Pl
   const contents = (path: string, ref: string | null) => `contents/${path.split('/').map(encodeURIComponent).join('/')}${ref ? `?ref=${ref}` : ''}`;
   return {
     async head() {
+      if (refused) return publicVersion();
       const r = await get(`commits/${encodeURIComponent(branch)}`);
+      if (r.status === 401 && token) {
+        refuse();
+        return publicVersion();
+      }
       if (!r.ok) throw new Error(`GitHub ${r.status} on ${repo}@${branch}`);
       return String(((await r.json()) as { sha: string }).sha);
     },
+    refused: () => refused,
     async version() {
       return this.head();
     },
     async read(path, ref) {
+      if (refused || ref?.startsWith(PUBLIC)) return rawFile(path);
       const r = await get(contents(path, ref), true);
+      if (r.status === 401 && token) {
+        refuse();
+        return rawFile(path);
+      }
       if (r.status === 404) return null;
       if (!r.ok) throw new Error(`GitHub ${r.status} on ${path}`);
       return r.text();
     },
     async list(dir, ref) {
+      // the folder listing is the API's alone: without the token, no run-log fallback
+      if (refused || ref?.startsWith(PUBLIC)) return [];
       const r = await get(contents(dir, ref));
+      if (r.status === 401 && token) {
+        refuse();
+        return [];
+      }
       if (r.status === 404) return [];
       if (!r.ok) throw new Error(`GitHub ${r.status} on ${dir}`);
       const j = (await r.json()) as Array<{ name: string; type: string }>;
@@ -215,7 +257,7 @@ export function signingReader(env: Env = process.env, f: typeof fetch = fetch, n
     const files = diskFiles(dir);
     return { read: () => readSigning(files, network, now(), null) };
   }
-  const gh = githubFiles(env, f);
+  const gh = githubFiles(env, f, now);
   let kept: { sha: string; p: Promise<Signing> } | null = null;
   let head: Promise<string> | null = null;
   let checked = 0;
