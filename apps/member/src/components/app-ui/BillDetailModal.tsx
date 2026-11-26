@@ -5,7 +5,6 @@ import ActivityDetailModal, { type DetailInfo } from '@/components/app-ui/Activi
 import BillPortalBrowser from '@/components/app-ui/BillPortalBrowser';
 import { useKyc } from '@/context/KycContext';
 import { usePay, creditsFor, type Bill, type BillType } from '@/context/PayContext';
-import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { getPayBillerPayments, getMerchantMeta, setMerchantMeta, type PayBillerPayment, type MerchantMeta } from '@/utils/apiClient';
 import { matchPortal, type BillPortal } from '@/data/billPortals';
 
@@ -40,7 +39,6 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
   const { address } = useAppKitAccount();
   const { openPay, streak, setReminders } = usePay();
   const { verified } = useKyc();
-  const { accelerated } = useMemberProfile();
   const [payments, setPayments] = useState<PayBillerPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<MerchantMeta | null>(null);
@@ -72,14 +70,18 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
 
   const info: DetailInfo | null = useMemo(() => {
     if (!bill) return null;
+    // Only an on-time payment made through Clear Pay earns (`in_app` is the old name for it); one marked
+    // paid or seen in a linked bank is a record only.
+    const creditsOf = (p: { amount: number; onTime: boolean; source: string }) =>
+      p.onTime && (p.source === 'clear_rails' || p.source === 'in_app') ? creditsFor({ type: bill.type, amount: p.amount }, streak, p.amount) : 0;
     const total = payments.reduce((s, p) => s + p.amount, 0);
     const count = payments.length;
     const avg = count ? total / count : bill.amount;
-    const creditsEarned = payments.reduce((s, p) => s + creditsFor({ type: bill.type, amount: p.amount }, streak, p.amount, accelerated), 0);
+    const creditsEarned = payments.reduce((s, p) => s + creditsOf(p), 0);
     const oldest = payments.length ? new Date(payments[payments.length - 1].paidAt) : null;
     const months = oldest ? Math.max(1, Math.round((Date.now() - oldest.getTime()) / (30 * 864e5))) : 0;
     const latest = payments[0];
-    const latestCredits = latest ? creditsFor({ type: bill.type, amount: latest.amount }, streak, latest.amount, accelerated) : 0;
+    const latestCredits = latest ? creditsOf(latest) : 0;
 
     return {
       icon: bill.icon,
@@ -120,7 +122,7 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
       ],
       historyTitle: 'Payment history',
       history: payments.map((p) => {
-        const c = creditsFor({ type: bill.type, amount: p.amount }, streak, p.amount, accelerated);
+        const c = creditsOf(p);
         const d = new Date(p.paidAt);
         return {
           id: p.id,
@@ -144,7 +146,7 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
           ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bill, payments, loading, portalUrl, addressVal, reminders, streak, accelerated, openPay, onClose, setReminders, verified]);
+  }, [bill, payments, loading, portalUrl, addressVal, reminders, streak, openPay, onClose, setReminders, verified]);
 
   return (
     <>

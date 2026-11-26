@@ -284,7 +284,8 @@ router.post('/:wallet/payments', async (req: Request, res: Response) => {
       amount: Number(p.amount),
       dueDate: p.dueDate ? String(p.dueDate) : null,
       period: String(p.period).slice(0, 7),
-      source: (p.source === 'detected' ? 'detected' : 'in_app') as EarnSource,
+      // A payment the member records here was made somewhere else: it never earns. Only /pay does.
+      source: (p.source === 'detected' ? 'detected' : 'manual') as EarnSource,
       txRef: p.txRef ? String(p.txRef) : null,
       network: networkFromOrigin(req),
     });
@@ -409,8 +410,8 @@ router.post('/:wallet/pay', requireStepUp, async (req: Request, res: Response) =
       res.status(400).json({ error: 'Payout failed', message: result.reason });
       return;
     }
-    // Bridge pulls the USDC on transfer creation, so record the payment now (equity credits use the
-    // 30-day vesting window as the settlement buffer).
+    // Bridge pulls the USDC on transfer creation, so record the payment now (its credits use the 30-day
+    // vesting window as the settlement buffer, and a returned payout voids them: bridgeWebhook).
     const biller = (await payLedgerStore.listBillers(w)).find((x) => x.id === b.billerId);
     if (biller) {
       const now = new Date();
@@ -422,7 +423,7 @@ router.post('/:wallet/pay', requireStepUp, async (req: Request, res: Response) =
         amount,
         dueDate: biller.dueDay ? new Date(now.getFullYear(), now.getMonth(), biller.dueDay).toISOString().slice(0, 10) : null,
         period: now.toISOString().slice(0, 7),
-        source: 'in_app',
+        source: 'clear_rails',
         txRef: result.providerReference ?? null,
         network: networkFromOrigin(req),
       });

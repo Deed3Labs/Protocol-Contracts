@@ -3482,7 +3482,7 @@ export async function syncPlaidBillers(
 
 export async function recordPayment(
   wallet: string,
-  payment: { billerId?: string | null; name: string; type: PayBillerType; amount: number; dueDate?: string | null; period: string; source?: 'in_app' | 'detected'; txRef?: string | null },
+  payment: { billerId?: string | null; name: string; type: PayBillerType; amount: number; dueDate?: string | null; period: string; source?: 'manual' | 'detected'; txRef?: string | null },
 ): Promise<{ creditAwarded: number; onTime: boolean; duplicate: boolean } | null> {
   const r = await apiRequest<{ creditAwarded: number; onTime: boolean; duplicate: boolean }>(`/api/pay/${wallet.toLowerCase()}/payments`, {
     method: 'POST',
