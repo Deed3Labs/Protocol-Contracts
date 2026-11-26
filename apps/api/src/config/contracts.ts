@@ -57,6 +57,11 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     // and none was deployed with the fresh stack, so this stays unset and the offers job and the
     // Command reads stay off. Never point it at OffersIssuerPreAudit.
     OffersIssuer: process.env.OFFERS_ISSUER_84532 || '',
+    // Clear Credits (deploy 29): a points ledger of its own, the Points Issuer that mints on it, and the
+    // Housing Allowance Record credits redeem into.
+    CreditsLedger: process.env.CREDITS_LEDGER_84532 || '0x6a46c688F0D84cB6c8e66D7E9546e2A236bAD3d5',
+    PointsIssuer: process.env.POINTS_ISSUER_84532 || '0xd254Bd2C78791a666eEfC4A7B6163d5d47C842a3',
+    HousingAllowanceRecord: process.env.HOUSING_ALLOWANCE_RECORD_84532 || '0x26D8540881249bcD253810aBC2242b5a572729B5',
   },
   // Sepolia
   11155111: {

@@ -169,6 +169,14 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error CollateralRegistrySignatureExpired(uint256 deadline)',
   'error CollateralRegistryBadSignature(address member)',
   'error CollateralRegistryEncumbered(address member, bytes32 kind, uint256 free, uint256 amount)',
+  // PointsIssuer (Clear Credits): what a mint can be refused for
+  'error PointsIssuerRefUsed(bytes32 ref)',
+  'error PointsIssuerSourceNotAllowed(bytes32 source)',
+  'error PointsIssuerNoMatchPeriod(address member)',
+  'error PointsIssuerOutsideMatchPeriod(address member)',
+  'error PointsIssuerMonthlyCap(address member, uint256 wanted, uint256 left)',
+  'error PointsIssuerLifetimeCap(address member, uint256 wanted, uint256 left)',
+  'error PointsIssuerMatchPeriodSet(address member)',
 ] as const;
 
 export const CHAIN_ERRORS = new ethers.Interface(CHAIN_ERROR_FRAGMENTS as unknown as string[]);

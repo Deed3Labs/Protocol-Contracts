@@ -5,6 +5,7 @@ import { getPlaidClient } from './plaid.js';
 import { plaidTokenStore } from '../services/plaidTokenStore.js';
 import { payBillerViaUsdc } from '../services/billerPayoutService.js';
 import { requireStepUp } from '../middleware/stepUp.js';
+import { readCreditsOnChain } from '../services/chain/creditsMint.js';
 
 /*
  * Clear Pay endpoints — billers (manual + Plaid-detected), payments, and the equity summary.
@@ -50,6 +51,26 @@ router.get('/:wallet/summary', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[pay/summary]', error);
     res.status(500).json({ error: 'Failed to load summary' });
+  }
+});
+
+// GET /api/pay/:wallet/credits/onchain
+// What the chain records for this wallet: its credits balance, credits earned in all (never lowered by
+// redeeming or spending) and earned by source. The summary above stays the off-chain view, with the
+// credits still in their 30 days.
+router.get('/:wallet/credits/onchain', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  try {
+    const onchain = await readCreditsOnChain(w);
+    if (!onchain) {
+      res.status(404).json({ error: 'No Points Issuer on this network' });
+      return;
+    }
+    res.json(onchain);
+  } catch (error) {
+    console.error('[pay/credits/onchain]', (error as Error)?.message);
+    res.status(502).json({ error: 'Could not read the chain' });
   }
 });
 
