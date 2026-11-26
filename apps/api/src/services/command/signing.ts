@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { codeConfig } from './github.js';
+import { signingStatus, type SigningLive } from './signingStatus.js';
 
 /*
  * Build → Signing (brief update 2, section 6): the day-0 signing plan that scripts/signing_plan.ts writes
@@ -60,6 +61,10 @@ export interface Signing {
   readAt: number;
   /** why a plan that's there wasn't used, or why nothing could be read */
   problem?: string;
+  /** where each step stands now, from the chain and the Safes' queues (signingStatus.ts), for a plan */
+  live?: SigningLive;
+  /** why the live statuses couldn't be read: the page then shows the plan's own */
+  liveProblem?: string;
 }
 
 const isAddress = (a: unknown) => typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a);
@@ -232,6 +237,25 @@ export function signingReader(env: Env = process.env, f: typeof fetch = fetch, n
   };
 }
 
-let shared: ReturnType<typeof signingReader> | null = null;
-/** The API's one reader, so every request shares what was read at the branch's head. */
-export const liveSigning = () => (shared ??= signingReader());
+/** The plan with where each step stands now: kept five minutes, read again at once on "Check now". */
+export function signingWithStatus(reader: { read(): Promise<Signing> }, status: ReturnType<typeof signingStatus>) {
+  const withLive = async (s: Signing, check: (p: SigningPlanFile) => Promise<SigningLive>): Promise<Signing> => {
+    if (!s.plan) return s;
+    try {
+      return { ...s, live: await check(s.plan) };
+    } catch (e) {
+      return { ...s, liveProblem: `Couldn’t read the chain just now: ${(e as Error)?.message ?? e}` };
+    }
+  };
+  return {
+    read: async () => withLive(await reader.read(), (p) => status.current(p)),
+    checkNow: async () => withLive(await reader.read(), (p) => status.now(p)),
+    forget: () => status.forget(),
+  };
+}
+
+export type SigningSource = ReturnType<typeof signingWithStatus>;
+
+let shared: SigningSource | null = null;
+/** The API's one reader, so every request shares what was read at the branch's head and the last check. */
+export const liveSigning = () => (shared ??= signingWithStatus(signingReader(), signingStatus()));

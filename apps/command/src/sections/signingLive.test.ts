@@ -103,3 +103,42 @@ describe('stage names', () => {
     expect(SGL.stageOf('RT')).toEqual(['RT', 'Lending routes']);
   });
 });
+
+describe('where each step stands now (the API’s live check)', () => {
+  const steps = () => [{ id: 'A', status: 'waiting', why: 'old' }, { id: 'B', status: 'ready', why: '' }, { id: 'C', status: 'done', why: '' }] as any[];
+  const live = {
+    stepsSha256: 'sha',
+    checkedAt: 0,
+    nextCheckAt: 0,
+    block: 1,
+    blockTime: 1,
+    safes: { '0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50': { address: '0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50', owners: ['0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA'], threshold: 2, nonce: 21, others: [], link: 'x' } },
+    steps: {
+      A: { status: 'ready', by: 'dry-run', queued: { safeTxHash: '0x1', nonce: 21, signed: [], required: 2, behind: [], link: 'l' } },
+      B: { status: 'waiting', why: 'The timelock’s 7 days end later.', opensAt: '2026-11-28T00:22:06.000Z', by: 'timelock' },
+    },
+  } as any;
+  test('the statuses go on the steps only when they’re for this plan', () => {
+    const s = steps();
+    expect(SGL.applyLive(s, live, 'other')).toBe(false);
+    expect(s[0].status).toBe('waiting');
+    expect(SGL.applyLive(s, live, 'sha')).toBe(true);
+    expect(s[0]).toMatchObject({ status: 'ready', why: '', queued: { nonce: 21 } });
+    expect(s[1]).toMatchObject({ status: 'waiting', why: 'The timelock’s 7 days end later.', opensAt: '2026-11-28T00:22:06.000Z' });
+    expect(s[2].status).toBe('done');
+  });
+  test('who owns a Safe, whatever the case of the address', () => {
+    expect(SGL.ownsSafe(live, '0x52e6102b7c22eec7a68b11dd71fac7d6d9aecf50', '0x895d44d10d1b7b4f5f38e2ae2322539cf93f7aaa')).toBe(true);
+    expect(SGL.ownsSafe(live, '0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50', '0x0000000000000000000000000000000000000001')).toBe(false);
+    expect(SGL.ownsSafe(live, '0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50', null)).toBe(false);
+  });
+  test('when, in words', () => {
+    const now = Date.parse('2026-11-26T18:00:00Z');
+    expect(SGL.untilText('2026-11-28T00:22:06Z', now)).toBe('in 30 h 22 min');
+    expect(SGL.untilText('2026-11-30T00:00:00Z', now)).toBe('in 3 d 6 h');
+    expect(SGL.untilText('2026-11-26T18:20:00Z', now)).toBe('in 20 min');
+    expect(SGL.untilText('2026-11-26T17:00:00Z', now)).toBe('now');
+    expect(SGL.agoText(now - 30_000, now)).toBe('just now');
+    expect(SGL.agoText(now - 4 * 60_000, now)).toBe('4 min ago');
+  });
+});

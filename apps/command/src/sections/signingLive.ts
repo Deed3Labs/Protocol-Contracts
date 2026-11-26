@@ -1,3 +1,5 @@
+import { api } from '../live/api';
+
 /*
  * Build → Signing, live (brief update 2, section 6): the rollout's signing plan, signed from Command.
  *
@@ -8,7 +10,13 @@
  * - a wallet step is sent from MetaMask by the account it names, with exactly the plan's call (to, data, value 0):
  *   Command never builds a call and holds no key;
  * - a Safe step is a Safe Transaction Builder batch file, opened in the Safe app, where its owners sign;
- * - what this browser sent is kept per plan (by its fingerprint), and its receipts are read from the wallet.
+ * - what this browser sent is kept per plan (by its fingerprint), and its receipts are read from the wallet;
+ * - where each step stands NOW comes with the plan (SIGNING.live): the API reads the chain and each Safe's queue at
+ *   most every five minutes while Command is open, and again on "Check now", so a step turns done or ready without
+ *   anyone re-running the plan script;
+ * - a ready Safe step goes into its own Safe's queue from here: an owner's MetaMask signs exactly the step's call
+ *   at the Safe's next nonce, the API checks the signer is one of that Safe's owners and hands it to the Safe's
+ *   service; further owners sign the queued copy here or in the Safe app, and it's executed in the Safe app.
  */
 
 export const BASE_SEPOLIA = 84532;
@@ -57,10 +65,38 @@ export interface Plan {
   steps: PlanStep[];
 }
 /** What the API sends (contractsSection's SIGNING). */
+export interface StepLive {
+  status: 'done' | 'ready' | 'waiting';
+  why?: string;
+  opensAt?: string;
+  by: string;
+  txHash?: string;
+  queued?: { safeTxHash: string; nonce: number; signed: string[]; required: number; behind: number[]; link: string };
+}
+export interface SafeLive {
+  address: string;
+  owners: string[];
+  threshold: number;
+  nonce: number;
+  others: Array<{ nonce: number; safeTxHash: string; what: string; signed: number; required: number }>;
+  link: string;
+  problem?: string;
+}
+export interface SigningLive {
+  stepsSha256: string;
+  checkedAt: number;
+  nextCheckAt: number;
+  block: number;
+  blockTime: number;
+  steps: Record<string, StepLive>;
+  safes: Record<string, SafeLive>;
+}
 export interface SigningPayload {
   source: 'plan' | 'run-log' | 'none';
   file?: string;
   plan: Plan | null;
+  live?: SigningLive;
+  liveProblem?: string;
   runLog?: { file: string; block?: number; at?: string; steps: Array<{ id: string; status: 'done' | 'waiting' | 'ready'; why?: string }> } | null;
 }
 
@@ -321,3 +357,84 @@ export function downloadBatch(step: PlanStep, p: Plan) {
 }
 /** The Safe app's Transaction Builder, open on the step's Safe. */
 export const safeAppUrl = (step: PlanStep) => `https://app.safe.global/apps/open?safe=${CHAIN.safePrefix}:${step.signer}&appUrl=${encodeURIComponent('https://apps-portal.safe.global/tx-builder')}`;
+
+/* ── where each step stands now (the API's live check) ── */
+
+/** Puts the live statuses on the drawn steps, when they're for this plan. Returns whether they were. */
+export function applyLive(steps: any[], live: SigningLive | null | undefined, sha: string): boolean {
+  if (!live || live.stepsSha256 !== sha) return false;
+  for (const s of steps) {
+    const l = live.steps[s.id];
+    if (!l) continue;
+    s.status = l.status;
+    s.why = l.why || (l.status === 'waiting' ? s.why : '');
+    s.opensAt = l.opensAt || null;
+    s.queued = l.queued || null;
+    s.txHash = l.txHash || null;
+    s.liveBy = l.by;
+  }
+  return true;
+}
+
+/** "in 1 d 6 h", "in 25 min", "now". */
+export function untilText(iso: string, now = Date.now()): string {
+  const ms = Date.parse(iso) - now;
+  if (!(ms > 0)) return 'now';
+  const m = Math.round(ms / 60_000);
+  if (m < 60) return `in ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `in ${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
+  return `in ${Math.floor(h / 24)} d ${h % 24} h`;
+}
+
+/** "just now", "4 min ago". */
+export function agoText(at: number, now = Date.now()): string {
+  const m = Math.floor((now - at) / 60_000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h ago`;
+}
+
+/** Whether the connected MetaMask account owns the step's Safe. */
+/** A Safe's owners and queue from the live check, whatever the case of its address. */
+export const safeOf = (live: SigningLive | null | undefined, safe: string): SafeLive | null => {
+  const k = Object.keys(live?.safes || {}).find((x) => same(x, safe));
+  return k ? live!.safes[k] : null;
+};
+export const ownsSafe = (live: SigningLive | null | undefined, safe: string, account: string | null) => !!account && !!safeOf(live, safe)?.owners?.some((o) => same(o, account));
+
+/** "Check now": the API reads the chain and the Safes again (unless it did seconds ago). */
+export const checkNow = () => api<{ live: SigningLive | null; liveProblem: string | null }>('POST', '/signing/check');
+
+/** Signs Safe typed data with the connected MetaMask account, on Base Sepolia. */
+async function signSafe(typedData: unknown): Promise<string> {
+  const e = eth();
+  if (!e || !W.account) throw new Error('Connect MetaMask first.');
+  if (W.chain !== BASE_SEPOLIA) throw new Error('Switch MetaMask to Base Sepolia first.');
+  try {
+    return await e.request({ method: 'eth_signTypedData_v4', params: [W.account, JSON.stringify(typedData)] });
+  } catch (err: any) {
+    throw new Error(err?.code === 4001 ? 'You declined in MetaMask. Nothing was signed.' : `MetaMask couldn’t sign it: ${err?.message ?? err}`);
+  }
+}
+
+/** Puts a ready Safe step in its Safe's queue: Command builds nothing, the API prepares exactly the plan's call. */
+export async function proposeSafe(step: PlanStep): Promise<{ safeTxHash: string; nonce: number; signed: number; required: number }> {
+  const stepId = step.id;
+  const p = await api<any>('POST', '/signing/safe/prepare', { stepId });
+  const m = p.typedData?.message;
+  // the wallet signs only what the plan says: this Safe, this call, nothing sent with it
+  if (step.kind !== 'safe' || !step.data || (!same(p.safe, step.signer) || !same(p.typedData?.domain?.verifyingContract, step.signer) || !same(m?.to, step.to) || String(m?.data).toLowerCase() !== String(step.data).toLowerCase() || String(m?.value) !== '0' || Number(m?.operation) !== 0 || Number(p.typedData?.domain?.chainId) !== BASE_SEPOLIA))
+    throw new Error('What the API prepared isn’t exactly this step’s call. Nothing was signed.');
+  const signature = await signSafe(p.typedData);
+  return api<any>('POST', '/signing/safe/propose', { stepId, nonce: p.nonce, signature });
+}
+
+/** Adds the connected owner's signature to a Safe step already in its queue. */
+export async function confirmSafe(step: PlanStep, safeTxHash: string): Promise<{ signed: number; required: number }> {
+  const stepId = step.id;
+  const t = await api<any>('POST', '/signing/safe/tx', { stepId, safeTxHash });
+  const m = t.typedData?.message;
+  if (step.kind !== 'safe' || !step.data || (!same(t.typedData?.domain?.verifyingContract, step.signer) || Number(t.typedData?.domain?.chainId) !== BASE_SEPOLIA || !same(m?.to, step.to) || String(m?.data).toLowerCase() !== String(step.data).toLowerCase() || String(m?.value) !== '0' || Number(m?.operation) !== 0))
+    throw new Error('The queued copy isn’t exactly this step’s call. Nothing was signed.');
+  const signature = await signSafe(t.typedData);
+  return api<any>('POST', '/signing/safe/confirm', { stepId, safeTxHash, signature });
+}

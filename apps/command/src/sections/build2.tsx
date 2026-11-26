@@ -2197,7 +2197,7 @@ function makeBuild() {
               d = ss.filter(s => ['done', 'success'].includes(sgState(s))).length,
               r = ss.filter(s => sgState(s) === 'ready').length;
             return <button key={__k} className={`sn-tk ${d === ss.length ? 'done' : r ? 'now' : ''}${SG.f === 'st:' + k ? ' on' : ''}`} data-sgf={SG.f === 'st:' + k ? 'all' : 'st:' + k} title={SG.f === 'st:' + k ? 'Show all steps' : 'Show only ' + k}><i /><b>{k}</b><span>{t}</span><em>{d === ss.length ? 'Done' : `${d} of ${ss.length}${r ? ` · ${r} ready` : ''}`}</em></button>;
-          })}</div><div className="sn-sum"><div className="sn-cnt"><div className="sn-ns">{[['done', 'done'], ['ready', 'ready to sign'], ['pending', 'sent, on chain soon'], ['waiting', LV ? 'waiting on a step or a timelock' : 'waiting on an earlier step']].filter(([k]) => k !== 'pending' || cnt('pending')).map(([k, t], __k) => <span key={__k}><span className="m-big">{cnt(k)}</span><small><i className={`sn-d ${k}`} />{t}</small></span>)}</div><div className="sn-bar">{['done', 'pending', 'ready', 'waiting'].map((k, __k) => cnt(k) ? <i key={__k} className={k} style={css(`flex:${cnt(k)}`)} /> : '')}</div></div><div className="led sn-fp">{[['Read from the chain', `block ${int(P.block)} · ${fmtD(P.generated)} ${hm(P.generated)}`], ['Plan fingerprint', <><span className="mono">{P.sha}</span>{" · checked"}</>], ['Plan file', <span className="mono">{P.file}</span>]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div></div>, <><span>After each stage, read the chain again: sent steps turn done and the next ones open</span><span className="sn-fa"><label className="btn">Load a plan<input type="file" accept=".json,application/json" data-sgload="" hidden /></label><button className="btn p" data-sgrecheck="">Read the chain again</button></span></>);
+          })}</div><div className="sn-sum"><div className="sn-cnt"><div className="sn-ns">{[['done', 'done'], ['ready', 'ready to sign'], ['pending', 'sent, on chain soon'], ['waiting', LV ? 'waiting on a step or a timelock' : 'waiting on an earlier step']].filter(([k]) => k !== 'pending' || cnt('pending')).map(([k, t], __k) => <span key={__k}><span className="m-big">{cnt(k)}</span><small><i className={`sn-d ${k}`} />{t}</small></span>)}</div><div className="sn-bar">{['done', 'pending', 'ready', 'waiting'].map((k, __k) => cnt(k) ? <i key={__k} className={k} style={css(`flex:${cnt(k)}`)} /> : '')}</div></div><div className="led sn-fp">{[['Read from the chain', LV && SG.liveOk ? `block ${int(SG.live.block)} · ${SGL.agoText(SG.live.checkedAt)}` : `block ${int(P.block)} · ${fmtD(P.generated)} ${hm(P.generated)}`], ...(LV && SG.liveOk ? [['Plan written', `block ${int(P.block)} · ${fmtD(P.generated)}`]] : []), ['Plan fingerprint', <><span className="mono">{P.sha}</span>{" · checked"}</>], ['Plan file', <span className="mono">{P.file}</span>]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div></div>, <><span>{LV ? SG.liveOk ? `Checked ${SGL.agoText(SG.live.checkedAt)} · read again every 5 minutes while Command is open` : SG.liveProblem || 'The chain wasn’t read just now: these are the plan’s own statuses' : 'After each stage, read the chain again: sent steps turn done and the next ones open'}</span><span className="sn-fa"><label className="btn">Load a plan<input type="file" accept=".json,application/json" data-sgload="" hidden /></label><button className="btn p" data-sgrecheck="" {...attrs(LV && SG.checking ? 'disabled' : '')}>{LV ? SG.checking ? 'Checking…' : 'Check now' : 'Read the chain again'}</button></span></>);
       const F = SG.f,
         FL = [['mine', 'Ready for this wallet'], ['ready', 'All ready'], ['safe', 'Safe steps'], ['all', 'All steps'], ['done', 'Done']];
       const list = S.filter(s => {
@@ -2207,7 +2207,7 @@ function makeBuild() {
       const steps = cell('s8', 'Steps', <span className="sn-fl">{FL.map(([k, t], __k) => <button key={__k} className={F === k ? 'on' : ''} data-sgf={k}>{t}</button>)}</span>, list.length ? <div className="sn-ls">{list.map((s, __k) => {
           const x = sgState(s),
             a = SG_ACCT[s.who];
-          return <button key={__k} className={`sn-r ${SGW[x][1]} ${sgMine(s) && x === 'ready' ? 'me' : ''}`} data-sgstep={s.id}><span className="sn-id mono">{s.id}</span><span className="sn-k"><b>{s.t}</b><span>{sgTo(s)}{" · "}<span className="mono">{s.fn.split('(')[0]}</span>{s.kind === 'safe' ? ' · Safe batch' : ''}</span></span><span className="sn-w">{sgTag(s.who)}<span>{a[0].split(' · ')[0]}</span></span><span className={`sn-s ${SGW[x][1]}`}>{s.kind === 'safe' && x === 'ready' ? 'In the Safe app' : SGW[x][0]}</span></button>;
+          return <button key={__k} className={`sn-r ${SGW[x][1]} ${sgMine(s) && x === 'ready' ? 'me' : ''}`} data-sgstep={s.id}><span className="sn-id mono">{s.id}</span><span className="sn-k"><b>{s.t}</b><span>{sgTo(s)}{" · "}<span className="mono">{s.fn.split('(')[0]}</span>{s.kind === 'safe' ? ' · Safe batch' : ''}</span></span><span className="sn-w">{sgTag(s.who)}<span>{a[0].split(' · ')[0]}</span></span><span className={`sn-s ${SGW[x][1]}`}>{s.kind === 'safe' && x === 'ready' ? LV ? s.queued ? `${s.queued.signed.length} of ${s.queued.required} signed` : 'Ready' : 'In the Safe app' : SGW[x][0]}</span></button>;
         })}</div> : <div className="sn-empty"><span>{F === 'mine' ? SG.wallet ? 'Nothing is ready for this account. Switch accounts, or see all ready steps.' : 'Connect a wallet to see the steps it signs.' : 'No steps here.'}</span></div>, <><span>{S.length}{" steps · signers from the rollout config"}</span><span>Each step carries its exact call data</span></>);
       const w = SG.wallet,
         wa = w && (SG_ACCT[w] || ['This account', LV ? SGL.shortA(w) : w, 'R']),
@@ -2219,7 +2219,7 @@ function makeBuild() {
       const tl = S.filter(s => s.st === 'D7' || s.kind === 'safe' && /schedule/.test(s.fn));
       const wait = cell('s6', 'Waiting on time', <span className="lbl">7-day timelocks</span>, <div className="sn-tl">{tl.map((s, __k) => {
           const x = sgState(s);
-          return <button key={__k} className="sn-tr2" data-sgstep={s.id}><span className="mono">{s.id}</span><span><b>{s.t}</b><span>{SG_ACCT[s.who][0]}</span></span><span className="sn-tw">{x === 'done' || x === 'success' ? 'Done' : s.st === 'D7' ? <><em className="hxw" />7 days after scheduling</> : 'Schedules the wait'}</span></button>;
+          return <button key={__k} className="sn-tr2" data-sgstep={s.id}><span className="mono">{s.id}</span><span><b>{s.t}</b><span>{SG_ACCT[s.who][0]}</span></span><span className="sn-tw">{x === 'done' || x === 'success' ? 'Done' : LV && s.opensAt ? `Opens ${SGL.untilText(s.opensAt)}` : LV && x === 'ready' && s.st === 'D7' ? 'Due now' : s.st === 'D7' ? <><em className="hxw" />7 days after scheduling</> : 'Schedules the wait'}</span></button>;
         })}</div>, <><span>Anyone can still pause during a wait</span><span /></>);
       const jobs = LV ? notReal('s6', 'Standing signing jobs', 'The jobs that need signers after the rollout aren’t in the plan yet.') : cell('s6', 'Standing signing jobs', <span className="lbl">After the rollout</span>, <div className="led sn-jb">{SG.jobs.map(([t, s, n], __k) => <div key={__k}><span><b>{t}</b><em>{s}</em></span><b>{n}</b></div>)}</div>, <><span>Mainnet uses the same loop, with real wallets and Safes</span><span /></>);
       html(document.getElementById('bv'), <>{band(run, 1)}{band(<>{steps}{wal}</>)}{band(<>{wait}{jobs}</>)}</>);
@@ -2231,7 +2231,7 @@ function makeBuild() {
         r = SG.sent[s.id],
         mine = sgMine(s);
       const T = s.kind === 'safe' ? ['Planned', 'Ready', 'Queued', 'Owners signed', 'Done'] : ['Planned', 'Ready', 'Sent', 'Confirmed'];
-      const at = s.kind === 'safe' ? {
+      const at0 = s.kind === 'safe' ? {
         waiting: 0,
         ready: 1,
         pending: 2,
@@ -2245,9 +2245,10 @@ function makeBuild() {
         done: 3,
         failed: 2
       }[x];
-      const ft = x === 'ready' && s.kind === 'wallet' ? !SG.wallet ? <><span className="small quiet" style={css("margin-right:auto")}>Connect MetaMask first</span><button className="btn p" data-sgconnect="">Connect MetaMask</button></> : !mine ? <span className="small quiet sn-warn" style={css("margin-right:auto")}>{"Switch MetaMask to "}{a[0]}{" (…"}{a[1].slice(-4)})</span> : <><span className="small quiet" style={css("margin-right:auto")}>{LV && SGL.W.error ? SGL.W.error : 'MetaMask shows the call to confirm'}</span><button className="btn p" data-sgsend={s.id} {...attrs(LV && SGL.W.busy[s.id] ? 'disabled' : '')}>{LV && SGL.W.busy[s.id] ? 'Confirm in MetaMask…' : 'Sign and send'}</button></> : x === 'ready' && s.kind === 'safe' ? <><button className="btn" data-sgdl={s.id}>Download batch file</button><button className="btn p" data-sgsafe={s.id}>{LV ? 'Open in the Safe app' : 'Send to the Safe’s queue'}</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{x === 'waiting' ? LV && (s.dep || []).every(d => ['done', 'success'].includes(sgState(sgStep(d)))) ? 'Waits on time, not on a step: re-run the plan once it’s due' : `Opens when ${(s.dep || []).join(' and ')} ${s.dep && s.dep.length > 1 ? 'are' : 'is'} done` : x === 'pending' ? 'Waiting for the chain' : 'Nothing to send: the chain shows this done'}</span>{x === 'waiting' ? <button className="btn" disabled style={css("opacity:.45;cursor:default")}>{s.kind === 'safe' ? LV ? 'Open in the Safe app' : 'Send to the Safe’s queue' : 'Sign and send'}</button> : ''}</>;
+      const at = LV && s.kind === 'safe' && s.queued && x === 'ready' ? s.queued.signed.length >= s.queued.required ? 3 : 2 : at0;
+      const ft = x === 'ready' && s.kind === 'wallet' ? !SG.wallet ? <><span className="small quiet" style={css("margin-right:auto")}>Connect MetaMask first</span><button className="btn p" data-sgconnect="">Connect MetaMask</button></> : !mine ? <span className="small quiet sn-warn" style={css("margin-right:auto")}>{"Switch MetaMask to "}{a[0]}{" (…"}{a[1].slice(-4)})</span> : <><span className="small quiet" style={css("margin-right:auto")}>{LV && SGL.W.error ? SGL.W.error : 'MetaMask shows the call to confirm'}</span><button className="btn p" data-sgsend={s.id} {...attrs(LV && SGL.W.busy[s.id] ? 'disabled' : '')}>{LV && SGL.W.busy[s.id] ? 'Confirm in MetaMask…' : 'Sign and send'}</button></> : x === 'ready' && s.kind === 'safe' ? LV ? sgSafeFoot(s) : <><button className="btn" data-sgdl={s.id}>Download batch file</button><button className="btn p" data-sgsafe={s.id}>Send to the Safe’s queue</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{x === 'waiting' ? LV ? sgWaitText(s) : `Opens when ${(s.dep || []).join(' and ')} ${s.dep && s.dep.length > 1 ? 'are' : 'is'} done` : x === 'pending' ? 'Waiting for the chain' : 'Nothing to send: the chain shows this done'}</span>{x === 'waiting' ? <button className="btn" disabled style={css("opacity:.45;cursor:default")}>{s.kind === 'safe' ? LV ? 'Open in the Safe app' : 'Send to the Safe’s queue' : 'Sign and send'}</button> : ''}</>;
       const nxt = SG.steps.filter(o => o.dep && o.dep.includes(s.id));
-      return <>{phd(<><span style={css("text-transform:none")}>{s.id}</span>{" · "}{sgStage(s.st)}</>, <span className={`sn-s ${SGW[x][1]}`} style={css("margin-left:10px")}>{SGW[x][0]}</span>)}<><div className="pn-b"><div><p className="bpn-t">{s.t}</p><p className="bpn-s">{s.x}</p></div><div className="bd-tk">{T.map((t, i) => <span key={i} className={i < at ? 'done' : i === at ? 'now' : ''}><i />{t}</span>)}</div>{s.why && x === 'waiting' ? <p className="bpn-n"><b>Why it waits.</b>{" "}{s.why}</p> : ''}<div className="led">{[['Who signs', <>{sgTag(s.who)}{" "}{a[0]}{" "}<span className="mono quiet">{a[1]}</span></>], ['Contract', s.to ? <><button className="lnk3" data-bctr={s.to}>{ctrOf(s.to)[1]}</button>{/^0x/.test(ctrOf(s.to)[5]) ? <span className="mono quiet">{ctrOf(s.to)[5]}</span> : ''}</> : s.toLbl], ['Function', <span className="mono">{s.fn}</span>], ...(s.dep ? [['After', s.dep.map((d, __k) => <Fragment key={__k}>{__k ? ' · ' : ''}<button className="lnk3" data-sgstep={d}>{d}</button></Fragment>)]] : []), ...(nxt.length ? [['Opens next', nxt.map((o, __k) => <Fragment key={__k}>{__k ? ' · ' : ''}<button className="lnk3" data-sgstep={o.id}>{o.id}</button></Fragment>)]] : []), ...(r && r.hash ? [['Transaction', LV ? <a className="mono" href={SGL.explorerTx(r.hash)} target="_blank" rel="noopener">{SGL.shortA(r.hash)}{" ↗"}</a> : <span className="mono">{r.hash}</span>]] : [])].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div><div>{lbl('Arguments')}<div className="sn-args">{s.args.map(([n, ty, v], __k) => <div key={__k}><span>{n}{" "}<em>{ty}</em></span><span className="mono">{v}</span></div>)}</div></div><details className="sn-cd"><summary>The exact call data</summary><p className="mono">{LV ? s.call.data || 'Not known yet: an earlier step decides it. Re-run the plan script after it.' : <>0x{(s.id + s.fn).split('').map(c => c.charCodeAt(0).toString(16)).join('').slice(0, 136)}…</>}</p></details>{s.kind === 'safe' ? <p className="bpn-w">{LV ? 'The Safe signs this, not MetaMask directly. Command Center downloads it as a Transaction Builder batch and opens the Safe app; its owners sign there.' : 'The Safe signs this, not MetaMask directly. Command Center sends it to the Safe’s queue; its owners sign there.'}</p> : ''}</div><div className="pn-ft">{ft}</div></></>;
+      return <>{phd(<><span style={css("text-transform:none")}>{s.id}</span>{" · "}{sgStage(s.st)}</>, <span className={`sn-s ${SGW[x][1]}`} style={css("margin-left:10px")}>{SGW[x][0]}</span>)}<><div className="pn-b"><div><p className="bpn-t">{s.t}</p><p className="bpn-s">{s.x}</p></div><div className="bd-tk">{T.map((t, i) => <span key={i} className={i < at ? 'done' : i === at ? 'now' : ''}><i />{t}</span>)}</div>{s.why && x === 'waiting' ? <p className="bpn-n"><b>Why it waits.</b>{" "}{s.why}</p> : ''}<div className="led">{[['Who signs', <>{sgTag(s.who)}{" "}{a[0]}{" "}<span className="mono quiet">{a[1]}</span></>], ['Contract', s.to ? <><button className="lnk3" data-bctr={s.to}>{ctrOf(s.to)[1]}</button>{/^0x/.test(ctrOf(s.to)[5]) ? <span className="mono quiet">{ctrOf(s.to)[5]}</span> : ''}</> : s.toLbl], ['Function', <span className="mono">{s.fn}</span>], ...(s.dep ? [['After', s.dep.map((d, __k) => <Fragment key={__k}>{__k ? ' · ' : ''}<button className="lnk3" data-sgstep={d}>{d}</button></Fragment>)]] : []), ...(nxt.length ? [['Opens next', nxt.map((o, __k) => <Fragment key={__k}>{__k ? ' · ' : ''}<button className="lnk3" data-sgstep={o.id}>{o.id}</button></Fragment>)]] : []), ...(r && r.hash ? [['Transaction', LV ? <a className="mono" href={SGL.explorerTx(r.hash)} target="_blank" rel="noopener">{SGL.shortA(r.hash)}{" ↗"}</a> : <span className="mono">{r.hash}</span>]] : []), ...(LV && s.queued && x !== 'done' ? [['In the Safe’s queue', <a href={s.queued.link} target="_blank" rel="noopener">{`Nonce ${s.queued.nonce} · ${s.queued.signed.length} of ${s.queued.required} signed${s.queued.behind.length ? ` · after nonce ${s.queued.behind.join(', ')}` : ''} ↗`}</a>]] : []), ...(LV && s.txHash ? [['Executed', <a className="mono" href={SGL.explorerTx(s.txHash)} target="_blank" rel="noopener">{SGL.shortA(s.txHash)}{" ↗"}</a>]] : []), ...(LV && s.opensAt && x === 'waiting' ? [['Opens', `${fmtD(Date.parse(s.opensAt))} ${hm(Date.parse(s.opensAt))} UTC · ${SGL.untilText(s.opensAt)}`]] : [])].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div><div>{lbl('Arguments')}<div className="sn-args">{s.args.map(([n, ty, v], __k) => <div key={__k}><span>{n}{" "}<em>{ty}</em></span><span className="mono">{v}</span></div>)}</div></div><details className="sn-cd"><summary>The exact call data</summary><p className="mono">{LV ? s.call.data || 'Not known yet: an earlier step decides it. Re-run the plan script after it.' : <>0x{(s.id + s.fn).split('').map(c => c.charCodeAt(0).toString(16)).join('').slice(0, 136)}…</>}</p></details>{s.kind === 'safe' ? <p className="bpn-w">{LV ? 'The Safe runs this, not MetaMask. An owner puts it in the Safe’s queue from here, signing in MetaMask; the other owners sign here or in the Safe app, and it’s executed in the Safe app.' : 'The Safe signs this, not MetaMask directly. Command Center sends it to the Safe’s queue; its owners sign there.'}</p> : ''}</div><div className="pn-ft">{ft}</div></></>;
     }
 
     /* ══ Live (REAL): each tab from what the poller, the indexer and the Ops Safe have ═════════════ */
@@ -2607,6 +2608,11 @@ function makeBuild() {
       Object.assign(SG_ACCT, g.accts);
       SG_STAGES.splice(0, SG_STAGES.length, ...g.stages);
       Object.assign(SG, { plan: g.plan, steps: g.steps, byId: Object.fromEntries(g.steps.map(x => [x.id, x])), sent: SGL.loadSent(p.stepsSha256), raw: p, load: 'ok', err: '' });
+      // where each step stands now: the API's check of the chain and the Safes' queues, when it's for this plan
+      const L = LV && LV.SIGNING;
+      SG.live = L && L.live || null;
+      SG.liveOk = SGL.applyLive(SG.steps, SG.live, p.stepsSha256);
+      SG.liveProblem = L && L.liveProblem || '';
       Object.entries(SG.sent).forEach(([id, r]) => r.state === 'pending' && sgPoll(id));
     }
     /** The plan the API sends (contractsSection's SIGNING): checked here as the signing page checks it. */
@@ -2639,7 +2645,7 @@ function makeBuild() {
         m = SG.steps.filter(s => sgMine(s) && st(s) === 'ready').length,
         d = SG.steps.filter(s => ['done', 'success'].includes(st(s))).length,
         w = SG.steps.filter(s => st(s) === 'waiting');
-      return r ? `The Base Sepolia rollout has ${plural(r, 'step', 'steps')} ready to sign${SG.wallet ? `, ${m} of them for the connected account` : ''}. Safe steps are signed in the Safe app; everything else in MetaMask.` : `${d} of ${SG.steps.length} steps are done.${w.length ? ` ${plural(w.length, 'step waits', 'steps wait')}: ${w.map(s => s.id).join(', ')}.` : ''}`;
+      return r ? `The Base Sepolia rollout has ${plural(r, 'step', 'steps')} ready to sign${SG.wallet ? `, ${m} of them for the connected account` : ''}. Safe steps go into their Safe’s queue from here; everything else is sent from MetaMask.` : `${d} of ${SG.steps.length} steps are done.${w.length ? ` ${plural(w.length, 'step waits', 'steps wait')}: ${w.map(s => s.id).join(', ')}.` : ''}`;
     }
     /** Follows a sent step until the wallet's node has its receipt. */
     function sgPoll(id, tries = 0) {
@@ -2653,6 +2659,33 @@ function makeBuild() {
         toast(x.state === 'success' ? `${id} confirmed on Base Sepolia` : `${id} failed on chain · nothing changed`);
       }).catch(() => setTimeout(() => sgPoll(id, tries + 1), 6000));
     }
+    /** Why a step waits, in the panel's footer: when its timelock opens, what it waits on, or the check's own reason. */
+    function sgWaitText(s) {
+      if (s.opensAt) return `Opens ${fmtD(Date.parse(s.opensAt))} ${hm(Date.parse(s.opensAt))} UTC · ${SGL.untilText(s.opensAt)}`;
+      const open = (s.dep || []).filter(d => !['done', 'success'].includes(sgState(sgStep(d))));
+      if (open.length) return `Opens when ${open.join(' and ')} ${open.length > 1 ? 'are' : 'is'} done`;
+      return s.why ? 'Waits: see why above' : 'Waiting';
+    }
+    /** A ready Safe step's footer: put it in the Safe's queue, sign the queued copy, or execute it in the Safe app. */
+    function sgSafeFoot(s) {
+      const q = s.queued,
+        me = SGL.W.account,
+        owner = SGL.ownsSafe(SG.live, s.call.signer, me),
+        busy = SGL.W.busy[s.id],
+        safe = SGL.safeOf(SG.live, s.call.signer),
+        link = q ? q.link : safe ? safe.link : SGL.safeAppUrl(s.call);
+      const open = <a className="btn" href={link} target="_blank" rel="noopener" style={css("text-decoration:none")}>Open in the Safe app ↗</a>;
+      const note = t => <span className="small quiet" style={css("margin-right:auto")}>{t}</span>;
+      if (q) {
+        const signedMe = me && q.signed.some(o => o.toLowerCase() === me);
+        if (q.signed.length >= q.required) return <>{note(`${q.signed.length} of ${q.required} signed${q.behind.length ? ` · runs after nonce ${q.behind.join(', ')}` : ''} · execute it in the Safe app`)}<a className="btn p" href={q.link} target="_blank" rel="noopener" style={css("text-decoration:none")}>Execute in the Safe app ↗</a></>;
+        if (owner && !signedMe) return <>{note(`${q.signed.length} of ${q.required} signed · MetaMask shows exactly this call`)}{open}<button className="btn p" data-sgconfirm={s.id} {...attrs(busy ? 'disabled' : '')}>{busy ? 'Confirm in MetaMask…' : 'Sign'}</button></>;
+        return <>{note(`${q.signed.length} of ${q.required} signed · ${signedMe ? 'you’ve signed: the other owners sign next' : 'waiting on the other owners'}`)}{open}</>;
+      }
+      if (!me) return <>{note('Connect an owner of this Safe')}<button className="btn" data-sgdl={s.id}>Download batch file</button><button className="btn p" data-sgconnect="">Connect MetaMask</button></>;
+      if (!owner) return <>{note(safe && safe.owners.length ? 'This account isn’t one of the Safe’s owners' : 'Its owner is another Safe: propose it in the Safe app')}<button className="btn" data-sgdl={s.id}>Download batch file</button>{open}</>;
+      return <>{note(SGL.W.error || 'MetaMask signs exactly this call for the Safe')}<button className="btn" data-sgdl={s.id}>Download batch file</button><button className="btn p" data-sgpropose={s.id} {...attrs(busy ? 'disabled' : '')}>{busy ? 'Confirm in MetaMask…' : 'Propose to the Safe'}</button></>;
+    }
     async function sgLiveAct(d) {
       if (d.sgconnect !== undefined) {
         await SGL.connect();
@@ -2661,7 +2694,23 @@ function makeBuild() {
         render();
         return toast(SGL.W.error || (SG.wallet ? `Connected ${SG_ACCT[SG.wallet] ? SG_ACCT[SG.wallet][0] : SGL.shortA(SG.wallet)} on Base Sepolia` : 'Not connected'));
       }
-      const s = SG.byId[d.sgsend || d.sgsafe || d.sgdl];
+      const s = SG.byId[d.sgsend || d.sgsafe || d.sgdl || d.sgpropose || d.sgconfirm];
+      if ((d.sgpropose || d.sgconfirm) && s) {
+        if (SGL.W.busy[s.id]) return;
+        SGL.W.busy[s.id] = true;
+        render();
+        try {
+          const r = d.sgpropose ? await SGL.proposeSafe(s.call) : await SGL.confirmSafe(s.call, s.queued.safeTxHash);
+          SGL.W.busy[s.id] = false;
+          toast(d.sgpropose ? `${s.id} is in the Safe’s queue · 1 of ${r.required} signed · logged` : `Signed ${s.id} · ${r.signed} of ${r.required}${r.signed >= r.required ? ' · ready to execute in the Safe app' : ''}`);
+          await SGL.checkNow().catch(() => null);
+          return reloadSection('build').then(() => renderShell());
+        } catch (e) {
+          SGL.W.busy[s.id] = false;
+          render();
+          return toast(e.message);
+        }
+      }
       if (d.sgsend && s) {
         if (SGL.W.busy[s.id]) return;
         SGL.W.busy[s.id] = true;
@@ -2696,8 +2745,17 @@ function makeBuild() {
             }
           }
         if (SG.raw) SGL.saveSent(SG.raw.stepsSha256, SG.sent);
+        SG.checking = true;
+        render();
+        const c = await SGL.checkNow().catch(e => ({ error: e.message }));
+        SG.checking = false;
+        if (c.error) {
+          render();
+          return toast(`Couldn’t check just now: ${c.error}`);
+        }
         await reloadSection('build').catch(() => null);
-        return toast(`Read again${n ? ` · ${n} sent ${n === 1 ? 'step' : 'steps'} settled` : ''} · steps turn done when the plan script is re-run and committed`);
+        renderShell();
+        return toast(`Checked the chain and the Safes${n ? ` · ${n} sent ${n === 1 ? 'step' : 'steps'} settled` : ''}`);
       }
     }
     if (LV) {
@@ -2984,7 +3042,7 @@ function makeBuild() {
         };
         return render();
       }
-      if (LV && (d.sgconnect !== undefined || d.sgsend || d.sgsafe || d.sgdl || d.sgrecheck !== undefined)) return void sgLiveAct(d);
+      if (LV && (d.sgconnect !== undefined || d.sgsend || d.sgsafe || d.sgdl || d.sgpropose || d.sgconfirm || d.sgrecheck !== undefined)) return void sgLiveAct(d);
       if (d.sgconnect !== undefined) {
         SG.wallet = 'dep';
         SG.f = 'mine';
