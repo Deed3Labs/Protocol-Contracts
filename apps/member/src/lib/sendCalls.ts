@@ -629,3 +629,48 @@ export async function scSetSavingsDrawAllowance(args: { smartWalletClient?: unkn
     { to: c.revolvingIssuer, data: encodeFunctionData({ abi: AUTO_REPAY_ABI, functionName: 'setSavingsDrawAllowance', args: [args.units] }) },
   ]);
 }
+
+const REDEMPTION_AGENT_ABI = [
+  { type: 'function', name: 'redeemHome', stateMutability: 'nonpayable', inputs: [{ name: 'homeId', type: 'uint256' }], outputs: [] },
+] as const;
+
+/**
+ * Pay toward a home: the API's [approve, contribute] (checked against the screen by the caller), in
+ * ONE sponsored batch. From savings, the CLRUSD is redeemed into USDC first in the same batch, as a
+ * plan paid from savings is, so it is all or nothing; CLRUSD refuses to move savings pledged against
+ * drawn credit, and the whole batch fails rather than touching a pledge.
+ */
+export async function scContribute(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  chainId: number;
+  calls: Call[];
+  /** Redeem this much CLRUSD from savings into USDC first. */
+  fromSavingsUnits?: bigint;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.housingAllowanceRecord) throw new Error('Paying toward a home is not available on this network yet.');
+  const receiver = args.ownerWallet as `0x${string}`;
+  const before: Call[] = args.fromSavingsUnits
+    ? [
+        { to: c.clrusd, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, args.fromSavingsUnits] }) },
+        { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, args.fromSavingsUnits, receiver] }) },
+      ]
+    : [];
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [...before, ...args.calls]);
+  // The savings books follow the redeem, as for any move out of savings.
+  if (args.fromSavingsUnits) {
+    await recordGaslessSavings({ action: 'redeem', amount: args.fromSavingsUnits.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  }
+  return hash;
+}
+
+/** Take the Clear Deed: RedemptionAgent.redeemHome. The record refuses unless the price is reached. */
+export async function scRedeemHome(args: { smartWalletClient?: unknown; ownerWallet: string; chainId: number; homeId: string }): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.redemptionAgent) throw new Error('Redeeming a home is not available on this network yet.');
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.redemptionAgent, data: encodeFunctionData({ abi: REDEMPTION_AGENT_ABI, functionName: 'redeemHome', args: [BigInt(args.homeId)] }) },
+  ]);
+}
+

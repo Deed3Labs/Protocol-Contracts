@@ -1,4 +1,5 @@
 import type { CommunityFeeStatement, ElpaActive, ElpaRedeemed } from '@/lib/elpa';
+import type { Housing } from '@/lib/housing';
 
 /*
  * ELPA fixtures for the preview harness and tests only. The live app reads `elpaBooksStub`
@@ -44,4 +45,37 @@ export const ELPA_REDEEMED: ElpaRedeemed = {
   redeemedOn: '2041-03-01',
   deed: { tokenId: '1042', smartAccount: '0x7f3a0000000000000000000000000000000c19e2' },
   communityFee: { ...FEE, paid: true },
+};
+
+/** The Housing Allowance on chain, for the preview: an ELPA signed, the design's own figures. */
+export const HOUSING_ACTIVE: Housing = {
+  member: '0x7f3a0000000000000000000000000000000c19e2',
+  home: {
+    homeId: '1042',
+    name: '1042 Julia St',
+    status: 'signed',
+    structurePrice: 250_000,
+    creditPortion: 3_250,
+    memberPortion: 18_400,
+    total: 21_650,
+    refundDue: 0,
+    signedAt: '2026-11-01T00:00:00.000Z',
+    endedAt: null,
+    live: true,
+    redeemable: false,
+    payable: true,
+  },
+  creditsToRedeem: 1_240,
+  creditsEarned: 15_240,
+  creditPortionUsed: 3_250,
+  creditPortionCap: 54_000,
+};
+
+/** Reached the price: the RedemptionAgent holds the deed and the record says it may go. */
+export const HOUSING_READY: Housing = {
+  ...HOUSING_ACTIVE,
+  home: { ...HOUSING_ACTIVE.home!, creditPortion: 54_000, memberPortion: 197_200, total: 251_200, redeemable: true },
+  creditsToRedeem: 310,
+  creditsEarned: 71_480,
+  creditPortionUsed: 54_000,
 };

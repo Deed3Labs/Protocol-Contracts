@@ -19,8 +19,9 @@ number of dollars. How to move money in and out is in
   only a pause can stop you moving them, and a pause is short: see
   [How the money works](../overview/how-the-money-works.md#savings).
 
-On the Savings page, **What you hold** splits your balance into cash (CLRUSD), vested credits and
-credits still vesting, and shows what your savings add to your credit line.
+On the Savings page, your balance is the cash in your savings (CLRUSD). Credits are counted beside
+it, never added to it: they have no cash value. **What you hold** shows your cash, the credits that
+have arrived and the credits still on the way, and what your savings add to your credit line.
 
 ## Equity credits
 

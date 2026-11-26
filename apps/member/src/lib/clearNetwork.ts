@@ -48,6 +48,14 @@ export interface ClearContracts {
   termIssuer?: `0x${string}`;
   /** Where a member's signed pledges are recorded (Phase 4b, L-I): the domain they sign in. */
   collateralRegistry?: `0x${string}`;
+  /**
+   * Clear Credits and the Housing Allowance (deploys 29 and 30). The Points Issuer is the domain a
+   * member signs a redemption in; the record is what a payment toward a home goes through; the
+   * RedemptionAgent hands over the Clear Deed once the record shows the price reached. Testnet only.
+   */
+  pointsIssuer?: `0x${string}`;
+  housingAllowanceRecord?: `0x${string}`;
+  redemptionAgent?: `0x${string}`;
 }
 const CONTRACTS: Record<number, ClearContracts> = {
   8453: {
@@ -68,6 +76,9 @@ const CONTRACTS: Record<number, ClearContracts> = {
     liquidator: '0x621784117C037b3D20AF54e04589818e919e33f3',
     termIssuer: '0x1b1695353f14E889906237D9b9C386eD0393da57',
     collateralRegistry: '0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A',
+    pointsIssuer: '0xd254Bd2C78791a666eEfC4A7B6163d5d47C842a3',
+    housingAllowanceRecord: '0x26D8540881249bcD253810aBC2242b5a572729B5',
+    redemptionAgent: '0xBbBdf1302ED3Ef7861D757eAC28AcEEa019FAB84',
     // Replacement pair. The vault and token these succeed are still deployed and still
     // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
     // outstanding when the swap happened, so nobody who held the old token is stranded.

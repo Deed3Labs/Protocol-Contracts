@@ -16,7 +16,9 @@ import { ELPA_ACTIVE, ELPA_CHECK_IN, ELPA_REDEEMED } from '@/data/elpaPreview';
 
 /*
  * The ELPA (Addendum 3, owner decisions of Nov 14, 2026): equity toward Redemption plus a Community
- * Fee bill. Not credit, a term plan or a mortgage; off chain; never in a limit.
+ * Fee bill. Not credit, a term plan or a mortgage; never in a limit. The equity is the Housing
+ * Allowance, read from the chain (lib/housing); the books (this module) hold the month's
+ * contribution, the projection and the fee.
  */
 
 const SRC = join(import.meta.dirname, '..');
@@ -24,6 +26,9 @@ const read = (p: string) => readFileSync(join(SRC, p), 'utf8');
 const LIB = read('lib/elpa.ts');
 const VIEW = read('components/clear/YourHome.tsx');
 const HOOK = read('hooks/useElpa.ts');
+const HA = read('components/clear/HousingAllowance.tsx');
+/** The Housing Allowance block's own source. */
+const HA_BLOCK = HA.slice(HA.indexOf('export function HousingAllowanceBlock('), HA.indexOf('export function RedeemCreditsDialog('));
 
 /** The source of one function in the view, so a word in the bill block cannot hide in the equity one. */
 function block(name: string): string {
@@ -56,16 +61,15 @@ describe('the Equity Contribution is equity, chosen by the member', () => {
     expect(redemptionProgress({ equityBalance: 10, structurePrice: 0 })).toBe(0);
   });
 
-  test('the view shows the Equity Balance, the Structure Price and a projected Redemption date', () => {
-    const equity = block('EquityBlock');
-    for (const label of ['Equity Balance', 'Structure Price', 'Projected Redemption']) expect(equity).toContain(label);
+  test('the view shows the Housing Allowance in its two parts against the price, and when it lands', () => {
+    for (const label of ['Housing Allowance', 'From credits', 'Your money', 'Price', 'To go', 'On track to redeem']) expect(HA_BLOCK).toContain(label);
+    expect(VIEW).toContain('ConnectedHousingAllowance');
   });
 
   test('and has no due, past-due or late state, no reminder and no dunning', () => {
-    const equity = block('EquityBlock');
-    expect(equity).not.toMatch(/\b(due|overdue|past.?due|late|missed|behind|remind|owed?)\b/i);
+    expect(code(HA_BLOCK)).not.toMatch(/\b(due|overdue|past.?due|late|missed|behind|remind|owed?)\b/i);
     // "never a debt" is the one place the word appears, and it says the opposite.
-    expect(equity).toContain('Equity, never a debt.');
+    expect(HA_BLOCK).toContain('Equity, never a debt.');
   });
 });
 
@@ -114,10 +118,10 @@ describe('the Community Fee is a housing bill, owed on the 1st', () => {
   });
 
   test('before Redemption it rides with the monthly payment, shown as its own line', () => {
-    expect(VIEW).toContain('beforeRedemption={elpa.status === \'active\'}');
+    expect(VIEW).toContain('beforeRedemption={!redeemed}');
     expect(VIEW).toContain('COMMUNITY_FEE_WITH_PAYMENT');
     // A separate block from the equity, never summed into it.
-    expect(block('EquityBlock')).not.toContain('communityFee');
+    expect(HA).not.toContain('communityFee');
   });
 });
 
@@ -143,8 +147,8 @@ describe('not credit, not a term plan, not a mortgage', () => {
   });
 });
 
-describe('off chain: books, not contracts', () => {
-  test('the ELPA module and its view make no contract call', () => {
+describe('the books make no contract call; the Housing Allowance is read from the chain', () => {
+  test('the ELPA module, its hook and the Your home view make no contract call', () => {
     for (const src of [LIB, VIEW, HOOK].map(code)) {
       expect(src).not.toMatch(/readContract|writeContract|useReadContract|sendCalls|viem|wagmi|ethers|abi/i);
       expect(src).not.toMatch(/USDC|CLRUSD/);
@@ -157,8 +161,8 @@ describe('off chain: books, not contracts', () => {
     expect(read('pages/app/SavingsRoute.tsx')).toContain('useElpa()');
   });
 
-  test('a member with no ELPA sees nothing of it', () => {
-    expect(VIEW).toContain("if (elpa.status === 'none') return null;");
+  test('a member with no ELPA and no Housing Allowance sees nothing of it', () => {
+    expect(VIEW).toContain("if (!live && !redeemed && elpa.status === 'none') return null;");
   });
 
   test('Redeemed shows the Clear Deed in the member\'s Smart Account', () => {

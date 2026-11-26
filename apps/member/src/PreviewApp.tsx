@@ -17,7 +17,8 @@ import HomePage from '@/pages/app/HomePage';
 import type { YourShop } from '@/utils/apiClient';
 import type { AccountDetailsSource } from '@/lib/accountDetails';
 import type { ElpaState } from '@/lib/elpa';
-import { ELPA_ACTIVE, ELPA_CHECK_IN, ELPA_REDEEMED } from '@/data/elpaPreview';
+import { ELPA_ACTIVE, ELPA_CHECK_IN, ELPA_REDEEMED, HOUSING_ACTIVE, HOUSING_READY } from '@/data/elpaPreview';
+import type { Housing } from '@/lib/housing';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
@@ -102,7 +103,8 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 
 /**
  * Savings in the reference's four states — /savings?preview=1&state=day1|saving|paused|done — and
- * with an ELPA: state=elpa|elpa-checkin|redeemed.
+ * with an ELPA: state=elpa|elpa-checkin|ready|redeemed (the Housing Allowance live, the six-month
+ * check-in, reached the price, and the Clear Deed redeemed).
  *
  * The figures are the reference's own (docs/reference/savings-reference.html), so a screenshot can be
  * laid beside it. Without a state the page follows the harness's populated/empty toggle as before.
@@ -132,11 +134,14 @@ function SavingsPreview({ empty }: { empty: boolean }) {
     },
   };
   // The ELPA's three moments (Addendum 3): saving equity, the six-month check-in, and redeemed.
-  const elpas: Record<string, ElpaState> = { elpa: ELPA_ACTIVE, 'elpa-checkin': ELPA_CHECK_IN, redeemed: ELPA_REDEEMED };
+  const elpas: Record<string, ElpaState> = { elpa: ELPA_ACTIVE, 'elpa-checkin': ELPA_CHECK_IN, ready: ELPA_ACTIVE, redeemed: ELPA_REDEEMED };
+  const housings: Record<string, Housing> = { elpa: HOUSING_ACTIVE, 'elpa-checkin': HOUSING_ACTIVE, ready: HOUSING_READY };
   const state = params.get('state');
   const elpa = state ? elpas[state] : undefined;
-  const data = (state && (states[state] ?? (elpa ? states.done : undefined))) || (empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE);
-  return <SavingsPage key={state ?? String(empty)} data={data} elpa={elpa} />;
+  const housing = state ? housings[state] : undefined;
+  const done = { ...states.done, savings: { ...states.done.savings, cash: 1500, vesting: 180 } };
+  const data = (state && (states[state] ?? (elpa ? done : undefined))) || (empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE);
+  return <SavingsPage key={state ?? String(empty)} data={data} elpa={elpa} housing={housing} />;
 }
 
 /**

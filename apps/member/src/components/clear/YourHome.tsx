@@ -1,81 +1,19 @@
 import { money } from '@clear/domain';
 import {
-  CHECK_IN_NOTE,
   COMMUNITY_FEE_LINES,
   COMMUNITY_FEE_TERMS,
   COMMUNITY_FEE_WITH_PAYMENT,
-  MIN_CONTRIBUTION_RATE,
   communityFeeTotal,
-  minimumContribution,
-  monthName,
-  redemptionProgress,
   shortAddress,
   shortDay,
-  showsCheckIn,
   type CommunityFeeStatement,
-  type ElpaActive,
   type ElpaRedeemed,
   type ElpaState,
 } from '@/lib/elpa';
+import { NO_HOUSING, type Housing } from '@/lib/housing';
+import ConnectedHousingAllowance from './ConnectedHousingAllowance';
 
 const $ = (n: number) => money(n, { cents: true });
-const pct = `${(MIN_CONTRIBUTION_RATE * 100).toFixed(2)}%`;
-
-/**
- * The Equity Contribution, as progress toward Redemption.
- *
- * Equity, never a debt (MB-13 §6.3): so this block has no due date, no late or past-due state and no
- * reminder. It shows what the member holds, what the home is priced at, and when Redemption lands at
- * their pace. The minimum is stated as a fact about the agreement, not as something owed.
- */
-function EquityBlock({ elpa }: { elpa: ElpaActive }) {
-  const progress = redemptionProgress(elpa);
-  const minimum = minimumContribution(elpa.structurePrice);
-
-  return (
-    <section className="c-sv-blk" aria-label="Equity">
-      <div className="c-sv-bh">
-        <span className="c-label">Equity &middot; {elpa.home}</span>
-        <span className="c-fig">{$(elpa.equityBalance)}</span>
-      </div>
-      <div className="c-sv-bm">
-        <span
-          className="c-sv-comp"
-          role="img"
-          aria-label={`${Math.round(progress * 100)}% of the way to Redemption`}
-        >
-          <i style={{ flexBasis: `${progress * 100}%`, background: 'var(--settled)' }} />
-        </span>
-        <div className="c-sv-rows">
-          <div>
-            <span className="c-fg">Equity Balance</span>
-            <span className="c-fg">{$(elpa.equityBalance)}</span>
-          </div>
-          <div>
-            <span>Structure Price</span>
-            <span>{$(elpa.structurePrice)}</span>
-          </div>
-          <div>
-            <span>Projected Redemption</span>
-            <span>{elpa.projectedRedemption ? monthName(elpa.projectedRedemption) : 'No projection yet'}</span>
-          </div>
-          <div>
-            <span>Your contribution this month</span>
-            <span>{elpa.contributionThisMonth === null ? 'Not chosen yet' : $(elpa.contributionThisMonth)}</span>
-          </div>
-          <div>
-            <span>Monthly minimum ({pct} of the Structure Price)</span>
-            <span>{$(minimum)}</span>
-          </div>
-        </div>
-        {showsCheckIn(elpa) && <p className="c-sv-note">{CHECK_IN_NOTE}</p>}
-      </div>
-      <div className="c-sv-bf">
-        <span>Equity, never a debt. You choose the amount each month.</span>
-      </div>
-    </section>
-  );
-}
 
 /** After Redemption: the Clear Deed, on chain in the member's Smart Account. */
 function RedeemedBlock({ elpa }: { elpa: ElpaRedeemed }) {
@@ -95,10 +33,12 @@ function RedeemedBlock({ elpa }: { elpa: ElpaRedeemed }) {
             <span>Held in</span>
             <span>Your Smart Account &middot; {shortAddress(elpa.deed.smartAccount)}</span>
           </div>
-          <div>
-            <span>Redeemed</span>
-            <span>{new Date(`${elpa.redeemedOn}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-          </div>
+          {elpa.redeemedOn && (
+            <div>
+              <span>Redeemed</span>
+              <span>{new Date(`${elpa.redeemedOn}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            </div>
+          )}
         </div>
       </div>
       <div className="c-sv-bf">
@@ -153,18 +93,35 @@ function CommunityFeeBlock({ fee, beforeRedemption }: { fee: CommunityFeeStateme
 }
 
 /**
- * Your home — the ELPA, when a member has one. Nothing at all when they do not.
+ * Your home — once a member has signed an ELPA. Nothing at all before.
  *
  * Its own slab on Savings, never on the credit view or the term-plan shelf: the ELPA is not credit,
- * a plan or a mortgage. Two blocks, side by side from tablet up: the equity (or, once redeemed, the
- * deed) and the Community Fee bill.
+ * a plan or a mortgage. Two blocks, side by side from tablet up: the Housing Allowance (or, once
+ * redeemed, the Clear Deed) and the Community Fee bill.
+ *
+ * The Housing Allowance is read from the chain (`housing`); the Community Fee, the month's
+ * contribution and the projection come from Clear's books (`elpa`) when it has them.
  */
-export default function YourHome({ elpa }: { elpa: ElpaState }) {
-  if (elpa.status === 'none') return null;
+export default function YourHome({ elpa, housing = NO_HOUSING, onChanged = () => {} }: { elpa: ElpaState; housing?: Housing; onChanged?: () => void }) {
+  const home = housing.home;
+  const chainRedeemed: ElpaRedeemed | null =
+    home && home.status === 'redeemed' && elpa.status !== 'redeemed'
+      ? { status: 'redeemed', home: home.name, redeemedOn: '', deed: { tokenId: home.homeId, smartAccount: housing.member }, communityFee: null }
+      : null;
+  const redeemed = elpa.status === 'redeemed' ? elpa : chainRedeemed;
+  const live = !redeemed && home && home.status === 'signed' ? home : null;
+  if (!live && !redeemed && elpa.status === 'none') return null;
+  const fee = elpa.status === 'none' ? undefined : elpa.communityFee;
+  const active = elpa.status === 'active' ? elpa : null;
   return (
-    <div className="c-sv-slab" role="region" aria-label="Your home">
-      {elpa.status === 'active' ? <EquityBlock elpa={elpa} /> : <RedeemedBlock elpa={elpa} />}
-      {elpa.communityFee && <CommunityFeeBlock fee={elpa.communityFee} beforeRedemption={elpa.status === 'active'} />}
+    // minWidth 0: the page's grid would otherwise size its column to this slab's widest line.
+    <div className="c-sv-slab" role="region" aria-label="Your home" style={{ minWidth: 0 }}>
+      {redeemed ? (
+        <RedeemedBlock elpa={redeemed} />
+      ) : live ? (
+        <ConnectedHousingAllowance home={live} housing={housing} elpa={active} onChanged={onChanged} />
+      ) : null}
+      {fee && <CommunityFeeBlock fee={fee} beforeRedemption={!redeemed} />}
     </div>
   );
 }

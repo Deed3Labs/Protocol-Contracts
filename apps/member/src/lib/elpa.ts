@@ -9,7 +9,7 @@
  *
  *  1. The Equity Contribution. The member chooses the amount each month; the minimum is 0.30% of the
  *     Structure Price. It is equity and never a debt (MB-13 §6.3), so it is shown as progress toward
- *     Redemption: the Equity Balance against the Structure Price, and a projected Redemption date.
+ *     Redemption: the Housing Allowance against the Structure Price, and a projected Redemption date.
  *     It has no due date, no past-due or late state, no reminders and no dunning. The one contact the
  *     owner allows is a single informational check-in after six consecutive months below the
  *     minimum, outside a pause.
@@ -20,10 +20,10 @@
  *     Before Redemption it is paid with the monthly payment under MB-13, but always shown as its own
  *     line. It never appears in the credit view and never affects a limit.
  *
- * Off chain by design. No contract records any of this, contributions are fiat (the app, Autopay,
- * ACH, check or money order) and there is no USDC path, so this module makes no contract call. The
- * one on-chain event is Redemption: the Clear Deed moves to the member's Smart Account, and the
- * Redeemed state shows that deed.
+ * This module is Clear's books: the month's contribution, the projection and the Community Fee. It
+ * makes no contract call. The Housing Allowance itself (credits redeemed, savings or USDC paid, fiat
+ * payments recorded) is on chain in the HousingAllowanceRecord, read through lib/housing; and at
+ * Redemption the Clear Deed moves to the member's Smart Account, which the Redeemed state shows.
  */
 
 /** The minimum Equity Contribution each month, as a share of the Structure Price (MB-13 §6.1). */
@@ -80,7 +80,7 @@ export interface ElpaActive {
 export interface ElpaRedeemed {
   status: 'redeemed';
   home: string;
-  /** ISO date of the Redemption transfer. */
+  /** ISO date of the Redemption transfer; empty when only the chain is known (it records no date). */
   redeemedOn: string;
   /** The Clear Deed, as transferred on chain to the member's Smart Account. */
   deed: { tokenId: string; smartAccount: string; transaction?: string };
