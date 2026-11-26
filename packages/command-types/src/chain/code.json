@@ -448,6 +448,24 @@
     ]
    ]
   },
+  "HousingAllowanceRecord": {
+   "source": "contracts/peripherals/HousingAllowanceRecord.sol",
+   "sha256": "44b8ea8f5ca8f6735bcfe9ef6b2aa68d9b0039f5c74f6e348ecd2253c37d4ff3",
+   "immutables": [
+    [
+     4263,
+     32
+    ],
+    [
+     4537,
+     32
+    ],
+    [
+     5042,
+     32
+    ]
+   ]
+  },
   "LendingPool": {
    "source": "contracts/peripherals/LendingPool.sol",
    "sha256": "02e9a5f7cfa0f3831662ad8fc96428ed8b603c590953d29f19de0d8569cd4a55",
@@ -679,6 +697,24 @@
     ],
     [
      11151,
+     32
+    ]
+   ]
+  },
+  "PointsIssuer": {
+   "source": "contracts/peripherals/PointsIssuer.sol",
+   "sha256": "59cddd9673f33668deb7b489e9b6c421a062161caa15e77507cea01be402c956",
+   "immutables": [
+    [
+     9973,
+     32
+    ],
+    [
+     10114,
+     32
+    ],
+    [
+     11255,
      32
     ]
    ]

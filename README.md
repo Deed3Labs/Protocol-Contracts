@@ -276,7 +276,7 @@ only the surplus is redeemable.
 Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 
 <details>
-<summary><b>Base Sepolia</b> — the working network (47 contracts)</summary>
+<summary><b>Base Sepolia</b> — the working network (53 contracts)</summary>
 
 
 Each contract's page in the [contract reference](docs/protocol/contracts/README.md) lists its functions and who can call them.
@@ -290,23 +290,28 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [BondVault](docs/protocol/contracts/BondVault.md) | `0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855` |
 | [BurnerBond](docs/protocol/contracts/BurnerBond.md) | `0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A` |
 | [BurnerBondFactory](docs/protocol/contracts/BurnerBondFactory.md) | `0xf36dE3553509BAafB835bC37c97f529Adf42a96a` |
-| [CLRUSDTokenPool](docs/protocol/contracts/CLRUSDTokenPool.md) | `0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1` |
 | [ClaimEscrow](docs/protocol/contracts/ClaimEscrow.md) | `0x24DAE7b66dC31657265260B5d9092280B57Bc37D` |
 | [ClearCredit](docs/protocol/contracts/ClearCredit.md) | `0x5923e02EdFb6724a08A28B79C902b40c748082Bc` |
 | [ClearUSD](docs/protocol/contracts/ClearUSD.md) | `0x56195066D4ada8D371254061047f76FA2BBd0Ae3` |
 | [ClearUSDUpgradeable](docs/protocol/contracts/ClearUSDUpgradeable.md) | `0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1` |
+| [CLRUSDTokenPool](docs/protocol/contracts/CLRUSDTokenPool.md) | `0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1` |
 | [CollateralAgent](docs/protocol/contracts/CollateralAgent.md) | `0x48840620F9F4780e7d5986F6365A4acdD7D82825` |
 | [CollateralRegistry](docs/protocol/contracts/CollateralRegistry.md) | `0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A` |
 | [Create2Deployer](docs/protocol/contracts/Create2Deployer.md) | `0x2BFba336A1B5E79E4717CA00677C65DDCa63cB06` |
+| [CreditsAccessManager](docs/protocol/contracts/CreditsAccessManager.md) | `0x2b85D9649d8aC4502Cbacdeb0541E77Bd78965be` |
+| [CreditsLedger](docs/protocol/contracts/CreditsLedger.md) | `0x6a46c688F0D84cB6c8e66D7E9546e2A236bAD3d5` |
+| [CreditsMerchantRegistry](docs/protocol/contracts/CreditsMerchantRegistry.md) | `0x67AC0a3b927b2A43FA76827DA3074B33f7fe3700` |
+| [CreditsNetworkRegistry](docs/protocol/contracts/CreditsNetworkRegistry.md) | `0xa204AB2bF9aaBCe38389051109Fdf22C37D8e545` |
 | [CreditTimelock](docs/protocol/contracts/CreditTimelock.md) | `0x39411C23825844c4B14ad964a661d1Cb8238d330` |
 | [DeedNFT](docs/protocol/contracts/DeedNFT.md) | `0x1a4e89225015200f70e5a06f766399a3de6e21E6` |
-| [ESADepositVault](docs/protocol/contracts/ESADepositVault.md) | `0x836401Ed3e2bF7CAb5e2721188E74B834511413b` |
 | [EarnControls](docs/protocol/contracts/EarnControls.md) | `0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97` |
 | [EarnTimelock](docs/protocol/contracts/EarnTimelock.md) | `0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911` |
-| [FractionTokenFactory](docs/protocol/contracts/FractionTokenFactory.md) | `0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc` |
+| [ESADepositVault](docs/protocol/contracts/ESADepositVault.md) | `0x836401Ed3e2bF7CAb5e2721188E74B834511413b` |
 | [Fractionalize](docs/protocol/contracts/Fractionalize.md) | `0xeC464847C664Cc208478adbe377f7Db19e199823` |
+| [FractionTokenFactory](docs/protocol/contracts/FractionTokenFactory.md) | `0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc` |
 | [FundManager](docs/protocol/contracts/FundManager.md) | `0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e` |
 | [HolderDirections](docs/protocol/contracts/HolderDirections.md) | `0x8ec35b88CCb59576957917a4F4B937b491815Cda` |
+| [HousingAllowanceRecord](docs/protocol/contracts/HousingAllowanceRecord.md) | `0x26D8540881249bcD253810aBC2242b5a572729B5` |
 | [LendingPool](docs/protocol/contracts/LendingPool.md) | `0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23` |
 | [LendingPoolSettlementLane](docs/protocol/contracts/LendingPoolSettlementLane.md) | `0xeccfDDCac073a657CFB94D3Ff9f22997e7EcBAbD` |
 | [LimitCalculator](docs/protocol/contracts/LimitCalculator.md) | `0x6C0859EcD05C6BB604c91B9De1CAf04724744a20` |
@@ -318,6 +323,7 @@ Each contract's page in the [contract reference](docs/protocol/contracts/README.
 | [OffersIssuer](docs/protocol/contracts/OffersIssuer.md) | `0x52EDD619B18D537B4c880d6Ff0925891ea05Edb1` |
 | [PauseClock](docs/protocol/contracts/PauseClock.md) | `0x794Acc0c1BD0effaa7B413F60C5B56F60A229959` |
 | [PayoutPool](docs/protocol/contracts/PayoutPool.md) | `0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861` |
+| [PointsIssuer](docs/protocol/contracts/PointsIssuer.md) | `0xd254Bd2C78791a666eEfC4A7B6163d5d47C842a3` |
 | [PoolShareEnforcer](docs/protocol/contracts/PoolShareEnforcer.md) | `0xEB6f2c654d078Df56D78946767d5A43307eb4fa1` |
 | [RateSchedule](docs/protocol/contracts/RateSchedule.md) | `0xdb73Ae35D0A22A4CA6bc03F263CF006D16a28b97` |
 | [RevolvingIssuer](docs/protocol/contracts/RevolvingIssuer.md) | `0xBec598bee24cF2973d42eA85e6028621180fE2F0` |

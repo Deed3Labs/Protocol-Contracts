@@ -91,7 +91,7 @@ describe('the nav is complete', () => {
     const group = NAV.find((s) => s.id === 'protocol').groups.find(([g]) => g === 'Contracts')[1];
     const files = readdirSync(join(REPO, 'docs/protocol/contracts')).filter((f) => f.endsWith('.md') && f !== 'README.md').map((f) => `docs/protocol/contracts/${f}`);
     assert.deepEqual([...group].sort(), files.sort());
-    assert.equal(group.length, 49);
+    assert.equal(group.length, 55);
   });
 });
 
