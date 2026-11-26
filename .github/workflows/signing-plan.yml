@@ -1,0 +1,83 @@
+# The Base Sepolia signing plan, re-run without anyone's machine.
+#
+# Command reads where each step stands from the chain itself (apps/api/src/services/command/signingStatus.ts),
+# so statuses never need this. The plan needs re-running only when its steps change: a new stage in
+# scripts/signing_plan.ts, or a step whose call is known only after an earlier one ran. This runs the
+# read-only plan script daily and on demand (Actions → Signing plan → Run workflow) and opens a pull request
+# into dev only when the steps changed (scripts/command/signing-plan-changed.mjs).
+#
+# The plan script never sends a transaction and never reads a key: Hardhat only needs one set, so a random,
+# empty one is made for each run. It reads Base Sepolia through the public node.
+#
+# A pull request opened with the workflow's own token doesn't start other workflows, so CI doesn't run on
+# it by itself: close and reopen the pull request to run CI, then merge as usual.
+
+name: Signing plan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: signing-plan
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Re-run the signing plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: solc-${{ hashFiles('hardhat.config.ts') }}
+      - run: npm ci --no-audit --no-fund
+      - run: npx hardhat compile
+      - name: Run the plan (read-only)
+        env:
+          BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
+        run: |
+          cp deployments/base-sepolia/signing-plan.json "$RUNNER_TEMP/plan-before.json" 2>/dev/null || echo '{"steps":[]}' > "$RUNNER_TEMP/plan-before.json"
+          DEPLOYER_PRIVATE_KEY="0x$(openssl rand -hex 32)" npx hardhat run --no-compile scripts/signing_plan.ts --network base-sepolia | tee "$RUNNER_TEMP/plan-run.log"
+      - name: Open a pull request when the steps changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! node scripts/command/signing-plan-changed.mjs "$RUNNER_TEMP/plan-before.json" deployments/base-sepolia/signing-plan.json > "$RUNNER_TEMP/changes.txt"; then
+            cat "$RUNNER_TEMP/changes.txt"
+            exit 0
+          fi
+          branch="signing-plan/$(date -u +%Y%m%d-%H%M)"
+          block=$(node -e 'console.log(require("./deployments/base-sepolia/signing-plan.json").block)')
+          summary=$(tail -n 3 "$RUNNER_TEMP/plan-run.log" | grep -m1 'ready,' || true)
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add deployments/base-sepolia/signing-plan.json
+          git commit -m "[skip preview] Signing plan: re-run at Base Sepolia block $block" -- deployments/base-sepolia/signing-plan.json
+          git push origin "$branch"
+          {
+            echo "The signing plan's steps changed, so it was re-run against Base Sepolia (read-only, block $block)."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/changes.txt"
+            echo '```'
+            echo
+            echo "$summary"
+            echo
+            echo 'CI does not start on a pull request opened by a workflow: close and reopen this one to run it.'
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --base dev --head "$branch" --title "Signing plan: re-run at block $block" --body-file "$RUNNER_TEMP/body.md"

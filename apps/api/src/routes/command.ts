@@ -26,6 +26,7 @@ import { settingsSection } from '../services/command/settings.js';
 import { liveSafeReader, safeAppUrl, safeConfig, SafeServiceError, type SafeConfig, type SafeReader } from '../services/command/safe.js';
 import { getAddress, isAddress, recoverTypedDataAddress, verifyMessage, type Hex } from 'viem';
 import { BUILDERS, BuildError, onChain, safeTxFor, safeTxHash, typedDataFor, type SafeTxData } from '../services/command/safeTx.js';
+import { isStepCall, planSafeConfig } from '../services/command/signingStatus.js';
 import { liquidatorAddress, prepareHoldCall, readEnforcement, type HoldCall } from '../services/chain/enforcement.js';
 import { indexStatus } from '../services/command/indexer.js';
 import type { ChainReader } from '../services/command/onchain.js';
@@ -80,8 +81,8 @@ export interface CommandDeps {
   deploys?: () => Promise<Deploys>;
   /** Governance → Legal: the private clear-agreements repo, read with its own token (legal.ts). */
   legal?: { off(): string | null; read(): Promise<Legal> };
-  /** Build → Signing: the committed signing plan, read from the repo (signing.ts). */
-  signing?: { read(): Promise<Signing> };
+  /** Build → Signing: the committed signing plan, read from the repo (signing.ts), with where each step stands now. */
+  signing?: { read(): Promise<Signing>; checkNow?(): Promise<Signing>; forget?(): void };
   /** Money → Credit: the pay ledger's credits and the Housing Allowance's totals (creditsLive.ts). */
   credits?: () => Promise<CreditsSource>;
   /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
@@ -1402,6 +1403,118 @@ export function commandRouter(deps: CommandDeps) {
       await safeDeps.reader.confirm(cfg, hash, b.data.signature);
       await auditFrom(req, { area: 'contracts', action: `Signed in the Safe: ${t.method ?? 'transaction'} · nonce ${t.nonce}`, detail: `${n} of ${t.confirmationsRequired} signed${n >= t.confirmationsRequired ? ' · ready to execute' : ''}`, result: n >= t.confirmationsRequired ? 'approved' : 'done' });
       res.json({ confirmed: true, signatures: n, required: t.confirmationsRequired });
+    } catch (e) {
+      return safeFail(res, e);
+    }
+  });
+
+  // ── Build → Signing: the plan's Safe steps, proposed and signed from here ───────
+
+  /** "Check now": the chain and the Safes' queues read again (unless they were seconds ago). */
+  router.post('/signing/check', limits.write, need('contracts', SEE), async (_req, res) => {
+    if (!deps.signing?.checkNow) return fail(res, 409, 'NO_SIGNING', 'Signing isn’t live here');
+    const s = await deps.signing.checkNow();
+    res.json({ live: s.live ?? null, liveProblem: s.liveProblem ?? null });
+  });
+
+  type PlanStep = { id: string; kind?: string; signer?: string; to?: string; data?: string | null; title?: string };
+  /** A Safe step of the committed plan, with where it stands now. */
+  const planSafeStep = async (stepId: string) => {
+    if (!deps.signing) return { error: [409, 'NO_SIGNING', 'Signing isn’t live here'] as const };
+    const s = await deps.signing.read();
+    const step = (s.plan?.steps as PlanStep[] | undefined)?.find((x) => x.id === stepId);
+    if (!step) return { error: [404, 'NO_STEP', 'The committed plan has no such step'] as const };
+    if (step.kind !== 'safe' || !step.data || !step.to || !step.signer) return { error: [400, 'NOT_A_SAFE_STEP', 'Only a Safe step with its call known can go to a Safe from here'] as const };
+    return { step: { id: step.id, signer: step.signer, to: step.to, data: step.data, title: step.title }, live: s.live?.steps[stepId], cfg: planSafeConfig(step.signer) };
+  };
+  const stepTx = (step: { to: string; data: string; title?: string }, nonce: number) => safeTxFor([{ to: getAddress(step.to), value: 0n, data: step.data as Hex, label: step.title ?? '' }], nonce);
+  const stepBody = z.object({ stepId: z.string().min(1).max(80) });
+
+  /** What an owner signs to put a ready Safe step in its Safe's queue, at the Safe's next free nonce. */
+  router.post('/signing/safe/prepare', limits.write, need('contracts', PROPOSE), async (req, res) => {
+    const b = stepBody.safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', 'Which step?');
+    const p = await planSafeStep(b.data.stepId);
+    if ('error' in p) return fail(res, p.error![0], p.error![1], p.error![2]);
+    if (p.live?.status !== 'ready') return fail(res, 409, 'NOT_READY', p.live?.why ?? 'That step isn’t ready');
+    if (p.live.queued) return fail(res, 409, 'ALREADY_QUEUED', 'That step is already in the Safe’s queue', { link: p.live.queued.link });
+    try {
+      const [info, pending] = await Promise.all([safeDeps.reader.info(p.cfg), safeDeps.reader.transactions(p.cfg, { executed: false })]);
+      const nonce = Math.max(info.nonce, ...pending.filter((t) => t.nonce >= info.nonce).map((t) => t.nonce + 1));
+      const tx = stepTx(p.step, nonce);
+      res.json({ safe: p.cfg.address, nonce, safeTxHash: safeTxHash(p.cfg, tx), typedData: typedDataFor(p.cfg, tx), owners: info.owners, threshold: info.threshold });
+    } catch (e) {
+      return safeFail(res, e);
+    }
+  });
+
+  const stepSigned = z.object({ stepId: z.string().min(1).max(80), nonce: z.number().int().min(0), signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/) });
+
+  /** The first signature on a Safe step: checked to be an owner's over exactly the step's call, then put in the Safe's queue. */
+  router.post('/signing/safe/propose', limits.write, need('contracts', PROPOSE), async (req, res) => {
+    const b = stepSigned.safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', 'A step, a nonce and a signature are needed');
+    const p = await planSafeStep(b.data.stepId);
+    if ('error' in p) return fail(res, p.error![0], p.error![1], p.error![2]);
+    if (p.live?.status === 'done') return fail(res, 409, 'DONE', 'The chain already shows that step done');
+    if (p.live?.queued) return fail(res, 409, 'ALREADY_QUEUED', 'That step is already in the Safe’s queue', { link: p.live.queued.link });
+    try {
+      const info = await safeDeps.reader.info(p.cfg);
+      if (b.data.nonce < info.nonce) return fail(res, 409, 'STALE_NONCE', 'The Safe has moved past that nonce: prepare it again');
+      const tx = stepTx(p.step, b.data.nonce);
+      const hash = safeTxHash(p.cfg, tx);
+      const signer = await recoverTypedDataAddress({ ...(typedDataFor(p.cfg, tx) as any), signature: b.data.signature as Hex }).catch(() => null);
+      if (!signer || !info.owners.some((o) => o === signer)) return fail(res, 403, 'NOT_AN_OWNER', 'That signature isn’t from one of this Safe’s owners, over this step’s call');
+      await safeDeps.reader.propose(p.cfg, { ...tx, contractTransactionHash: hash, sender: signer, signature: b.data.signature, origin: 'Clear Command Center · signing plan' });
+      deps.signing?.forget?.();
+      await auditFrom(req, { area: 'contracts', action: `Proposed ${p.step.id} to the Safe`, detail: `${p.cfg.address.slice(0, 6)}… nonce ${tx.nonce} · ${hash.slice(0, 10)}… · 1 of ${info.threshold} signed`, result: 'waiting' });
+      res.json({ proposed: true, safeTxHash: hash, nonce: tx.nonce, signed: 1, required: info.threshold });
+    } catch (e) {
+      return safeFail(res, e);
+    }
+  });
+
+  const stepConfirm = z.object({ stepId: z.string().min(1).max(80), safeTxHash: z.string().regex(/^0x[0-9a-f]{64}$/i), signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/) });
+
+  /** What a further owner signs for a Safe step already in its queue. */
+  router.post('/signing/safe/tx', limits.write, need('contracts', SEE), async (req, res) => {
+    const b = z.object({ stepId: z.string().min(1).max(80), safeTxHash: z.string().regex(/^0x[0-9a-f]{64}$/i) }).safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', 'A step and a transaction hash are needed');
+    const p = await planSafeStep(b.data.stepId);
+    if ('error' in p) return fail(res, p.error![0], p.error![1], p.error![2]);
+    try {
+      const t = await safeDeps.reader.transaction(p.cfg, b.data.safeTxHash.toLowerCase());
+      if (!t || t.executed) return fail(res, 404, 'NOT_FOUND', 'Nothing waiting with that hash');
+      if (!isStepCall(t, p.step) || t.operation !== 0) return fail(res, 409, 'NOT_THIS_STEP', 'The queued transaction isn’t this step’s call');
+      const tx: SafeTxData = { to: t.to, value: t.value, data: (t.data ?? '0x') as Hex, operation: t.operation, safeTxGas: t.safeTxGas, baseGas: t.baseGas, gasPrice: t.gasPrice, gasToken: t.gasToken, refundReceiver: t.refundReceiver, nonce: t.nonce };
+      if (safeTxHash(p.cfg, tx) !== b.data.safeTxHash.toLowerCase()) return fail(res, 409, 'HASH_MISMATCH', 'The Safe’s copy doesn’t match its hash');
+      res.json({ typedData: typedDataFor(p.cfg, tx), signed: t.confirmations.map((c) => c.owner), required: t.confirmationsRequired });
+    } catch (e) {
+      return safeFail(res, e);
+    }
+  });
+
+  /** Another owner's signature on a Safe step in its queue: checked, then sent to the Safe's service. */
+  router.post('/signing/safe/confirm', limits.write, need('contracts', SEE), async (req, res) => {
+    const b = stepConfirm.safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', 'A step, a transaction hash and a signature are needed');
+    const p = await planSafeStep(b.data.stepId);
+    if ('error' in p) return fail(res, p.error![0], p.error![1], p.error![2]);
+    const hash = b.data.safeTxHash.toLowerCase();
+    try {
+      const [t, info] = await Promise.all([safeDeps.reader.transaction(p.cfg, hash), safeDeps.reader.info(p.cfg)]);
+      if (!t || t.executed) return fail(res, 404, 'NOT_FOUND', 'Nothing waiting with that hash');
+      if (!isStepCall(t, p.step) || t.operation !== 0) return fail(res, 409, 'NOT_THIS_STEP', 'The queued transaction isn’t this step’s call');
+      const tx: SafeTxData = { to: t.to, value: t.value, data: (t.data ?? '0x') as Hex, operation: t.operation, safeTxGas: t.safeTxGas, baseGas: t.baseGas, gasPrice: t.gasPrice, gasToken: t.gasToken, refundReceiver: t.refundReceiver, nonce: t.nonce };
+      if (safeTxHash(p.cfg, tx) !== hash) return fail(res, 409, 'HASH_MISMATCH', 'The Safe’s copy doesn’t match its hash');
+      const signer = await recoverTypedDataAddress({ ...(typedDataFor(p.cfg, tx) as any), signature: b.data.signature as Hex }).catch(() => null);
+      if (!signer || !info.owners.some((o) => o === signer)) return fail(res, 403, 'NOT_AN_OWNER', 'That signature isn’t from one of this Safe’s owners, over this transaction');
+      if (t.confirmations.some((x) => x.owner === signer)) return fail(res, 409, 'ALREADY_SIGNED', 'That owner has signed this one already');
+      await safeDeps.reader.confirm(p.cfg, hash, b.data.signature);
+      deps.signing?.forget?.();
+      const n = t.confirmations.length + 1;
+      await auditFrom(req, { area: 'contracts', action: `Signed ${p.step.id} in the Safe`, detail: `${n} of ${t.confirmationsRequired} signed${n >= t.confirmationsRequired ? ' · ready to execute' : ''}`, result: n >= t.confirmationsRequired ? 'approved' : 'done' });
+      res.json({ confirmed: true, signed: n, required: t.confirmationsRequired });
     } catch (e) {
       return safeFail(res, e);
     }

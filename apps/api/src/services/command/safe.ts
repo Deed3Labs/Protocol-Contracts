@@ -57,6 +57,8 @@ export interface SafeTx {
   executedAt: string | null;
   submittedAt: string;
   proposer: Address | null;
+  /** The chain transaction that executed it, once executed. */
+  transactionHash?: string | null;
 }
 
 /** What Command reads from the Safe: the chain for who and how many, the service for the queue. */
@@ -112,6 +114,7 @@ type ServiceTx = {
   executionDate: string | null;
   submissionDate: string;
   proposer?: string | null;
+  transactionHash?: string | null;
 };
 
 export const toSafeTx = (t: ServiceTx): SafeTx => ({
@@ -127,6 +130,7 @@ export const toSafeTx = (t: ServiceTx): SafeTx => ({
   executedAt: t.executionDate,
   submittedAt: t.submissionDate,
   proposer: t.proposer ? getAddress(t.proposer) : null,
+  ...(t.transactionHash ? { transactionHash: t.transactionHash } : {}),
 });
 
 /** The real reader: viem for the chain, fetch for the service. */
