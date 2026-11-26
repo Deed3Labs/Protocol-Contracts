@@ -1626,9 +1626,13 @@ export function isCreditEngaged(cash: number, credit: Credit): boolean {
   return cash <= 0 && creditUsed(credit) > 0;
 }
 
-/** Total savings balance. Locked — never summed into "available to spend" (rule 5). */
+/**
+ * Total savings balance: the cash in savings (CLRUSD). Credits are not money — they have no cash
+ * value and are never added to it — so they are shown as a count beside it. Locked — never summed
+ * into "available to spend" (rule 5).
+ */
 export function savingsTotal(s: Savings): number {
-  return s.cash + s.vested + s.vesting;
+  return s.cash;
 }
 
 /** What a section actually backs. Opt-in rows not yet added contribute nothing. */

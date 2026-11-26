@@ -8,6 +8,7 @@ import ConnectedAutoSave from '@/components/clear/ConnectedAutoSave';
 import Modal from '@/components/clear/Modal';
 import YourHome from '@/components/clear/YourHome';
 import type { ElpaState } from '@/lib/elpa';
+import { NO_HOUSING, type Housing } from '@/lib/housing';
 import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { count, money } from '@clear/domain';
 import { cn } from '@/lib/utils';
@@ -22,8 +23,8 @@ import {
 
 const NO_ELPA: ElpaState = { status: 'none' };
 
-/** Credits shown as money take the dollar sign and no decimals: "$1,500". */
-const credits$ = (n: number) => money(Math.round(n), { cents: false });
+/** Credits are a count, never money: "1,500 credits". */
+const creditsN = (n: number) => `${count(Math.round(n))} credits`;
 
 /** "Feb 2028" → "February 2028", for the wide header. Anything else passes through. */
 function longMonth(date: string): string {
@@ -69,10 +70,15 @@ function Both({ wide, phone }: { wide: ReactNode; phone: ReactNode }) {
 export default function SavingsPage({
   data = SAVINGS_DAY_ONE,
   elpa = NO_ELPA,
+  housing = NO_HOUSING,
+  onHousingChanged,
 }: {
   data?: SavingsData;
   /** The ELPA, from Clear's books. Its own slab; never part of the credit view or term plans. */
   elpa?: ElpaState;
+  /** The Housing Allowance and credits, from the chain. */
+  housing?: Housing;
+  onHousingChanged?: () => void;
 }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -102,19 +108,22 @@ export default function SavingsPage({
 
   const openAdd = () => setAddOpen(true);
   const openAutoSave = () => setAutoSaveOpen(true);
+  // Signed an ELPA: the Housing Allowance is live on a home, and credits redeem into it.
+  const homeLive = housing.home?.live ? housing.home : null;
 
   /* ---------- balance header ---------- */
-  const caption = dayOne ? (
+  const caption = homeLive ? (
+    <>
+      Cash in savings &middot; <b className="font-medium text-foreground">{creditsN(housing.creditsToRedeem)}</b> to redeem
+    </>
+  ) : dayOne ? (
     <Both
       wide="Nothing saved yet · every $1 saved is matched $1 in credits"
       phone="Every $1 saved is matched $1 in credits"
     />
   ) : (
     // The phone drops the clause, as the reference's larger accounts do: at 360 it broke mid-word.
-    <Both
-      wide={`${money(savings.cash, { cents: true })} in cash · ${count(savings.credits)} credits, matched one-for-one`}
-      phone={`${money(savings.cash, { cents: true })} in cash · ${count(savings.credits)} credits`}
-    />
+    <Both wide={`Cash in savings · ${creditsN(savings.credits)}, matched one-for-one`} phone={`Cash in savings · ${creditsN(savings.credits)}`} />
   );
 
   /* ---------- home path ---------- */
@@ -237,13 +246,6 @@ export default function SavingsPage({
   }
 
   /* ---------- what you hold ---------- */
-  const share = (v: number) => (total > 0 ? (v / total) * 100 : 0);
-  const segments = [
-    { key: 'cash', pct: share(savings.cash), color: 'var(--vest-cash)' },
-    { key: 'vested', pct: share(savings.vested), color: 'var(--vest-vested)' },
-    // Nothing vesting drops the segment and its row rather than showing "$0".
-    ...(savings.vesting > 0 ? [{ key: 'vesting', pct: share(savings.vesting), color: 'var(--vest-vesting)' }] : []),
-  ];
   const holdFooter =
     dayOne || data.creditLine === undefined ? (
       <Both wide="Every $1 saved adds $1 to your credit line" phone="Each $1 saved adds $1 to your line" />
@@ -280,15 +282,39 @@ export default function SavingsPage({
         </div>
       </div>
 
-      {/* The ELPA, when there is one: equity toward Redemption and the Community Fee bill. */}
-      <YourHome elpa={elpa} />
+      {/* The ELPA, when there is one: the Housing Allowance toward Redemption and the Community Fee bill. */}
+      <YourHome elpa={elpa} housing={housing} onChanged={onHousingChanged} />
 
       <div className="c-sv-slab">
         <section className="c-sv-blk" aria-label="Your home path">
           <div className="c-sv-bh">
             <span className="c-label">Your home path</span>
-            {pathCaption}
+            {homeLive ? <span className="c-sv-cap c-ok">ELPA signed</span> : pathCaption}
           </div>
+          {homeLive ? (
+            <div className="c-sv-bm">
+              <div className="c-sv-rows">
+                <div>
+                  <span className="c-fg">Credits earned, all time</span>
+                  <span className="c-fg">{count(housing.creditsEarned)}</span>
+                </div>
+                <div>
+                  <span>Redeemed into your Housing Allowance</span>
+                  <span>{money(housing.creditPortionUsed, { cents: false })}</span>
+                </div>
+                {savings.vesting > 0 && (
+                  <div>
+                    <span>Still in their {VEST_DAYS} days</span>
+                    <span>{count(savings.vesting)}</span>
+                  </div>
+                )}
+                <div>
+                  <span>To redeem now</span>
+                  <span>{count(housing.creditsToRedeem)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="c-sv-bm">
             <p className="c-sv-count">
               <span className="c-fig">{count(savings.credits)}</span>
@@ -314,6 +340,7 @@ export default function SavingsPage({
             </ol>
             {nextBar}
           </div>
+          )}
           <div className="c-sv-bf">{pathFooter}</div>
         </section>
 
@@ -323,10 +350,6 @@ export default function SavingsPage({
             <span className="c-fig">{money(total, { cents: true })}</span>
           </div>
           <div className="c-sv-bm">
-            <span className="c-sv-comp" aria-hidden="true">
-              {!dayOne &&
-                segments.map((s) => <i key={s.key} style={{ flexBasis: `${s.pct}%`, background: s.color }} />)}
-            </span>
             <div className="c-sv-rows">
               <div>
                 <span className="c-fg">Cash (CLRUSD)</span>
@@ -334,14 +357,14 @@ export default function SavingsPage({
               </div>
               {!dayOne && (
                 <div>
-                  <span className="c-ok">Vested credits</span>
-                  <span className="c-fg">{credits$(savings.vested)}</span>
+                  <span className="c-ok">Credits arrived</span>
+                  <span className="c-fg">{creditsN(savings.vested)}</span>
                 </div>
               )}
               {savings.vesting > 0 && (
                 <div>
-                  <span className="c-warn">{paused ? 'Vesting, paused' : `Vesting, about ${VEST_DAYS} days`}</span>
-                  <span className="c-fg">{credits$(savings.vesting)}</span>
+                  <span className="c-warn">{paused ? 'Credits on the way, paused' : `Credits on the way, about ${VEST_DAYS} days`}</span>
+                  <span className="c-fg">{creditsN(savings.vesting)}</span>
                 </div>
               )}
             </div>
@@ -401,12 +424,12 @@ function HoldDetails({
         <span>{money(savings.cash, { cents: true })}</span>
       </div>
       <div>
-        <span>Vested credits</span>
-        <span>{credits$(savings.vested)}</span>
+        <span>Credits arrived</span>
+        <span>{creditsN(savings.vested)}</span>
       </div>
       <div>
-        <span>Vesting</span>
-        <span>{credits$(savings.vesting)}</span>
+        <span>Credits on the way</span>
+        <span>{creditsN(savings.vesting)}</span>
       </div>
     </div>,
     ...(data.vesting.length > 0
@@ -422,8 +445,8 @@ function HoldDetails({
         ]
       : []),
     <p key="note" className="c-det">
-      Cash is yours to move back out at any time. Credits are matched one-for-one as you save, take{' '}
-      {VEST_DAYS} days to vest, and go toward your Clear Deed. They can't be withdrawn.
+      Cash is yours to move back out at any time. Credits are matched one-for-one as you save and arrive after{' '}
+      {VEST_DAYS} days. They count toward your Clear Deed and have no cash value: they can't be withdrawn.
     </p>,
   ];
   return <Modal open={open} onOpenChange={onOpenChange} title="What you hold" sections={sections} />;

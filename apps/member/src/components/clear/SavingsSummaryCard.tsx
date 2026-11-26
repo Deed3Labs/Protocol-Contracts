@@ -1,4 +1,4 @@
-import { Bar, CFoot, CHead, CMain, Cell, HeadFig, Line, Panel, SecHead, Track } from './brand/anatomy';
+import { CFoot, CHead, CMain, Cell, HeadFig, Line, Panel, SecHead, Track } from './brand/anatomy';
 import { money, count } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import { savingsTotal, type Savings } from '@/lib/clearModel';
@@ -6,9 +6,9 @@ import { savingsTotal, type Savings } from '@/lib/clearModel';
 /**
  * Savings on Home — a cell on the slab, or a standalone panel on day one.
  *
- * Header: Savings and the total. Main: the bar in vest colours (cash ink, vested settled, vesting
- * underway) and its legend. Footer: the credits progress — the count, the date it implies, and the
- * track that produced both.
+ * Header: Savings and the cash total. Main: a legend that counts credits beside the cash
+ * (arrived, on the way), never as money. Footer: the credits progress — the count, the date it
+ * implies, and the track that produced both.
  *
  * Day one has no breakdown to give: an empty track, and the footer says what saving does instead.
  * Savings is an ESA and is never summed into available to spend.
@@ -22,8 +22,8 @@ export default function SavingsSummaryCard({
   emptyState?: boolean;
 }) {
   const desktop = useIsDesktop();
+  // The cash in savings. Credits have no cash value: they are counted beside it, never added in.
   const total = savingsTotal(savings);
-  const share = (v: number) => (total > 0 ? (v / total) * 100 : 0);
 
   if (emptyState) {
     return (
@@ -51,27 +51,18 @@ export default function SavingsSummaryCard({
         </SecHead>
       </CHead>
       <CMain>
-        <Bar
-          label="Savings by state: cash, vested, vesting"
-          className="mb-s2"
-          segments={[
-            { label: 'Cash', pct: share(savings.cash), color: 'var(--vest-cash)' },
-            { label: 'Vested', pct: share(savings.vested), color: 'var(--vest-vested)' },
-            { label: 'Vesting', pct: share(savings.vesting), color: 'var(--vest-vesting)' },
-          ]}
-        />
         <div className="c-legend">
           <div>
             <span>Cash (CLRUSD)</span>
             <span>{money(savings.cash, { cents: true })}</span>
           </div>
           <div>
-            <span className="c-t-sav">Vested</span>
-            <span>{money(savings.vested)}</span>
+            <span className="c-t-sav">Credits arrived</span>
+            <span>{count(savings.vested)}</span>
           </div>
           <div>
-            <span className="c-t-inc">Vesting</span>
-            <span>{money(savings.vesting)}</span>
+            <span className="c-t-inc">Credits on the way</span>
+            <span>{count(savings.vesting)}</span>
           </div>
         </div>
       </CMain>

@@ -4143,3 +4143,90 @@ export async function getShopPurchases(): Promise<ShopPurchase[]> {
     return [];
   }
 }
+
+
+/* ---------- Clear Credits and the Housing Allowance (api/src/routes/housing.ts) ---------- */
+
+export type HousingStatusName = 'none' | 'signed' | 'redeemed' | 'moved' | 'ended' | 'lapsed';
+
+/** One home a member has a Housing Allowance record on, in dollars. */
+export interface HousingHomeRecord {
+  homeId: string;
+  status: HousingStatusName;
+  structurePrice: number;
+  creditPortion: number;
+  memberPortion: number;
+  total: number;
+  refundDue: number;
+  signedAt: string | null;
+  endedAt: string | null;
+  live: boolean;
+  redeemable: boolean;
+  payable: boolean;
+}
+
+export interface HousingRead {
+  member: string;
+  homes: HousingHomeRecord[];
+  creditPortionUsed: number;
+  creditPortionCap: number;
+}
+
+/** Every home this wallet has a record on. Null when it couldn't be read. */
+export async function getHousing(wallet: string): Promise<HousingRead | null> {
+  const r = await apiRequest<HousingRead>(`/api/housing/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface CreditsOnChain {
+  balance: number;
+  earned: number;
+  bySource: { saving: number; rent: number; bill: number };
+}
+
+/** A wallet's credits as the chain records them. Null when they couldn't be read. */
+export async function getCreditsOnChain(wallet: string): Promise<CreditsOnChain | null> {
+  const r = await apiRequest<CreditsOnChain>(`/api/pay/${wallet.toLowerCase()}/credits/onchain`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface RedeemTypedData {
+  domain: { name: string; version: string; chainId: number; verifyingContract: string };
+  types: { RedeemCredits: { name: string; type: string }[] };
+  primaryType: 'RedeemCredits';
+  message: { member: string; homeId: string; amount: string; nonce: string; deadline: string };
+}
+
+/** What to sign to redeem `credits` into a home's Housing Allowance, and the dollars it adds. */
+export async function prepareRedeemCredits(homeId: string, wallet: string, credits: number): Promise<{ usd: number; deadline: string; typedData: RedeemTypedData } | { error: string }> {
+  const r = await apiRequest<{ usd: number; deadline: string; typedData: RedeemTypedData }>(`/api/housing/${homeId}/redeem-credits`, {
+    method: 'POST',
+    body: JSON.stringify({ wallet: wallet.toLowerCase(), credits }),
+  });
+  return r.error || !r.data ? { error: r.error || 'Could not prepare the redemption.' } : r.data;
+}
+
+/** Submits a signed redemption. The API checks Face ID; the Points Issuer checks everything else. */
+export async function submitRedeemCredits(homeId: string, args: { wallet: string; credits: number; deadline: string; signature: string }): Promise<{ tx: string; usd: number | null } | { error: string }> {
+  const r = await apiRequest<{ tx: string; usd: number | null }>(`/api/housing/${homeId}/redeem-credits`, {
+    method: 'POST',
+    body: JSON.stringify({ ...args, wallet: args.wallet.toLowerCase() }),
+  });
+  return r.error || !r.data ? { error: r.error || 'The redemption did not go through. Nothing was redeemed.' } : r.data;
+}
+
+export interface PreparedCall {
+  to: string;
+  value: string;
+  data: string;
+  label: string;
+}
+
+/** The two calls the member's wallet sends to pay `usd` toward a home: approve, then contribute. */
+export async function prepareHousingContribute(homeId: string, wallet: string, usd: number): Promise<{ usd: number; calls: PreparedCall[] } | { error: string }> {
+  const r = await apiRequest<{ usd: number; calls: PreparedCall[] }>(`/api/housing/${homeId}/contribute`, {
+    method: 'POST',
+    body: JSON.stringify({ wallet: wallet.toLowerCase(), usd }),
+  });
+  return r.error || !r.data ? { error: r.error || 'Could not prepare the payment.' } : r.data;
+}
