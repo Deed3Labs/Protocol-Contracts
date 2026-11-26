@@ -147,7 +147,7 @@ CREDITS_MINT_ENABLED=1
 CREDITS_MINT_DRY_RUN=1
 ```
 
-Read `[credits-mint] started (hourly; dry run; minter 0x8801…; testnet)`, then each run's line (`[credits-mint] N checked: would mint …`). When it shows what you expect, remove `CREDITS_MINT_DRY_RUN`.
+Read `[credits-mint] started (hourly; dry run; minter 0x8801…; testnet)`, then each run's line (`[credits-mint] dry run, nothing sent: N checked, would mint …, would open M match periods, …`). A dry run sends nothing and changes nothing in the ledger; it counts each member's Match Period once. When it shows what you expect, remove `CREDITS_MINT_DRY_RUN`.
 
 ## Stopping one
 

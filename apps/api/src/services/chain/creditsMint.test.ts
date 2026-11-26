@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { ethers } from 'ethers';
-import { CREDIT_UNITS, POINTS_ISSUER_ABI, SOURCE, refOf, runCreditsMint, sourceOf, type CreditsMintDeps } from './creditsMint';
+import { CREDIT_UNITS, POINTS_ISSUER_ABI, SOURCE, refOf, runCreditsMint, sourceOf, summarize, type CreditsMintDeps } from './creditsMint';
 import type { Simulation } from './keeperKit';
 import type { MintableCredit } from '../payLedgerStore';
 
@@ -126,14 +126,31 @@ describe('credits minting job', () => {
     expect(h.state.failed.get('bad')).toContain('paused');
   });
 
-  test('a dry run sends nothing', async () => {
-    const h = harness([row('r1', M1, 20, 'bill_on_time'), row('s1', M2, 10, 'deposit_match')], (fn, args) =>
-      fn === 'mint' && args[2] === SOURCE.SAVING ? refused('PointsIssuerNoMatchPeriod') : ok,
-    'dry_run');
+  test('a dry run sends nothing and counts each member’s Match Period once', async () => {
+    const h = harness(
+      [row('r1', M1, 20, 'bill_on_time'), row('s1', M2, 10, 'deposit_match'), row('s2', M2, 15, 'deposit_match'), row('s3', M2, 5, 'deposit_match')],
+      (fn, args) => (fn === 'mint' && args[2] === SOURCE.SAVING ? refused('PointsIssuerNoMatchPeriod') : ok),
+      'dry_run',
+    );
     const run = await runCreditsMint(h.deps);
-    expect(run).toMatchObject({ wouldMint: 2, periodsOpened: 1, minted: 0 });
+    expect(run).toMatchObject({ checked: 4, wouldMint: 4, periodsOpened: 1, minted: 0 });
     expect(h.sent).toHaveLength(0);
-    expect(h.state.minted.size).toBe(0);
+    expect(summarize(run, 'dry_run')).toBe(
+      '[credits-mint] dry run, nothing sent: 4 checked, would mint 4, would open 1 match period, 0 already minted, 0 would be void, 0 waiting for next month, 0 failed',
+    );
+  });
+
+  test('a dry run writes nothing to the ledger, whatever the contract says', async () => {
+    const h = harness(
+      [row('used', M1, 20, 'rent_on_time'), row('out', M2, 10, 'deposit_match'), row('bad', M1, 5, 'bill_on_time'), row('odd', M1, 1.5, 'bill_on_time')],
+      (_fn, args) =>
+        args[3] === refOf('used') ? refused('PointsIssuerRefUsed') : args[3] === refOf('out') ? refused('PointsIssuerOutsideMatchPeriod') : { kind: 'failed', reason: 'reverts: paused' },
+      'dry_run',
+    );
+    const run = await runCreditsMint(h.deps);
+    expect(run).toMatchObject({ minted: 1, voided: 2, failed: 1 });
+    expect([h.state.minted.size, h.state.refused.size, h.state.failed.size]).toEqual([0, 0, 0]);
+    expect(h.sent).toHaveLength(0);
   });
 
   test('a row that cannot be a mint is void', async () => {
