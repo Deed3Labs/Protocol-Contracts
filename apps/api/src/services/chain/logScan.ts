@@ -120,6 +120,8 @@ export async function scanLogs(
   contract: ethers.Contract,
   filter: ethers.ContractEventName,
   chainId: number,
+  /** Where to start for a contract deployed long after the chain's start block. */
+  startBlock?: number,
 ): Promise<(ethers.Log | ethers.EventLog)[]> {
   /*
    * Resolved here rather than threaded through the readers, and coalesced so the three scans a
@@ -129,7 +131,7 @@ export async function scanLogs(
   const latestBlock = await coalesce(`head:${chainId}`, () => provider.getBlockNumber());
 
   const cached = cache.get(key);
-  const from = cached ? cached.scannedTo + 1 : logStartBlock(chainId, latestBlock);
+  const from = cached ? cached.scannedTo + 1 : Math.max(startBlock ?? 0, logStartBlock(chainId, latestBlock));
   const known = cached ? cached.events : [];
 
   if (from > latestBlock) return known as (ethers.Log | ethers.EventLog)[];

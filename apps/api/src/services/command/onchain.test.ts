@@ -400,13 +400,6 @@ describe('releases, live', () => {
       // not deployed
       LegacyContactModule: null,
       CreditPool: null,
-      FunctionalContractRegistry: null,
-      CoopTransferAgent: null,
-      // Clear Credits (deploy 29) and the RedemptionAgent (deploy 30), until their records are on dev
-      PointsIssuer: null,
-      CreditsLedger: null,
-      HousingAllowanceRecord: null,
-      RedemptionAgent: null,
     });
     // a retired copy never stands for a map name
     for (const n of map) expect(deployedName(n, names) ?? '').not.toMatch(/(PreAudit|Pre2f|Pre2d|Legacy|V1)$/);
@@ -417,7 +410,7 @@ describe('Build’s map, its cards and Signing, live (brief update 2)', () => {
   const sh = (a: string) => `${getAddress(a).slice(0, 6)}…${getAddress(a).slice(-4)}`;
   const quiet = { env: {} };
 
-  test('each contract carries who controls it, the AssurancePool is v2, and 38 of the 46 on the map are deployed: the fresh OffersIssuer and SettlementForwarder among them, Clear Credits not yet', async () => {
+  test('each contract carries who controls it, the AssurancePool is v2, and 44 of the 46 on the map are deployed: the fresh OffersIssuer and SettlementForwarder, Clear Credits (deploy 29) and the Deed v5 agents (deploy 30) among them', async () => {
     const c: any = await contractsSection(db, { ...read(), jobs: quiet });
     const row = (id: string) => c.CTR.find((r: any[]) => r[0] === id);
     expect(c.CTR).toHaveLength(47);
@@ -425,7 +418,7 @@ describe('Build’s map, its cards and Signing, live (brief update 2)', () => {
     expect(row('ap')[5]).toBe(sh(C.AssurancePoolV2.address));
     expect(c.DEPLOYED).toContain('oi');
     const onMap = c.CTR.filter((r: any[]) => r[9] !== 'x').map((r: any[]) => r[0]);
-    expect([c.DEPLOYED.filter((id: string) => onMap.includes(id)).length, onMap.length]).toEqual([38, 46]);
+    expect([c.DEPLOYED.filter((id: string) => onMap.includes(id)).length, onMap.length]).toEqual([44, 46]);
   });
 
   test('Timelocks and helpers, Retired and the timelocks, from the records by name', async () => {
@@ -435,7 +428,10 @@ describe('Build’s map, its cards and Signing, live (brief update 2)', () => {
     // one name an address, the retired one, so it's counted among the earlier copies, not shown as a helper
     expect(C.BurnerBondDeposit.address).toBe(C.BurnerBondDepositPre2f.address);
     expect(c.CTR_AUX.map((r: string[]) => [r[0], r[1]])).toEqual(
-      ['CreditTimelock', 'AssuranceTimelock', 'VaultTimelock', 'EarnTimelock', 'BurnerBondFactory', 'Create2Deployer'].map((n) => [n, sh(C[n].address)]),
+      ['CreditTimelock', 'AssuranceTimelock', 'VaultTimelock', 'EarnTimelock', 'BurnerBondFactory', 'Create2Deployer', 'CreditsAccessManager', 'CreditsNetworkRegistry', 'CreditsMerchantRegistry'].map((n) => [
+        n,
+        sh(C[n].address),
+      ]),
     );
     expect(c.CTR_AUX[0].slice(2)).toEqual(['Holds the credit contracts’ upgrades and settings for 7 days', 'Clear Treasury Safe, as the Ops Safe']);
     expect(c.CTR_OLD).toEqual([
@@ -444,8 +440,9 @@ describe('Build’s map, its cards and Signing, live (brief update 2)', () => {
       ['ClearUSD v1', sh(C.ClearUSD.address), 'Replaced by the upgradeable ClearUSD'],
       ['AssuranceOracle', sh(C.AssuranceOracle.address), 'Off the money path since section 13'],
     ]);
-    // ten PreAudit (less the old OffersIssuer, listed), four Pre2f, one Pre2d, five Legacy and RevolvingIssuerV1
-    expect(c.CTR_OLD_N).toBe(21);
+    // ten PreAudit (less the old OffersIssuer, listed), four Pre2f, one Pre2d, twelve Legacy (seven of them the
+    // Deed track contracts deploy 30 replaced) and RevolvingIssuerV1
+    expect(c.CTR_OLD_N).toBe(28);
   });
 
   test('Security’s automatic jobs wait, each "Not on yet", until its switch is set', async () => {
