@@ -1,11 +1,11 @@
 {
   "format": "clear-signing-plan/1",
-  "generatedAt": "2026-11-18T08:38:38.990Z",
+  "generatedAt": "2026-11-26T21:05:11.060Z",
   "network": "base-sepolia",
   "chainId": 84532,
-  "block": 60346120,
-  "blockTime": "2026-11-18T08:38:12.000Z",
-  "stepsSha256": "7e8b42f6d2323ece4b575ca284449aab7a1485eb7b74c14415f30517cf28deb3",
+  "block": 64026056,
+  "blockTime": "2026-11-26T21:04:40.000Z",
+  "stepsSha256": "558dd1cfcbc850a839cc8cb9be31c5078a3e809106838801e79319e016a21064",
   "notes": [
     "Deployment signer 1 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA (deploy/config/earn-roles.json) does not hold the pool's DEPLOYER_ROLE on chain: SL-deployer-1-schedule and SLx-deployer-1-execute grant it through the Earn timelock, before the SL-funder and SL-headroom pairs."
   ],
@@ -886,14 +886,14 @@
       "dependsOn": [
         "E8-earn-schedule"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the Earn timelock's 7 days end at 2026-11-24T18:35:48.000Z; the Collateral Agent's 7 days (from the last confirmation) end at 2026-11-24T18:25:33.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-E8x-earn-execute.json"
     },
     {
       "id": "F2-fee-approve",
       "stage": "F2",
       "title": "Approve the fee recipient for term plans",
-      "explanation": "Deploy 25 proposed Clear Financial Safe, Ops Safe, fee recipient, Clear Treasury (board) Safe, co-op treasury as where TermIssuer sends plan fees. A second credit settings signer approves it; until then no plan with a fee can open.",
+      "explanation": "Deploy 25 proposed fee recipient, CL Operating, Assurance draw address as where TermIssuer sends plan fees. A second credit settings signer approves it; until then no plan with a fee can open.",
       "kind": "wallet",
       "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
       "signerLabel": "credit settings signer 2",
@@ -901,14 +901,14 @@
       "to": "0x1b1695353f14E889906237D9b9C386eD0393da57",
       "toLabel": "TermIssuer",
       "value": "0",
-      "data": "0x84caa98b00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50494e495449414c00000000000000000000000000000000000000000000000000",
+      "data": "0x84caa98b000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65494e495449414c00000000000000000000000000000000000000000000000000",
       "functionSignature": "approveFeeRecipient(address,bytes32)",
       "args": [
         {
           "name": "arg0",
           "type": "address",
-          "value": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
-          "note": "Clear Financial Safe, Ops Safe, fee recipient, Clear Treasury (board) Safe, co-op treasury"
+          "value": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+          "note": "fee recipient, CL Operating, Assurance draw address"
         },
         {
           "name": "arg1",
@@ -921,6 +921,208 @@
         "D4-settings-2"
       ],
       "status": "done"
+    },
+    {
+      "id": "RT-fee-propose",
+      "stage": "RT",
+      "title": "Propose Clear Lending as the fee recipient for term plans",
+      "explanation": "TermIssuer sends each split plan's fee to its fee recipient, which is Clear Lending's (Addendum 2: the fee no longer goes to the co-op). Deploy 25 carried the old issuer's recipient over, the Clear Treasury Safe. This proposes fee recipient, CL Operating, Assurance draw address; a different credit settings signer approves it. No timelock.",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "credit settings signer 1",
+      "chainId": 84532,
+      "to": "0x1b1695353f14E889906237D9b9C386eD0393da57",
+      "toLabel": "TermIssuer",
+      "value": "0",
+      "data": "0x9ba65e59000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65434c4541525f4c454e44494e475f524f5554494e470000000000000000000000",
+      "functionSignature": "proposeFeeRecipient(address,bytes32)",
+      "args": [
+        {
+          "name": "arg0",
+          "type": "address",
+          "value": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+          "note": "fee recipient, CL Operating, Assurance draw address"
+        },
+        {
+          "name": "arg1",
+          "type": "bytes32",
+          "value": "0x434c4541525f4c454e44494e475f524f5554494e470000000000000000000000",
+          "note": "\"CLEAR_LENDING_ROUTING\""
+        }
+      ],
+      "dependsOn": [
+        "D4-settings-1"
+      ],
+      "status": "done",
+      "reason": "TermIssuer's fee recipient is fee recipient, CL Operating, Assurance draw address."
+    },
+    {
+      "id": "RT-fee-approve",
+      "stage": "RT",
+      "title": "Approve Clear Lending as the fee recipient for term plans",
+      "explanation": "The second credit settings signer approves the proposal: from then on plan fees go to fee recipient, CL Operating, Assurance draw address. It must be a different signer from the one who proposed.",
+      "kind": "wallet",
+      "signer": "0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23",
+      "signerLabel": "credit settings signer 2",
+      "chainId": 84532,
+      "to": "0x1b1695353f14E889906237D9b9C386eD0393da57",
+      "toLabel": "TermIssuer",
+      "value": "0",
+      "data": "0x84caa98b000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65434c4541525f4c454e44494e475f524f5554494e470000000000000000000000",
+      "functionSignature": "approveFeeRecipient(address,bytes32)",
+      "args": [
+        {
+          "name": "arg0",
+          "type": "address",
+          "value": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+          "note": "fee recipient, CL Operating, Assurance draw address"
+        },
+        {
+          "name": "arg1",
+          "type": "bytes32",
+          "value": "0x434c4541525f4c454e44494e475f524f5554494e470000000000000000000000",
+          "note": "\"CLEAR_LENDING_ROUTING\""
+        }
+      ],
+      "dependsOn": [
+        "RT-fee-propose",
+        "D4-settings-2"
+      ],
+      "status": "done",
+      "reason": "TermIssuer's fee recipient is fee recipient, CL Operating, Assurance draw address."
+    },
+    {
+      "id": "RT-card-account",
+      "stage": "RT",
+      "title": "Point card settlement claims at Clear Lending",
+      "explanation": "Each settled card purchase mints its claim to RevolvingIssuer's card settlement account. Deploy 25 carried the old issuer's account over, the Clear Treasury Safe, but Clear Lending pays card settlements (decision 54: the Credit Settlement Account is funded from CL Operating). This sets it to fee recipient, CL Operating, Assurance draw address. One credit settings signer; no timelock.",
+      "kind": "wallet",
+      "signer": "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a",
+      "signerLabel": "credit settings signer 1",
+      "chainId": 84532,
+      "to": "0xBec598bee24cF2973d42eA85e6028621180fE2F0",
+      "toLabel": "RevolvingIssuer",
+      "value": "0",
+      "data": "0x3d0d7c30000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65",
+      "functionSignature": "setCardSettlementAccount(address)",
+      "args": [
+        {
+          "name": "arg0",
+          "type": "address",
+          "value": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+          "note": "fee recipient, CL Operating, Assurance draw address"
+        }
+      ],
+      "dependsOn": [
+        "D4-settings-1"
+      ],
+      "status": "done",
+      "reason": "Card claims are minted to fee recipient, CL Operating, Assurance draw address."
+    },
+    {
+      "id": "CF-upgrade-schedule",
+      "stage": "CF",
+      "title": "Clear Treasury Safe: schedule the RevolvingIssuer upgrade that adds the card credit fee ($0.30)",
+      "explanation": "Decision 55: queues one operation on the credit timelock: RevolvingIssuer.upgradeToAndCall to the implementation scripts/upgrade_card_credit_fee.ts validated and deployed, calling setMaxCardCreditFee($0.30) in the same transaction, so the fee is on from the upgrade (owner, Nov 18, 2026). It adds settleCardSpendWithFee and returnCardCreditFee; nothing in the storage layout moves. One credit settings signer can set the bound back to zero at any time. It can run 7 days later. Sign it in the Safe app.",
+      "kind": "safe",
+      "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "signerLabel": "Clear Treasury Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0x39411C23825844c4B14ad964a661d1Cb8238d330",
+      "toLabel": "credit timelock",
+      "value": "0",
+      "data": "0x01d5062a000000000000000000000000bec598bee24cf2973d42ea85e6028621180fe2f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000e9f4139fadc145c7f36547403d388cece6d8ddc26fcf217f31d7a1dbbebe2d3e0000000000000000000000000000000000000000000000000000000000093a8000000000000000000000000000000000000000000000000000000000000000a44f1ef2860000000000000000000000007ede0306a079cc473dd8298c6bce727e2497d71f00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000024e8d8b64200000000000000000000000000000000000000000000000000000000000493e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "schedule(address,uint256,bytes,bytes32,bytes32,uint256)",
+      "args": [
+        {
+          "name": "target",
+          "type": "address",
+          "value": "0xBec598bee24cF2973d42eA85e6028621180fE2F0",
+          "note": "RevolvingIssuer"
+        },
+        {
+          "name": "value",
+          "type": "uint256",
+          "value": "0"
+        },
+        {
+          "name": "data",
+          "type": "bytes",
+          "value": "0x4f1ef2860000000000000000000000007ede0306a079cc473dd8298c6bce727e2497d71f00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000024e8d8b64200000000000000000000000000000000000000000000000000000000000493e000000000000000000000000000000000000000000000000000000000",
+          "note": "upgradeToAndCall(0x7eDe0306a079cc473DD8298C6bCe727e2497d71f, setMaxCardCreditFee(300000)): the implementation with the card credit fee, switched on at $0.30"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0xe9f4139fadc145c7f36547403d388cece6d8ddc26fcf217f31d7a1dbbebe2d3e",
+          "note": "a fixed label for this proposal"
+        },
+        {
+          "name": "delay",
+          "type": "uint256",
+          "value": "604800",
+          "note": "7 days"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "CFx-upgrade-execute",
+      "stage": "Day 7",
+      "title": "Clear Treasury Safe: run the RevolvingIssuer upgrade that adds the card credit fee (day 7)",
+      "explanation": "After the credit timelock's 7 days, the Safe runs the queued upgrade, and the card credit fee's bound is $0.30 from then on. The API charges it once its own CARD_CREDIT_FEE_CENTS is set.",
+      "kind": "safe",
+      "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
+      "signerLabel": "Clear Treasury Safe (its owners sign in the Safe app)",
+      "chainId": 84532,
+      "to": "0x39411C23825844c4B14ad964a661d1Cb8238d330",
+      "toLabel": "credit timelock",
+      "value": "0",
+      "data": "0x134008d3000000000000000000000000bec598bee24cf2973d42ea85e6028621180fe2f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000e9f4139fadc145c7f36547403d388cece6d8ddc26fcf217f31d7a1dbbebe2d3e00000000000000000000000000000000000000000000000000000000000000a44f1ef2860000000000000000000000007ede0306a079cc473dd8298c6bce727e2497d71f00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000024e8d8b64200000000000000000000000000000000000000000000000000000000000493e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "execute(address,uint256,bytes,bytes32,bytes32)",
+      "args": [
+        {
+          "name": "target",
+          "type": "address",
+          "value": "0xBec598bee24cF2973d42eA85e6028621180fE2F0",
+          "note": "RevolvingIssuer"
+        },
+        {
+          "name": "value",
+          "type": "uint256",
+          "value": "0"
+        },
+        {
+          "name": "payload",
+          "type": "bytes",
+          "value": "0x4f1ef2860000000000000000000000007ede0306a079cc473dd8298c6bce727e2497d71f00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000024e8d8b64200000000000000000000000000000000000000000000000000000000000493e000000000000000000000000000000000000000000000000000000000",
+          "note": "upgradeToAndCall(0x7eDe0306a079cc473DD8298C6bCe727e2497d71f, setMaxCardCreditFee(300000)): the implementation with the card credit fee, switched on at $0.30"
+        },
+        {
+          "name": "predecessor",
+          "type": "bytes32",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "note": "none"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32",
+          "value": "0xe9f4139fadc145c7f36547403d388cece6d8ddc26fcf217f31d7a1dbbebe2d3e",
+          "note": "the same label"
+        }
+      ],
+      "dependsOn": [
+        "CF-upgrade-schedule"
+      ],
+      "status": "waiting",
+      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-28T00:22:06.000Z."
     },
     {
       "id": "G1-tier-1",
@@ -1114,8 +1316,8 @@
       "dependsOn": [
         "I3-vault-schedule"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the vault timelock's 7 days end at 2026-11-24T21:00:10.000Z; CLRUSD's admin delay ends at 2026-11-19T20:43:36.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-I3x-vault-execute.json"
     },
     {
       "id": "AS-payer-clfees-approve-1",
@@ -1500,8 +1702,8 @@
       "dependsOn": [
         "AS-assurance-schedule"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the Assurance timelock's 7 days end at 2026-11-24T18:55:35.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-ASx-assurance-execute.json"
     },
     {
       "id": "AS-floor-1",
@@ -1738,7 +1940,7 @@
       "to": "0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911",
       "toLabel": "Earn timelock",
       "value": "0",
-      "data": "0x01d5062a00000000000000000000000058405326b66888d8a9f2dc4646cac2f5eac7ce23000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000000ad42c874bfff8f4eab1925fa9040cd7e342ce4e45273f483810df7b2e859fbe0000000000000000000000000000000000000000000000000000000000093a800000000000000000000000000000000000000000000000000000000000000000",
+      "data": "0x01d5062a00000000000000000000000058405326b66888d8a9f2dc4646cac2f5eac7ce23000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000000ad42c874bfff8f4eab1925fa9040cd7e342ce4e45273f483810df7b2e859fbe0000000000000000000000000000000000000000000000000000000000093a8000000000000000000000000000000000000000000000000000000000000000243659cfe6000000000000000000000000eccfddcac073a657cfb94d3ff9f22997e7ecbabd00000000000000000000000000000000000000000000000000000000",
       "functionSignature": "schedule(address,uint256,bytes,bytes32,bytes32,uint256)",
       "args": [
         {
@@ -1755,8 +1957,8 @@
         {
           "name": "data",
           "type": "bytes",
-          "value": "0x",
-          "note": "upgradeTo(the new implementation)"
+          "value": "0x3659cfe6000000000000000000000000eccfddcac073a657cfb94d3ff9f22997e7ecbabd",
+          "note": "upgradeTo(0xeccfDDCac073a657CFB94D3Ff9f22997e7EcBAbD): the LendingPool implementation with the Settlement Funding lane"
         },
         {
           "name": "predecessor",
@@ -1781,7 +1983,7 @@
         "E8x-earn-execute"
       ],
       "status": "waiting",
-      "reason": "Waits for E8x-earn-execute first (this is a new Earn timelock proposal, scheduled after the E8 batch has run), and for the new LendingPool implementation: SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network base-sepolia validates it against the manifest, deploys it and writes deployments/base-sepolia/LendingPoolSettlementLane.json."
+      "reason": "Waits for E8x-earn-execute first."
     },
     {
       "id": "SLx-upgrade-execute",
@@ -1795,7 +1997,7 @@
       "to": "0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911",
       "toLabel": "Earn timelock",
       "value": "0",
-      "data": "0x134008d300000000000000000000000058405326b66888d8a9f2dc4646cac2f5eac7ce23000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000000ad42c874bfff8f4eab1925fa9040cd7e342ce4e45273f483810df7b2e859fbe0000000000000000000000000000000000000000000000000000000000000000",
+      "data": "0x134008d300000000000000000000000058405326b66888d8a9f2dc4646cac2f5eac7ce23000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000000ad42c874bfff8f4eab1925fa9040cd7e342ce4e45273f483810df7b2e859fbe00000000000000000000000000000000000000000000000000000000000000243659cfe6000000000000000000000000eccfddcac073a657cfb94d3ff9f22997e7ecbabd00000000000000000000000000000000000000000000000000000000",
       "functionSignature": "execute(address,uint256,bytes,bytes32,bytes32)",
       "args": [
         {
@@ -1812,8 +2014,8 @@
         {
           "name": "payload",
           "type": "bytes",
-          "value": "0x",
-          "note": "upgradeTo(the new implementation)"
+          "value": "0x3659cfe6000000000000000000000000eccfddcac073a657cfb94d3ff9f22997e7ecbabd",
+          "note": "upgradeTo(0xeccfDDCac073a657CFB94D3Ff9f22997e7EcBAbD): the LendingPool implementation with the Settlement Funding lane"
         },
         {
           "name": "predecessor",
@@ -1833,7 +2035,7 @@
         "E8x-earn-execute"
       ],
       "status": "waiting",
-      "reason": "Waits for E8x-earn-execute first (this is a new Earn timelock proposal, scheduled after the E8 batch has run), and for the new LendingPool implementation: SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network base-sepolia validates it against the manifest, deploys it and writes deployments/base-sepolia/LendingPoolSettlementLane.json."
+      "reason": "Waits for SL-upgrade-schedule, then 7 days."
     },
     {
       "id": "SL-deployer-1-schedule",
@@ -1887,8 +2089,7 @@
         }
       ],
       "dependsOn": [],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SL-deployer-1-schedule.json"
+      "status": "done"
     },
     {
       "id": "SLx-deployer-1-execute",
@@ -1938,8 +2139,8 @@
       "dependsOn": [
         "SL-deployer-1-schedule"
       ],
-      "status": "waiting",
-      "reason": "Waits for SL-deployer-1-schedule, then 7 days."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SLx-deployer-1-execute.json"
     },
     {
       "id": "SL-deployer-2-schedule",
@@ -2059,15 +2260,34 @@
       "to": "0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23",
       "toLabel": "LendingPool (the Yield Pool)",
       "value": "0",
-      "data": null,
+      "data": "0xbdf830080000000000000000000000008b8b8643ba33e96e3716f26c631556164c2139eb000000000000000000000000000000000000000000000000000000012a05f2000000000000000000000000000000000000000000000000000000000000093a80",
       "functionSignature": "setSettlementFunder(address,uint256,uint64)",
-      "args": [],
+      "args": [
+        {
+          "name": "arg0",
+          "type": "address",
+          "value": "0x8b8b8643bA33E96E3716F26c631556164C2139eB",
+          "note": "settlement funding desk wallet"
+        },
+        {
+          "name": "arg1",
+          "type": "uint256",
+          "value": "5000000000",
+          "note": "$5,000.00 per period (USDC base units)"
+        },
+        {
+          "name": "arg2",
+          "type": "uint64",
+          "value": "604800",
+          "note": "7 days, in seconds"
+        }
+      ],
       "dependsOn": [
         "SLx-upgrade-execute",
         "SLx-deployer-1-execute"
       ],
       "status": "waiting",
-      "reason": "Waiting for input: SETTLEMENT_FUNDER (the funding desk's CDP wallet; the owner creates it)."
+      "reason": "Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation."
     },
     {
       "id": "SL-funder-2",
@@ -2081,15 +2301,34 @@
       "to": "0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23",
       "toLabel": "LendingPool (the Yield Pool)",
       "value": "0",
-      "data": null,
+      "data": "0xbdf830080000000000000000000000008b8b8643ba33e96e3716f26c631556164c2139eb000000000000000000000000000000000000000000000000000000012a05f2000000000000000000000000000000000000000000000000000000000000093a80",
       "functionSignature": "setSettlementFunder(address,uint256,uint64)",
-      "args": [],
+      "args": [
+        {
+          "name": "arg0",
+          "type": "address",
+          "value": "0x8b8b8643bA33E96E3716F26c631556164C2139eB",
+          "note": "settlement funding desk wallet"
+        },
+        {
+          "name": "arg1",
+          "type": "uint256",
+          "value": "5000000000",
+          "note": "$5,000.00 per period (USDC base units)"
+        },
+        {
+          "name": "arg2",
+          "type": "uint64",
+          "value": "604800",
+          "note": "7 days, in seconds"
+        }
+      ],
       "dependsOn": [
         "SLx-upgrade-execute",
         "SLx-deployer-2-execute"
       ],
       "status": "waiting",
-      "reason": "Waiting for input: SETTLEMENT_FUNDER (the funding desk's CDP wallet; the owner creates it)."
+      "reason": "Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation."
     },
     {
       "id": "SL-headroom-1",
@@ -2150,23 +2389,125 @@
       "reason": "Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation."
     },
     {
-      "id": "SL-cl-operating",
+      "id": "SL-cl-operating-delegate",
       "stage": "SL",
-      "title": "CL Operating: install the SettlementForwarder as its AllowanceModule delegate",
-      "explanation": "CL Operating names the SettlementForwarder a spending-limit delegate and gives it an allowance, so the funding desk can push USDC from CL Operating only to the off-ramp. Its calls are added once the forwarder exists.",
+      "title": "CL Operating: name the SettlementForwarder a spending-limit delegate",
+      "explanation": "The forwarder may then move CL Operating's USDC, but only to its off-ramp and only within the allowance the next call sets. In the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute. Sign all four at once: safe-batches/signing-SL-cl-operating.json (written while they are ready).",
       "kind": "safe",
       "signer": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
       "signerLabel": "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
       "chainId": 84532,
-      "to": "0x0000000000000000000000000000000000000000",
+      "to": "0xAA46724893dedD72658219405185Fb0Fc91e091C",
       "toLabel": "AllowanceModule",
       "value": "0",
-      "data": null,
+      "data": "0xe71bdf410000000000000000000000000343a5c0ed485b82487ddcfde0021133b5d5f46c",
       "functionSignature": "addDelegate(address)",
+      "args": [
+        {
+          "name": "delegate",
+          "type": "address",
+          "value": "0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c",
+          "note": "SettlementForwarder"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
+    },
+    {
+      "id": "SL-cl-operating-allowance",
+      "stage": "SL",
+      "title": "CL Operating: let the SettlementForwarder move up to $5,000.00 of USDC every 7 days",
+      "explanation": "The most the funding desk can push from CL Operating to the off-ramp in a period, whatever happens to its key: the same cap as the pool lane's. In the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute. Sign all four at once: safe-batches/signing-SL-cl-operating.json (written while they are ready).",
+      "kind": "safe",
+      "signer": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+      "signerLabel": "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      "chainId": 84532,
+      "to": "0xAA46724893dedD72658219405185Fb0Fc91e091C",
+      "toLabel": "AllowanceModule",
+      "value": "0",
+      "data": "0xbeaeb3880000000000000000000000000343a5c0ed485b82487ddcfde0021133b5d5f46c000000000000000000000000036cbd53842c5426634e7929541ec2318f3dcf7e000000000000000000000000000000000000000000000000000000012a05f20000000000000000000000000000000000000000000000000000000000000027600000000000000000000000000000000000000000000000000000000000000000",
+      "functionSignature": "setAllowance(address,address,uint96,uint16,uint32)",
+      "args": [
+        {
+          "name": "delegate",
+          "type": "address",
+          "value": "0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c",
+          "note": "SettlementForwarder"
+        },
+        {
+          "name": "token",
+          "type": "address",
+          "value": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "note": "USDC"
+        },
+        {
+          "name": "allowanceAmount",
+          "type": "uint96",
+          "value": "5000000000",
+          "note": "$5,000.00 per period (USDC base units): SETTLEMENT_CAP_USDC, the pool lane's cap"
+        },
+        {
+          "name": "resetTimeMin",
+          "type": "uint16",
+          "value": "10080",
+          "note": "7 days in minutes: SETTLEMENT_PERIOD_DAYS"
+        },
+        {
+          "name": "resetBaseMin",
+          "type": "uint32",
+          "value": "0",
+          "note": "periods counted from when it is set"
+        }
+      ],
+      "dependsOn": [
+        "SL-cl-operating-delegate"
+      ],
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SL-cl-operating-allowance.json"
+    },
+    {
+      "id": "SL-cl-operating-offramp",
+      "stage": "SL",
+      "title": "CL Operating: set the SettlementForwarder's off-ramp",
+      "explanation": "Every forward goes to this address and nowhere else. Only CL Operating can change it. In the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute. Sign all four at once: safe-batches/signing-SL-cl-operating.json (written while they are ready).",
+      "kind": "safe",
+      "signer": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+      "signerLabel": "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      "chainId": 84532,
+      "to": "0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c",
+      "toLabel": "SettlementForwarder",
+      "value": "0",
+      "data": null,
+      "functionSignature": "setOffRamp(address)",
       "args": [],
       "dependsOn": [],
       "status": "waiting",
-      "reason": "Waits for the SettlementForwarder (decision 54, part 2): not deployed yet."
+      "reason": "Waiting for input: SETTLEMENT_OFFRAMP_ADDRESS (the off-ramp's deposit address bound to the Credit Settlement Account)."
+    },
+    {
+      "id": "SL-cl-operating-desk",
+      "stage": "SL",
+      "title": "CL Operating: name the funding desk's wallet as the SettlementForwarder's only caller",
+      "explanation": "The same CDP wallet the pool lane registers as its funder. Only CL Operating can change it; zero stops forwarding. In the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute. Sign all four at once: safe-batches/signing-SL-cl-operating.json (written while they are ready).",
+      "kind": "safe",
+      "signer": "0xfAFf1081F77bF528bA21eea590f251a755bCdf65",
+      "signerLabel": "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      "chainId": 84532,
+      "to": "0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c",
+      "toLabel": "SettlementForwarder",
+      "value": "0",
+      "data": "0x9c8c90cf0000000000000000000000008b8b8643ba33e96e3716f26c631556164c2139eb",
+      "functionSignature": "setDesk(address)",
+      "args": [
+        {
+          "name": "desk_",
+          "type": "address",
+          "value": "0x8b8b8643bA33E96E3716F26c631556164C2139eB",
+          "note": "the funding desk's wallet (SETTLEMENT_FUNDER)"
+        }
+      ],
+      "dependsOn": [],
+      "status": "done"
     },
     {
       "id": "SA-attester-schedule",
@@ -2270,8 +2611,8 @@
       "dependsOn": [
         "SA-attester-schedule"
       ],
-      "status": "waiting",
-      "reason": "Scheduled. The Safe can run it from 2026-11-25T02:54:36.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SAx-attester-execute.json"
     },
     {
       "id": "SR-rates-schedule-1",
@@ -2375,8 +2716,8 @@
       "dependsOn": [
         "SR-rates-schedule-1"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-25T04:13:16.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-1.json"
     },
     {
       "id": "SR-rates-schedule-2",
@@ -2480,8 +2821,8 @@
       "dependsOn": [
         "SR-rates-schedule-2"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-25T04:13:58.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-2.json"
     },
     {
       "id": "SR-rates-schedule-3",
@@ -2585,8 +2926,8 @@
       "dependsOn": [
         "SR-rates-schedule-3"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-25T04:14:58.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-3.json"
     },
     {
       "id": "SR-rates-schedule-4",
@@ -2690,8 +3031,8 @@
       "dependsOn": [
         "SR-rates-schedule-4"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-25T04:17:06.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-4.json"
     },
     {
       "id": "SR-rates-schedule-5",
@@ -2795,8 +3136,8 @@
       "dependsOn": [
         "SR-rates-schedule-5"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-25T04:18:27.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-5.json"
     },
     {
       "id": "SR-rates-schedule-6",
@@ -2900,8 +3241,8 @@
       "dependsOn": [
         "SR-rates-schedule-6"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-25T04:20:00.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-6.json"
     },
     {
       "id": "SR-rates-schedule-7",
@@ -3005,8 +3346,8 @@
       "dependsOn": [
         "SR-rates-schedule-7"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-25T04:21:14.000Z."
+      "status": "ready",
+      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-7.json"
     }
   ]
 }
