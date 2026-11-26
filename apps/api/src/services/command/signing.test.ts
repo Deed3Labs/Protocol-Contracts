@@ -200,6 +200,40 @@ describe('read from GitHub in production', () => {
     expect(calls[0]).toBe('https://api.github.com/repos/o/r/commits/main');
   });
 
+  test('a token GitHub refuses: the public repo’s plan, without it, read again every five minutes', async () => {
+    const calls: string[] = [];
+    const auth: Array<string | undefined> = [];
+    const f = (async (url: string, init: RequestInit) => {
+      calls.push(url);
+      auth.push((init.headers as Record<string, string>).Authorization);
+      if (url.startsWith('https://api.github.com/')) return new Response('{"message":"Bad credentials"}', { status: 401 });
+      if (url === 'https://raw.githubusercontent.com/Deed3Labs/Protocol-Contracts/dev/deployments/base-sepolia/signing-plan.json') return new Response(planOf(steps));
+      return new Response('', { status: 404 });
+    }) as unknown as typeof fetch;
+    let t = 0;
+    const warn = console.warn;
+    const warned: string[] = [];
+    console.warn = (m: string) => void warned.push(m);
+    try {
+      const r = signingReader({ GITHUB_TOKEN: 'expired' }, f, () => t);
+      const first = await r.read();
+      expect([first.source, first.plan?.steps.length, first.commit]).toEqual(['plan', 1, undefined]);
+      // the API once, refused; then only the public file, with no token sent to it
+      expect(calls).toEqual(['https://api.github.com/repos/Deed3Labs/Protocol-Contracts/commits/dev', 'https://raw.githubusercontent.com/Deed3Labs/Protocol-Contracts/dev/deployments/base-sepolia/signing-plan.json']);
+      expect(auth[1]).toBeUndefined();
+      t = 4 * 60_000;
+      await r.read();
+      expect(calls).toHaveLength(2);
+      t = 5 * 60_000 + 1;
+      await r.read();
+      expect(calls).toHaveLength(3);
+      expect(calls[2]).toContain('raw.githubusercontent.com');
+      expect(warned).toHaveLength(1);
+    } finally {
+      console.warn = warn;
+    }
+  });
+
   test('the token, when set, is the GitHub poller’s, sent as a bearer token and nothing else', async () => {
     const seen: Array<Record<string, string>> = [];
     const f = (async (_u: string, init: RequestInit) => {
