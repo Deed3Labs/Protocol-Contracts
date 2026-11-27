@@ -393,13 +393,39 @@ export function agoText(at: number, now = Date.now()): string {
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h ago`;
 }
 
-/** Whether the connected MetaMask account owns the step's Safe. */
 /** A Safe's owners and queue from the live check, whatever the case of its address. */
 export const safeOf = (live: SigningLive | null | undefined, safe: string): SafeLive | null => {
   const k = Object.keys(live?.safes || {}).find((x) => same(x, safe));
   return k ? live!.safes[k] : null;
 };
+/** Whether the connected MetaMask account owns the step's Safe. */
 export const ownsSafe = (live: SigningLive | null | undefined, safe: string, account: string | null) => !!account && !!safeOf(live, safe)?.owners?.some((o) => same(o, account));
+
+/** Whether the account signs for a Safe: one of its owners, or an owner of a Safe that owns it (CL Operating is owned by the Clear Lending Safe). */
+export const signsForSafe = (live: SigningLive | null | undefined, safe: string, account: string | null) =>
+  ownsSafe(live, safe, account) || !!safeOf(live, safe)?.owners?.some((o) => ownsSafe(live, o, account));
+
+/** The plan's Safes the account signs for, by address. */
+export const safesSignedBy = (live: SigningLive | null | undefined, account: string | null) =>
+  Object.values(live?.safes || {})
+    .filter((x) => signsForSafe(live, x.address, account))
+    .map((x) => x.address.toLowerCase());
+
+/**
+ * Whether a step is the connected account's to act on ("Ready for this wallet"): a wallet step it sends, or a Safe
+ * step for a Safe it signs for, unless it has already signed the queued copy and other owners still have to.
+ */
+export function isMine(
+  step: { kind: string; who: string; call?: { signer: string }; queued?: StepLive['queued'] | null },
+  live: SigningLive | null | undefined,
+  account: string | null,
+): boolean {
+  if (!account) return false;
+  if (step.kind !== 'safe') return same(step.who, account);
+  if (!signsForSafe(live, step.call?.signer ?? step.who, account)) return false;
+  const q = step.queued;
+  return !(q && q.signed.length < q.required && q.signed.some((o) => same(o, account)));
+}
 
 /** "Check now": the API reads the chain and the Safes again (unless it did seconds ago). */
 export const checkNow = () => api<{ live: SigningLive | null; liveProblem: string | null }>('POST', '/signing/check');

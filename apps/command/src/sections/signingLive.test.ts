@@ -132,6 +132,29 @@ describe('where each step stands now (the API’s live check)', () => {
     expect(SGL.ownsSafe(live, '0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50', '0x0000000000000000000000000000000000000001')).toBe(false);
     expect(SGL.ownsSafe(live, '0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50', null)).toBe(false);
   });
+  test('“Ready for this wallet” counts Safe steps the account signs for, nested Safes too', () => {
+    const T = '0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50';
+    const L = '0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d';
+    const O = '0xfAFf1081F77bF528bA21eea590f251a755bCdf65';
+    const me = '0x7ec1000000000000000000000000000000000001';
+    const other = '0x0000000000000000000000000000000000000002';
+    const safe = (address: string, owners: string[]) => ({ address, owners, threshold: 2, nonce: 0, others: [], link: 'x' });
+    const lv = { ...live, safes: { [T]: safe(T, [me, other]), [L]: safe(L, [me]), [O]: safe(O, [L]) } } as any;
+    const step = (signer: string, queued: any = null) => ({ kind: 'safe', who: signer.toLowerCase(), call: { signer }, queued });
+    expect(SGL.isMine(step(T), lv, me)).toBe(true);
+    expect(SGL.isMine(step(O), lv, me)).toBe(true);
+    expect(SGL.isMine(step(T), lv, '0x0000000000000000000000000000000000000009')).toBe(false);
+    expect(SGL.isMine(step(T), lv, null)).toBe(false);
+    // signed by me, waiting on another owner: not mine; fully signed (to execute) or signed by others: mine
+    expect(SGL.isMine(step(T, { signed: [me.toUpperCase().replace('0X', '0x')], required: 2 }), lv, me)).toBe(false);
+    expect(SGL.isMine(step(T, { signed: [me, other], required: 2 }), lv, me)).toBe(true);
+    expect(SGL.isMine(step(T, { signed: [other], required: 2 }), lv, me)).toBe(true);
+    // wallet steps: the account the step names, whatever the case
+    expect(SGL.isMine({ kind: 'wallet', who: me }, lv, me.toUpperCase().replace('0X', '0x'))).toBe(true);
+    expect(SGL.isMine({ kind: 'wallet', who: other }, lv, me)).toBe(false);
+    expect(SGL.safesSignedBy(lv, me)).toEqual([T, L, O].map((a) => a.toLowerCase()));
+    expect(SGL.safesSignedBy(lv, other)).toEqual([T.toLowerCase()]);
+  });
   test('when, in words', () => {
     const now = Date.parse('2026-11-26T18:00:00Z');
     expect(SGL.untilText('2026-11-28T00:22:06Z', now)).toBe('in 30 h 22 min');
