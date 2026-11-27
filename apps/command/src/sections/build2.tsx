@@ -2170,7 +2170,7 @@ function makeBuild() {
       const r = SG.sent[s.id];
       return r ? r.state : s.status;
     };
-    const sgMine = s => SG.wallet && s.kind === 'wallet' && s.who === SG.wallet;
+    const sgMine = s => LV ? SGL.isMine(s, SG.live, SG.wallet) : SG.wallet && s.kind === 'wallet' && s.who === SG.wallet;
     const SGW = {
       ready: ['Ready', 'rd'],
       waiting: ['Waiting', 'wt'],
@@ -2215,7 +2215,10 @@ function makeBuild() {
       const wal = cell('s4', 'Your wallet', w ? LV && SGL.W.chain !== SGL.BASE_SEPOLIA ? <span className="fst">Wrong network · switch to Base Sepolia</span> : <span className="fst sn-ok">Base Sepolia</span> : <span className="lbl">Not connected</span>, w ? <div className="sn-wl"><div className="sn-wa">{sgTag(w)}<span><b>{wa[0]}</b><span className="mono">{wa[1]}</span></span></div>{(() => {
           const nx = S.filter(s => sgMine(s) && sgState(s) === 'ready').slice(0, 3);
           return <div className="sn-nx">{lbl(`Next for this account · ${mine} ready`)}{nx.length ? nx.map((s, __k) => <button key={__k} className="sn-nr" data-sgstep={s.id}><span className="mono">{s.id}</span><b>{s.t}</b>{ICO.chev || '›'}</button>) : <p className="sn-p">Nothing ready for this account. Switch accounts below.</p>}</div>;
-        })()}{LV ? <p className="sn-p">{SG_ACCT[w] ? 'Switch accounts in MetaMask for the other signers’ steps.' : 'The plan names this account for no step. Switch accounts in MetaMask.'}</p> : <label className="sn-sw">{lbl('Switch account in MetaMask')}<select data-sgacct="" defaultValue={w}>{Object.entries(SG_ACCT).filter(([k]) => !['cls', 'cts'].includes(k)).map(([k, a], __k) => <option key={__k} value={k}>{a[0]}{" · "}{a[1].slice(-4)}</option>)}</select></label>}</div> : <div className="sn-wl"><p className="sn-p">Connect MetaMask with the account a step names. Command Center holds no key: MetaMask shows every call for you to confirm.</p><button className="btn p" data-sgconnect="">Connect MetaMask</button><div className="led sn-ck">{[['Network', LV ? 'Base Sepolia only' : 'Base Sepolia or a local chain'], ['Plan', 'Fingerprint must match'], ['Account', 'Must be the step’s signer']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span className="sn-g">{w ? 'Refuses other chains · checks the fingerprint' : 'Holds no key · MetaMask signs every call'}</span><span /></>);
+        })()}{LV ? <p className="sn-p">{(() => {
+          const sf = SGL.safesSignedBy(SG.live, w).map(a => SG_ACCT[a] ? SG_ACCT[a][0].replace(/ · Safe$/, '') : SGL.shortA(a));
+          return sf.length ? `Signs for ${sf.join(', ')}. Switch accounts in MetaMask for the other signers’ steps.` : SG_ACCT[w] ? 'Switch accounts in MetaMask for the other signers’ steps.' : 'The plan names this account for no step and it owns none of its Safes. Switch accounts in MetaMask.';
+        })()}</p> : <label className="sn-sw">{lbl('Switch account in MetaMask')}<select data-sgacct="" defaultValue={w}>{Object.entries(SG_ACCT).filter(([k]) => !['cls', 'cts'].includes(k)).map(([k, a], __k) => <option key={__k} value={k}>{a[0]}{" · "}{a[1].slice(-4)}</option>)}</select></label>}</div> : <div className="sn-wl"><p className="sn-p">Connect MetaMask with the account a step names. Command Center holds no key: MetaMask shows every call for you to confirm.</p><button className="btn p" data-sgconnect="">Connect MetaMask</button><div className="led sn-ck">{[['Network', LV ? 'Base Sepolia only' : 'Base Sepolia or a local chain'], ['Plan', 'Fingerprint must match'], ['Account', 'Must be the step’s signer']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span className="sn-g">{w ? 'Refuses other chains · checks the fingerprint' : 'Holds no key · MetaMask signs every call'}</span><span /></>);
       const tl = S.filter(s => s.st === 'D7' || s.kind === 'safe' && /schedule/.test(s.fn));
       const wait = cell('s6', 'Waiting on time', <span className="lbl">7-day timelocks</span>, <div className="sn-tl">{tl.map((s, __k) => {
           const x = sgState(s);
