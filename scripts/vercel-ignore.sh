@@ -9,6 +9,9 @@
 # never a site that silently stops deploying.
 #
 # The rules, in order:
+#   0. Production from `main` skips while the repository has a `.production-hold` file: main carries
+#      dev's code, but production (app.useclear.org, merchant, pay, rewards, command) isn't set up
+#      for it yet. Delete the file in a pull request to release it.
 #   1. Production always builds.
 #   2. A commit message with [skip preview] skips.
 #   3. A preview with no pull request skips, except on `dev`: demo.useclear.org and
@@ -43,6 +46,9 @@ HEAD_SHA="${VERCEL_GIT_COMMIT_SHA:-HEAD}"
 PREV_SHA="${VERCEL_GIT_PREVIOUS_SHA:-}"
 MESSAGE="${VERCEL_GIT_COMMIT_MESSAGE:-}"
 
+if [ "$ENVIRONMENT" = "production" ] && [ "$REF" = "main" ] && [ -f .production-hold ]; then
+  skip "production is on hold (.production-hold)"
+fi
 [ "$ENVIRONMENT" = "production" ] && build "production"
 case "$MESSAGE" in *"[skip preview]"*) skip "commit message says [skip preview]" ;; esac
 if [[ "$DEPLOY_BRANCHES" != *" $REF "* ]] && [ -z "$PR" ]; then

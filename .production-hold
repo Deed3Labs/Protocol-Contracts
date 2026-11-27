@@ -1,0 +1,13 @@
+Production deploys from main are on hold.
+
+main carries dev's code, but production isn't set up for it yet: the production API and apps are
+configured for Base mainnet, the new contracts aren't deployed there, and the production
+environment lacks the settings dev's code reads.
+
+While this file exists:
+- Vercel skips production builds from main (scripts/vercel-ignore.sh, rule 0) for the member app,
+  merchant, pay, rewards and command. Docs builds production from dev and isn't affected.
+- Railway's production API has no deploy trigger on main, so it keeps running what it ran.
+
+To release production: set up the production environment, restore Railway's deploy trigger on
+main, and delete this file in a pull request.
