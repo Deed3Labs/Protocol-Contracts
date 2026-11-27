@@ -84,6 +84,16 @@ async function main() {
     console.log("Warning: Validator deployment not found. VALIDATOR_ROLE not granted.");
   }
 
+  // Subdivide takes custody of the parent deed (audit D-9), so DeedNFT must list it as an approved
+  // marketplace; and the validator must accept its units (audit D-22).
+  const deedNFTContract = await hre.ethers.getContractAt("DeedNFT", deedNFTAddress);
+  await (await deedNFTContract.setApprovedMarketplace(subdivideAddress, true)).wait();
+  if (validatorDeployment) {
+    const validatorContract = await hre.ethers.getContractAt("Validator", validatorDeployment.address);
+    await (await validatorContract.addCompatibleDeedNFT(subdivideAddress)).wait();
+  }
+  console.log("DeedNFT approves Subdivide; Validator accepts Subdivide units");
+
   // Verify deployment
   console.log("\nVerifying deployment...");
   const defaultValidator = await subdivide.defaultValidator();

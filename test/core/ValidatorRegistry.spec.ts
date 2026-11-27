@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { deployDeedNFT } from "../helpers/deed";
 import { ethers } from "hardhat";
 import { Contract } from "ethers";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
@@ -41,7 +42,7 @@ describe("ValidatorRegistry Contract", function() {
     
     // Deploy DeedNFT
     const DeedNFT = await ethers.getContractFactory("DeedNFT");
-    deedNFT = await upgrades.deployProxy(DeedNFT, [
+    deedNFT = await deployDeedNFT([
       await validator.getAddress(),
       await validatorRegistry.getAddress()
     ]);

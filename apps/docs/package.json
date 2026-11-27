@@ -1,0 +1,16 @@
+{
+  "name": "@clear/docs",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:vercel": "node scripts/build.mjs",
+    "dev": "node scripts/dev.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "marked": "18.1.1"
+  }
+}

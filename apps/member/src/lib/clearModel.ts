@@ -1,0 +1,1942 @@
+import type { MerchantCategory } from './mccCategory';
+/**
+ * The member app's money model — design spec §3, "Core display rules".
+ *
+ * These are product decisions, not styling, so they live in one place rather than
+ * being re-derived per page. Components should read these helpers instead of doing
+ * their own arithmetic on balances.
+ */
+
+import { count, splitQuote } from '@clear/domain';
+
+export type TierKey = 'savings' | 'asset' | 'income' | 'boost';
+
+export interface CreditTier {
+  key: TierKey;
+  /** Row label, e.g. "Savings (CLRUSD)". */
+  label: string;
+  /** Short label for narrow layouts, e.g. "Savings". */
+  shortLabel?: string;
+  /** Cost of carrying a balance on this tier, e.g. "free", "1.5% / cycle". */
+  rate: string;
+  /** The same rate as a fraction, for working out what carrying a balance costs. */
+  ratePerCycle?: number;
+  used: number;
+  /**
+   * The part of `used` that is a card authorization still being held, not a settled borrowing.
+   *
+   * Included in `used` because the member cannot spend it twice, and named separately because it
+   * can still vanish: a voided charge releases it, and it never reached the contracts at all.
+   */
+  pending?: number;
+  /** What this tier can back. The credit limit is the sum of these across added tiers. */
+  limit: number;
+  /** Boost is opt-in; a tier that hasn't been added lends nothing and isn't in the limit. */
+  added: boolean;
+}
+
+export interface Credit {
+  tiers: CreditTier[];
+  /** Interest accrued so far this cycle. */
+  carryCost: number;
+  /** Carry cost drops to zero back under this figure. */
+  carryFreeUnder: number;
+  /**
+   * Owed on the ledger against no tier: carry a closed plan left behind, which a refund does over
+   * whatever carry had accrued by then -- the member held the money for that time and owes for it.
+   *
+   * Counted as owed, not merely as a cost. It is the member's credit balance, and the chain reads
+   * that balance to decide whether their line is clear: while it stands, the cycle cannot renew and
+   * the line freezes at the end of its grace. A few cents of it has that power, so it cannot sit on
+   * no screen -- which it did, because the plan that carried it is closed and no tier holds it.
+   */
+  ledgerCarry?: number;
+}
+
+export interface Cycle {
+  lengthDays: number;
+  daysLeft: number;
+  /** e.g. "Nov 1 payday". */
+  clearsOn: string;
+  /** When the limit contracts if the cycle doesn't clear, e.g. "Nov 12". */
+  rebalanceBy: string;
+  /**
+   * When the member last carried nothing at a cycle's close, e.g. "Oct 1". Optional: nothing reads it
+   * from the chain yet, and the all-clear footer leaves it out rather than inventing a date.
+   */
+  lastClearedOn?: string;
+}
+
+/**
+ * Tiers whose draw is already covered by something the co-op holds.
+ *
+ * Savings-backed draws against the member's own CLRUSD and asset-backed against their bonds and
+ * pool position — in a default those settle from the collateral itself. Income-backed and Boost are
+ * unsecured: nothing stands behind them but the member's next paycheck.
+ */
+export const SECURED_TIERS: TierKey[] = ['savings', 'asset'];
+
+/** What's drawn against collateral. Doesn't need clearing; it's already covered. */
+export function securedUsed(credit: Credit): number {
+  return credit.tiers
+    .filter((t) => SECURED_TIERS.includes(t.key))
+    .reduce((sum, t) => sum + t.used, 0);
+}
+
+/**
+ * What actually has to be repaid this cycle — the unsecured draw, and only that.
+ *
+ * The whole balance is not the target. Asking a member to clear credit that their own savings
+ * already stand behind would be asking them to pay off a loan secured by their own money, and the
+ * cycle would never look clear no matter how much they earned.
+ */
+export function unsecuredUsed(credit: Credit): number {
+  return credit.tiers
+    .filter((t) => !SECURED_TIERS.includes(t.key))
+    .reduce((sum, t) => sum + t.used, 0);
+}
+
+/**
+ * What the member still has to add, after the deposit they're expecting.
+ *
+ * Zero means the cycle clears on its own and the card can say so. Anything above zero is a number
+ * they need to see, because nothing else in the app will tell them before the cycle closes.
+ */
+export function cycleShortfall(credit: Credit, expectedDeposit = 0): number {
+  return Math.max(0, mustClear(credit) - Math.max(0, expectedDeposit));
+}
+
+/**
+ * Which of the cycle's four states applies — spec §4b.
+ *
+ * `secured` is deliberately not the same as `clear`. Nothing is owed either way, but a member
+ * spending against their own savings has paused their housing progress and is accruing carry on the
+ * asset-backed part — so it reads neutral, not green, and offers to top the savings back up rather
+ * than to pay anything down. They didn't borrow.
+ *
+ * Only `short` asks for anything, and it's the only state that earns the accent border.
+ */
+export type CycleStatus = 'short' | 'covered' | 'secured' | 'clear';
+
+export function cycleStatus(credit: Credit | undefined, expectedDeposit = 0): CycleStatus {
+  if (!credit || (creditUsed(credit) === 0 && !credit.ledgerCarry)) return 'clear';
+  // Carry a closed plan left is owed like anything else, so a line holding only that is not clear.
+  if (unsecuredUsed(credit) === 0 && !credit.ledgerCarry) return 'secured';
+  return cycleShortfall(credit, expectedDeposit) > 0 ? 'short' : 'covered';
+}
+
+export interface RepayLine {
+  tier: CreditTier;
+  /** What this repayment puts against the tier. Zero means the money never reaches it. */
+  applied: number;
+  /** What was drawn on the tier before the repayment. */
+  drawn: number;
+}
+
+/**
+ * How a repayment unwinds across the tiers — design spec §4, "Repay / Move to cash".
+ *
+ * Most expensive first, which is the draw order reversed: tiers fill cheapest-first (rule 7), so
+ * they must empty from the other end or a member would be left paying 3% while their free tier sat
+ * clear. That's also why the footer says so out loud — it's the one thing about this surface a
+ * member can't work out by looking.
+ *
+ * Unsecured tiers are always listed, even when the payment doesn't reach them: the cycle is about
+ * unsecured credit, and a tier left `untouched` is exactly what the member needs to see. Secured
+ * tiers only appear once money actually reaches them, because listing collateralised draw the
+ * payment will never touch would pad the surface with rows that never change.
+ */
+export function repayAllocation(credit: Credit, amount: number): RepayLine[] {
+  const drawn = orderedTiers(credit.tiers)
+    .filter((t) => t.used > 0)
+    .reverse();
+
+  let left = Math.max(0, amount);
+  const lines: RepayLine[] = [];
+
+  for (const tier of drawn) {
+    const applied = Math.min(left, tier.used);
+    left -= applied;
+    if (applied > 0 || !SECURED_TIERS.includes(tier.key)) {
+      lines.push({ tier, applied, drawn: tier.used });
+    }
+  }
+
+  return lines;
+}
+
+/** What a repayment of `amount` puts against the unsecured draw — the part that clears the cycle. */
+export function repaidUnsecured(credit: Credit, amount: number): number {
+  return repayAllocation(credit, amount)
+    .filter((l) => !SECURED_TIERS.includes(l.tier.key))
+    .reduce((sum, l) => sum + l.applied, 0);
+}
+
+/**
+ * A savings sweep, as the app needs to see it — mirrors the server's sweep record.
+ *
+ * `ready_to_allocate` is the resting state, not a failure: the USDC has arrived on the member's own
+ * smart wallet and where it goes next is theirs to choose.
+ */
+export interface SweepView {
+  id: string;
+  amountCents: number;
+  state:
+    | 'initiated'
+    | 'fiat_debited'
+    | 'ready_to_allocate'
+    | 'clrusd_minted'
+    | 'complete'
+    | 'failed';
+  createdAt: string;
+}
+
+/** Sweeps whose money has left the member's cash but has not arrived on-chain yet. */
+export function sweepsInFlight(sweeps: SweepView[]): SweepView[] {
+  return sweeps.filter((s) => s.state === 'initiated' || s.state === 'fiat_debited');
+}
+
+/** Sweeps whose USDC has landed and is waiting on the member to place it. */
+export function sweepsAwaitingMember(sweeps: SweepView[]): SweepView[] {
+  return sweeps.filter((s) => s.state === 'ready_to_allocate');
+}
+
+/**
+ * What the member is holding on-chain from completed sweeps, in dollars.
+ *
+ * A floor, not the whole picture: it counts money this app put there and knows the state of. USDC
+ * the member acquired any other way is only visible from a chain read, so a caller with a real
+ * balance should prefer it and use this when there is nothing better.
+ */
+export function unallocatedFromSweeps(sweeps: SweepView[]): number {
+  return sweepsAwaitingMember(sweeps).reduce((sum, s) => sum + s.amountCents, 0) / 100;
+}
+
+/**
+ * In-flight sweeps as Activity rows.
+ *
+ * Shown as pending deposits because that is what they are from the member's side: money that left
+ * their cash account and has not turned up in savings yet. ACH takes days, and a transfer that
+ * vanishes from one place without appearing anywhere else reads as lost money.
+ */
+export function sweepActivityRows(sweeps: SweepView[]): ActivityRow[] {
+  return sweepsInFlight(sweeps).map((sweep) => ({
+    id: `sweep-${sweep.id}`,
+    name: 'To savings',
+    date: sweep.createdAt.slice(0, 10),
+    source: 'pending' as const,
+    kind: 'savings' as const,
+    // Negative: it has left the cash account. It is not income arriving.
+    amount: -(sweep.amountCents / 100),
+    status: 'Pending',
+  }));
+}
+
+/**
+ * Everything in the cash account, spendable or not.
+ *
+ * Derived rather than stored, so the total can never drift from its parts — the bug where a
+ * displayed balance and the numbers underneath it quietly disagree.
+ */
+export function cashTotal(account: Pick<CashAccount, 'spendable' | 'readyToAllocate'>): number {
+  return Math.max(0, account.spendable) + Math.max(0, account.readyToAllocate);
+}
+
+/**
+ * True when part of the balance cannot be spent on the card.
+ *
+ * Drives the marking in the UI. Showing a balance without saying which part is spendable is how a
+ * member gets declined at a checkout while looking at a number that says they had the money.
+ */
+export function hasUnspendableCash(account: Pick<CashAccount, 'readyToAllocate'>): boolean {
+  return account.readyToAllocate > 0;
+}
+
+export interface Savings {
+  cash: number;
+  vested: number;
+  vesting: number;
+  credits: number;
+  creditsGoal: number;
+  /** When the Clear Deed lands at the current rate, e.g. "Feb 2028". */
+  onTrackFor?: string;
+}
+
+export interface CashAccount {
+  /**
+   * Card-spendable fiat. The only part of the cash account that can settle an authorization, and
+   * the only figure that may ever feed `availableToSpend`.
+   */
+  spendable: number;
+  /**
+   * Money moved on-chain and not yet placed — USDC on the member's own smart wallet.
+   *
+   * Theirs, and in the cash account, but it can go to Savings or Earn and never to the card. This
+   * should normally read zero: it is the exception, not where money lives. A balance sitting here
+   * is money the member has not finished moving, and the card says so rather than absorbing it.
+   */
+  readyToAllocate: number;
+  nextDepositOn: string;
+  nextDepositEstimate: number;
+  directDepositActive: boolean;
+  /** Virtual-account details, shown behind "Account details" for direct deposit. */
+  accountNumber: string;
+  routingNumber: string;
+  bankName: string;
+  /** Who the direct deposit comes from, named in the account-details surface. */
+  employer: string;
+}
+
+export interface SetupTask {
+  id: string;
+  label: string;
+  /** Button label when this task is the one being nudged. */
+  cta?: string;
+  done: boolean;
+}
+
+/** Where the money moved from — spec §8 requires this tag on every row. */
+export type ActivitySource =
+  | 'credit'
+  | 'cash'
+  | 'savings'
+  | 'cash account'
+  | 'pending'
+  /** Money in from another member. */
+  | 'received'
+  /** A purchase at a Clear shop on a card of the member's own, not Clear's money (rewards, Phase 6). */
+  | 'card';
+
+/** What the row is, which is what the Activity filter chips select on. */
+/** `repayment`: money put against the member's credit balance, by whichever method. */
+export type ActivityKind = 'spending' | 'deposit' | 'savings' | 'sent' | 'repayment';
+
+export interface ActivityRow {
+  id: string;
+  name: string;
+  date: string;
+  source: ActivitySource;
+  kind: ActivityKind;
+  /** Negative debits, positive credits. */
+  amount: number;
+
+  // Detail-view extras, shown when a row is opened.
+  location?: string;
+  /** e.g. "Oct 26, 2026 · 8:14 AM". */
+  datetime?: string;
+  paidFromTier?: TierKey;
+  paidFromLabel?: string;
+  /** Rate that applied to this particular draw, e.g. "0.65% per cycle". */
+  rate?: string;
+  cardLast4?: string;
+  status?: string;
+  /*
+   * What kind of purchase this was, from the merchant category code the network sent.
+   *
+   * Optional because most rows do not have one and never will: a transfer, a savings deposit and a
+   * bond purchase have no merchant. Only card spending carries an MCC, which is why the category
+   * bar lives on the Card page and not on Activity.
+   */
+  category?: MerchantCategory;
+  /** Authorised but not settled. A state, not a source: a pending charge still came from somewhere. */
+  pending?: boolean;
+  /**
+   * The charge was voided and the money is back.
+   *
+   * The row keeps `amount` at what the merchant asked for — that is what happened, and it is what a
+   * member remembers seeing — and is marked instead of removed. Totals count what is still held, so
+   * a reversed row shows its figure without adding to the month.
+   */
+  reversed?: boolean;
+  /** The other member, for a payment sent or received. */
+  counterpartyHandle?: string;
+  /** This payment's place in a term plan. */
+  termPayment?: { index: number; count: number };
+  /** A shop charge: tapping the row opens it (/c/<code>), to approve it or see what became of it. */
+  chargeCode?: string;
+  /** The row's tag, when it says more than where the money came from ("Over time · 4 payments"). */
+  tagLabel?: string;
+  /** A pending row's chip, when it isn't "Pending" ("Waiting" on the member). */
+  pendingLabel?: string;
+  /** A struck row's tag, when it isn't "Reversed" ("Declined", "Expired"). */
+  reversedLabel?: string;
+  /**
+   * How this payment is known to the disputes API, when it can be. Card charges only for now: their
+   * id is Lithic's transaction token. Chain rows carry hashes, which are not what a dispute names.
+   */
+  dispute?: { kind: DisputeKind; ref: string };
+  /**
+   * Paid from credit, and that credit has since been repaid -- in full or in part. The purchase still
+   * happened on credit; this is what stops it reading as though the limit were wrong.
+   */
+  creditRepaid?: 'full' | 'partial';
+  /**
+   * The card credit fee this purchase carried, in dollars (decision 55), whether it was all given back
+   * (a full refund), and how much has been given back so far. Absent when it carried none, or one
+   * that was never charged.
+   */
+  creditFee?: { amount: number; returned: boolean; returnedAmount: number };
+  /** For a repayment row: how it was paid, in the member's words ("Bank deposit", "Savings"…). */
+  repaymentMethod?: string;
+}
+
+/** Where a flow draws the money from, and what's in it. */
+export interface PayFrom {
+  label: string;
+  balance: number;
+}
+
+/**
+ * The tier a draw lands on: the cheapest added tier with headroom left
+ * (rule 7). Returns undefined when every tier is used up.
+ */
+export function nextDrawTier(credit: Credit): CreditTier | undefined {
+  return orderedTiers(credit.tiers).find((t) => t.added && t.used < t.limit);
+}
+
+export interface PendingClaim {
+  amount: number;
+  /** Who the money is waiting on. */
+  recipient: string;
+  /** When it was sent. Absent for a live send: the server keeps the expiry, not the send date. */
+  sentOn?: string;
+  expiresInDays: number;
+}
+
+/** The cycle's spending, split by where it was drawn from. */
+export interface CycleSpend {
+  spent: number;
+  daysLeft: number;
+  fromCash: number;
+  fromCredit: number;
+  carryCost: number;
+  /**
+   * Card credit fees, in dollars, net of any given back: this cycle and the year to date. Absent
+   * until read; shown only when there are some.
+   */
+  creditFees?: { cycle: number; yearToDate: number };
+}
+
+export interface SpendCategory {
+  label: string;
+  amount: number;
+}
+
+/** What one merchant took, and the group it currently sits in — what Change groups moves. */
+export interface MerchantSpend {
+  name: string;
+  /** The group's label, e.g. "Groceries". */
+  group: string;
+  payments: number;
+  amount: number;
+}
+
+export interface ActivityData {
+  rows: ActivityRow[];
+  /**
+   * Desktop side rail. Absent on day one, when there's no cycle to summarise —
+   * the list stands alone rather than showing three cards of zeroes.
+   */
+  cycleSpend?: CycleSpend;
+  categories?: SpendCategory[];
+  /** The merchants behind those groups, for Change groups. Absent when nothing has been spent. */
+  merchants?: MerchantSpend[];
+  /** What stayed with members and Clear Partners this cycle. */
+  insideCoop?: number;
+  /** Set when money has been sent to someone who isn't a member yet. */
+  pendingClaim?: PendingClaim;
+  /** Payments that stayed inside the co-op this cycle. */
+  insideCoopPayments?: number;
+  /** Rows this cycle, when the list holds only the most recent of them. */
+  cycleCount?: number;
+  /** Rows on the account in all, for export. */
+  totalCount?: number;
+}
+
+/**
+ * `mobile` marks the ones that earn a chip at 375px. The rest stay desktop-only
+ * rather than being dropped — the filter still exists, it just isn't worth the
+ * width on a phone.
+ */
+export const ACTIVITY_FILTERS = [
+  { id: 'all', label: 'All', mobile: true },
+  { id: 'spending', label: 'Spending', mobile: true },
+  { id: 'deposit', label: 'Deposits', mobile: true },
+  { id: 'savings', label: 'Savings', mobile: true },
+  { id: 'sent', label: 'Sent' },
+] as const;
+
+export type ActivityFilter = (typeof ACTIVITY_FILTERS)[number]['id'];
+
+export function filterActivity(rows: ActivityRow[], filter: ActivityFilter): ActivityRow[] {
+  return filter === 'all' ? rows : rows.filter((r) => r.kind === filter);
+}
+
+/**
+ * Group rows under date headers, preserving the order they arrive in — the list
+ * is already newest-first and the labels are display strings ("Today · Oct 26"),
+ * so this must not re-sort or re-parse them.
+ */
+export function groupByDate(rows: ActivityRow[]): { date: string; rows: ActivityRow[] }[] {
+  const groups: { date: string; rows: ActivityRow[] }[] = [];
+  for (const row of rows) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === row.date) last.rows.push(row);
+    else groups.push({ date: row.date, rows: [row] });
+  }
+  return groups;
+}
+
+/**
+ * Mobile group headers use only the relative part: the reference shows "Today"
+ * where desktop shows "Today · Oct 26". Labels without a separator are unchanged.
+ */
+export function shortDate(label: string): string {
+  return label.split(' · ')[0];
+}
+
+/** Source tags read lowercase inline ("Oct 26 · credit") and capitalised in a column. */
+export function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * How a charge that was given back reads, wherever it is listed.
+ *
+ * Three lists show spending — the Card page, Activity, and Home's recent preview — and each was
+ * fixed separately, a screenshot at a time, because each owns its own row markup. The values live
+ * here so the fourth list inherits them, and so "muted" cannot mean two different greys.
+ *
+ * The tag is replaced rather than joined: no tier is paying for a reversed charge, so naming one is
+ * the single wrong thing on the line.
+ */
+export const REVERSED_ROW = {
+  label: 'Reversed',
+  /** The merchant name, and the tag that replaces the funding one. */
+  text: 'text-ink-50',
+  /** Struck, because the figure still happened — it is just no longer owed. */
+  amount: 'text-ink-50 line-through',
+} as const;
+
+/**
+ * How a row is tagged in the source column. A credit draw names the tier that
+ * funded it — "Asset-backed", not the generic "Credit" — because which tier paid
+ * is what decides the rate, and it's the only place the member sees it.
+ */
+export function sourceTag(row: ActivityRow): { label: string; dot?: string } {
+  if (row.paidFromTier) {
+    return { label: TIER_SHORT_LABEL[row.paidFromTier], dot: TIER_FILL[row.paidFromTier] };
+  }
+  if (row.source === 'savings') return { label: 'Savings', dot: 'bg-vest-vested' };
+  if (row.source === 'cash') return { label: 'Cash', dot: 'bg-vest-cash' };
+  if (row.kind === 'repayment') return { label: `Repaid · ${row.repaymentMethod ?? 'Credit'}` };
+  if (row.source === 'credit' && row.creditRepaid) {
+    return { label: row.creditRepaid === 'full' ? 'Credit · repaid' : 'Credit · part repaid' };
+  }
+  return { label: capitalise(row.source) };
+}
+
+export interface LimitBackingRow {
+  label: string;
+  /** What this position contributes to the limit. */
+  contribution: number;
+  /** "$6,895 value today · 95% · 0.65%" */
+  detail: string;
+  tier: TierKey;
+  /**
+   * Opt-in and not taken up yet. Excluded from both the section subtotal and the
+   * total — it isn't backing anything until it's added — and offered with an
+   * Add action rather than being dimmed out.
+   */
+  notAdded?: boolean;
+  /** What adding it would contribute, for the Add button's label. */
+  addAmount?: number;
+}
+
+export interface LimitBacking {
+  assetBacked: LimitBackingRow[];
+  unsecured: LimitBackingRow[];
+}
+
+export interface Milestone {
+  id: string;
+  title: string;
+  /** Equity credits needed to reach it. */
+  credits: number;
+  /** Trailing note, e.g. "move in". */
+  note?: string;
+}
+
+export interface AssuranceItem {
+  id: string;
+  name: string;
+  /** What it actually covers, shown on the detail page. */
+  description: string;
+  /** Credits needed before this protection turns on. */
+  unlocksAt: number;
+  /** Name still to be confirmed — rendered as-is, do not invent a replacement. */
+  placeholder?: boolean;
+  /** One line under the name in Savings' Protections block, e.g. "Two grace cycles a year". */
+  line?: string;
+  /** Its step on the home-path ladder, e.g. "Home repair assurance". Falls back to `name`. */
+  step?: string;
+  /** The same step at phone width, e.g. "Repair". */
+  stepShort?: string;
+}
+
+/**
+ * Where a protection stands, in the words the detail page uses. Active from the
+ * start says so rather than claiming a credit threshold it never had.
+ */
+export function assuranceStatus(item: AssuranceItem, credits: number): string {
+  if (!isAssuranceActive(item, credits)) return `${count(item.unlocksAt - credits)} credits to go`;
+  return item.unlocksAt > 0 ? `Active since ${count(item.unlocksAt)} credits` : 'Active';
+}
+
+/** The shared fund behind the protections — spec §5. */
+export interface AssuranceReserve {
+  balance: number;
+  membersCovered: number;
+  claimsPaidThisYear: number;
+  /** How many claims that figure is spread across. A total alone says nothing about frequency. */
+  claimsPaidCount: number;
+  /** When these figures were struck, e.g. "1 Nov". Published numbers need a date or they are a mood. */
+  asOf: string;
+  /** How often the co-op publishes its reserve report. */
+  reportCadence: string;
+  /**
+   * What the reserve would owe if every covered member claimed their annual cap at once, and what
+   * fraction of that it holds.
+   *
+   * A member who reads that the reserve holds $412,800 for 184 people immediately wants to know
+   * whether that is a lot. No reserve covers everyone claiming at once, and one that did would be
+   * money sitting idle instead of buying homes — so the honest answer is the ratio and the floor
+   * the co-op commits to, not a reassurance.
+   */
+  perMemberCap: number;
+  coveredPct: number;
+  policyFloorPct: number;
+}
+
+/** One published statement. Prepared quarterly; see `ReserveReports.reviewedBy`. */
+export interface ReserveStatement {
+  id: string;
+  period: string;
+  publishedOn: string;
+  /** What that quarter's statement covers, or what was notable about it. */
+  note: string;
+}
+
+export interface ReserveReports {
+  statements: ReserveStatement[];
+  /** e.g. "Every quarter, within six weeks of the close". */
+  cadence: string;
+  /** What each statement contains. */
+  contains: string;
+  /**
+   * Who reviewed it — and the fact that a review is not an audit.
+   *
+   * A co-op this size is not required to be independently audited, and saying so is cheaper than
+   * letting a member assume otherwise and find out later.
+   */
+  reviewedBy: string;
+  /**
+   * Why that is not a failing. Sits in the cell's footer, commenting on the caveat above it.
+   *
+   * Left out at first, which made the reviewed-not-audited line read as an apology rather than a
+   * fact about co-ops of this size.
+   */
+  auditNote: string;
+}
+
+/** What happens after a claim is sent, in order. */
+export interface ClaimStep {
+  id: string;
+  title: string;
+  detail: string;
+}
+
+/**
+ * The co-op's own claim figures, declines included.
+ *
+ * A reserve that never says no is not being managed, so the decline rate is published beside the
+ * payouts rather than left for a member to wonder about.
+ */
+export interface ClaimRecord {
+  paidThisYear: number;
+  decisionTime: string;
+  declinedOf: string;
+  creditsEffect: string;
+}
+
+/**
+ * One thing that happened, or is about to. Alerts are notifications with a
+ * history, not a dropdown — the credit crossing and the rebalance date are things
+ * a member goes looking for again.
+ */
+export interface Alert {
+  id: string;
+  title: string;
+  detail: string;
+  /** Display grouping, e.g. "Today", "This week". */
+  group: string;
+  /** Matches the tier or state the alert is about. */
+  tone: 'boost' | 'asset' | 'muted';
+  /** When it landed, already formatted — "8:14 AM", "Nov 6". */
+  time: string;
+  read?: boolean;
+  /** Alerts you can act on carry the action, rather than making you go find it. */
+  action?: { label: string; to: string };
+}
+
+/** A message conversation — spec §1. */
+/** What a thread is: support, a member you paid, or a partner you owe. */
+export type ThreadKind = 'support' | 'member' | 'partner';
+
+export interface Thread {
+  id: string;
+  name: string;
+  initials: string;
+  kind: ThreadKind;
+  /** Who they are, under the name where the thread is named: "@mariac", "Case · October carry". */
+  subtitle?: string;
+  /** Last message, truncated in the list. */
+  preview: string;
+  time: string;
+  unread?: boolean;
+  /**
+   * Why this conversation exists, carried in the thread's control bar: support states its status
+   * and what it is about, a partner the plan and how far through it you are, a member the payment
+   * that started it. One component, three payloads — it is what stops a partner thread being a chat
+   * window with no memory of why it is there.
+   */
+  context?: {
+    /** The chip: "Answered", "Sent", "2 of 4". */
+    status: string;
+    tone: 'settled' | 'underway' | 'neutral' | 'live';
+    /** The line beside it: "About · October carry", "$40.00 · Oct 26", "Term plan · $940.00". */
+    about: string;
+    /** Where it leads back to. */
+    link?: { label: string; to: string };
+  };
+}
+
+export interface ChatMessage {
+  id: string;
+  body: string;
+  /** Sent by this member rather than received. */
+  mine?: boolean;
+  /** "9:12 AM", "Mon 7:41 PM". */
+  time?: string;
+}
+
+export interface InboxData {
+  threads: Thread[];
+  /** Keyed by thread id. */
+  messages: Record<string, ChatMessage[]>;
+}
+
+export function unreadAlerts(alerts: Alert[]): number {
+  return alerts.filter((a) => !a.read).length;
+}
+
+export function unreadThreads(threads: Thread[]): number {
+  return threads.filter((t) => t.unread).length;
+}
+
+/**
+ * The reference paints the neutral dot with a stronger border colour than this
+ * project has a token for; muted-foreground is the nearest one and reads at the
+ * same weight against the card.
+ */
+export const ALERT_DOT: Record<Alert['tone'], string> = {
+  boost: 'bg-tier-boost',
+  asset: 'bg-tier-asset',
+  muted: 'bg-muted-foreground',
+};
+
+/** What a member's patronage share is calculated from — spec §10. */
+export interface PatronageBasisRow {
+  label: string;
+  amount: number;
+}
+
+export function patronageBasis(rows: PatronageBasisRow[]): number {
+  return rows.reduce((sum, r) => sum + r.amount, 0);
+}
+
+export interface VestingRow {
+  id: string;
+  /** Display date, e.g. "Nov 3". */
+  date: string;
+  credits: number;
+}
+
+/** When the Clear Deed lands at the current rate, and what would move it. */
+export interface SavingsProjection {
+  perPayday: number;
+  extraMonthly: number;
+  /** The date the extra contribution would bring it to. */
+  withExtra: string;
+}
+
+export type AutoSaveCadence = 'payday' | 'monthly' | 'weekly';
+
+/**
+ * Auto-save as it is set up — the member's active autopay rule (`/api/autopay`), which moves USDC
+ * from Ready to allocate into savings on a schedule. Absent when there is none.
+ */
+export interface AutoSave {
+  amount: number;
+  cadence: AutoSaveCadence;
+  /** What auto-save has deposited since 1 January (`autopay_runs`). Absent when the API doesn't say. */
+  savedThisYear?: number;
+  /** When the next deposit runs, as an ISO timestamp. */
+  nextRunAt?: string;
+  /** Deposits left on the signed mandate; null when it has no limit. */
+  runsLeft?: number | null;
+}
+
+/**
+ * How many deposits one auto-save signature covers. The mandate the member signs is bounded — amount,
+ * cadence, run count and expiry — so auto-save is set for this many runs and set again after. Twelve
+ * is the figure the original Auto-save modal used.
+ */
+export const AUTO_SAVE_RUNS = 12;
+
+/** The active autopay rule as the Savings page shows it, or undefined when none is running. */
+export function autoSaveFromRules(
+  rules: { status: string; amountUsdc: number; cadence: 'weekly' | 'monthly'; nextRunAt: string; runsLeft: number | null }[],
+  savedThisYear: number | null = null,
+): AutoSave | undefined {
+  // The API lists newest first, so the first active rule is the one set most recently.
+  const rule = rules.find((r) => r.status === 'active');
+  if (!rule) return undefined;
+  return {
+    amount: rule.amountUsdc,
+    cadence: rule.cadence,
+    nextRunAt: rule.nextRunAt,
+    runsLeft: rule.runsLeft,
+    ...(savedThisYear != null ? { savedThisYear } : {}),
+  };
+}
+
+/**
+ * The most deposit-match credits a member earns in a calendar month. Mirrors
+ * `DEPOSIT_MATCH_MONTHLY_CAP` in apps/api/src/services/payLedgerStore.ts.
+ */
+export const DEPOSIT_MATCH_MONTHLY_CAP = 1500;
+
+/** An auto-save as dollars a month: weekly is 52 runs a year, payday 26. */
+export function monthlyAutoSave(a: Pick<AutoSave, 'amount' | 'cadence'>): number {
+  if (a.cadence === 'weekly') return (a.amount * 52) / 12;
+  if (a.cadence === 'payday') return (a.amount * 26) / 12;
+  return a.amount;
+}
+
+/** Credits an auto-save earns a month: matched one-for-one, up to the monthly match cap. */
+export function monthlyAutoSaveCredits(a: Pick<AutoSave, 'amount' | 'cadence'> | undefined): number {
+  return a ? Math.min(DEPOSIT_MATCH_MONTHLY_CAP, Math.max(0, monthlyAutoSave(a))) : 0;
+}
+
+/**
+ * When the member reaches `goal` credits at `perMonth`, as "Feb 2028" — the "On track for" date.
+ *
+ * The rate is auto-save's (the user's call, 2026-10-13): the one standing commitment the member has
+ * made, and the one lever the auto-save dialog offers. Rent and bill credits are not projected.
+ * Undefined when there is no rate or the goal is already reached, so nothing reads "On track" for a
+ * member who has no plan to get there.
+ */
+export function onTrackFor(credits: number, goal: number, perMonth: number, from: Date = new Date()): string | undefined {
+  if (credits >= goal || perMonth <= 0) return undefined;
+  const months = Math.ceil((goal - credits) / perMonth);
+  const d = new Date(from.getFullYear(), from.getMonth() + months, 1);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+/** The savings with their "On track for" date worked out from the auto-save running. */
+export function withOnTrack(savings: Savings, autoSave: AutoSave | undefined, from?: Date): Savings {
+  const date = onTrackFor(savings.credits, savings.creditsGoal, monthlyAutoSaveCredits(autoSave), from);
+  const rest: Savings = { ...savings };
+  delete rest.onTrackFor;
+  return date ? { ...rest, onTrackFor: date } : rest;
+}
+
+/**
+ * When a newly set rule first runs: one period from now. Mirrors `addCadence` in
+ * apps/api/src/services/autopayStore.ts, which schedules the first run the same way.
+ */
+export function firstAutoSaveRun(cadence: AutoSaveCadence, from = new Date()): Date {
+  const d = new Date(from);
+  if (cadence === 'weekly') d.setDate(d.getDate() + 7);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
+export interface SavingsData {
+  /** Present once auto-save is running; the modal opens in its adjust state. */
+  autoSave?: AutoSave;
+  savings: Savings;
+  projection: SavingsProjection;
+  /** Where a deposit into savings draws from. */
+  payFrom: PayFrom;
+  /** The limit today, so a deposit can show what it becomes. */
+  creditLimitToday: number;
+  milestones: Milestone[];
+  assurance: AssuranceItem[];
+  vesting: VestingRow[];
+  /**
+   * Savings standing behind drawn credit right now — the secured draw the cycle card's Top off is
+   * about (`securedUsed`). Above zero, the vesting clock is stopped. Absent until credit is read.
+   */
+  backingSpending?: number;
+  /** What savings add to the credit line: the savings-backed tier's limit. Absent until read. */
+  creditLine?: number;
+}
+
+export type MilestoneState = 'done' | 'current' | 'future';
+
+/**
+ * Milestone progress is derived from credits, never stored: everything at or
+ * below the current balance is done, the next one up is current, the rest are
+ * ahead. That keeps the path honest when credits move.
+ */
+export function milestoneStates(milestones: Milestone[], credits: number): MilestoneState[] {
+  let currentTaken = false;
+  return milestones.map((m) => {
+    if (credits >= m.credits) return 'done';
+    if (!currentTaken) {
+      currentTaken = true;
+      return 'current';
+    }
+    return 'future';
+  });
+}
+
+export function isAssuranceActive(item: AssuranceItem, credits: number): boolean {
+  return credits >= item.unlocksAt;
+}
+
+export type LadderState = 'got' | 'next' | 'locked';
+
+export interface LadderStep {
+  item: AssuranceItem;
+  state: LadderState;
+  /** How far the next step's track is filled, 0–1. 1 for a step already unlocked, 0 for a locked one. */
+  fill: number;
+}
+
+/**
+ * The home-path ladder, one step per protection.
+ *
+ * Built from the protections themselves rather than a list of its own, so a step and its chip can
+ * never disagree: a step is unlocked exactly when `isAssuranceActive` says the protection is on. At
+ * most one step is next — the first one not yet reached — and its track fills with the member's
+ * progress from the previous threshold to this one, never less than a sliver so a new step still
+ * reads as started.
+ */
+export function ladderSteps(items: AssuranceItem[], credits: number): LadderStep[] {
+  const sorted = [...items].sort((a, b) => a.unlocksAt - b.unlocksAt);
+  let nextTaken = false;
+  return sorted.map((item, i) => {
+    if (isAssuranceActive(item, credits)) return { item, state: 'got', fill: 1 };
+    if (nextTaken) return { item, state: 'locked', fill: 0 };
+    nextTaken = true;
+    const from = i > 0 ? sorted[i - 1].unlocksAt : 0;
+    const span = item.unlocksAt - from;
+    const fill = span > 0 ? (credits - from) / span : 0;
+    return { item, state: 'next', fill: Math.min(1, Math.max(LADDER_SLIVER, fill)) };
+  });
+}
+
+/** The least a next step's track shows, so a step with no progress on it still reads as begun. */
+export const LADDER_SLIVER = 0.03;
+
+/**
+ * Days a credit takes to vest. Mirrors `VEST_DAYS` in apps/api/src/services/payLedgerStore.ts: the
+ * pay summary reports how much is vesting but not when, so the window is all the page can say.
+ */
+export const VEST_DAYS = 30;
+
+/** Credits still needed to unlock a protection. */
+export function creditsToGo(unlocksAt: number, credits: number): number {
+  return Math.max(0, unlocksAt - credits);
+}
+
+export interface YieldPool {
+  /** Variable, e.g. 6.8 for 6.8% APY. */
+  apy: number;
+  /** Lent out to members, and the pool's total size. */
+  lent: number;
+  capacity: number;
+  /** What this member has in, and what it has made. */
+  position: number;
+  earned: number;
+}
+
+export interface BondTerm {
+  months: number;
+  /** What you pay today. */
+  price: number;
+  /** What it pays out at maturity. */
+  face: number;
+  /** Effective annual rate, e.g. 6.5. */
+  rate: number;
+}
+
+export interface HeldBond {
+  id: string;
+  face: number;
+  months: number;
+  paid: number;
+  /** Display date, e.g. "Mar 14, 2028". */
+  maturesOn: string;
+  monthsLeft: number;
+  /**
+   * What it's worth today — the accrued value between what was paid and the face
+   * value. This, not the face, is what the credit line lends against.
+   */
+  worthToday: number;
+  /**
+   * The fixed annual rate it was bought at. Stored at purchase, never derived later from face, paid
+   * and term: it is a disclosure figure a member was quoted, and a derivation drifts by rounding.
+   */
+  rate?: number;
+  /** Unix seconds; past it, the bond can be redeemed or rolled. */
+  maturityUnix?: number;
+  /** The collection that issued it -- the contract to redeem or roll it with. */
+  collection?: `0x${string}`;
+  /** Rolls into a new bond at maturity (the default) rather than paying out. */
+  autoRoll?: boolean;
+  /** Pledged and holding up drawn credit: it can be rolled, not redeemed. */
+  backsDrawnCredit?: boolean;
+}
+
+export interface EarnData {
+  pool: YieldPool;
+  terms: BondTerm[];
+  bonds: HeldBond[];
+  earnedToDate: number;
+  /** Where bond purchases and pool deposits draw from. */
+  payFrom: PayFrom;
+  /** Loan-to-value the tiers lend at, for showing what a purchase adds to the limit. */
+  bondLtv: number;
+  poolLtv: number;
+  /** When the member is on track to reserve a home, e.g. "Mar 2029". */
+  reserveDate: string;
+}
+
+/** What buying a bond at this price adds to the credit limit, at the bond LTV. */
+export function bondAddsToLimit(price: number, ltv: number): number {
+  return Math.round(price * ltv);
+}
+
+/** A bond's contribution is what was paid for it, not its face value. */
+export function bondsTotal(bonds: HeldBond[]): number {
+  return bonds.reduce((sum, b) => sum + b.paid, 0);
+}
+
+/** Everything currently earning: the pool position plus what's tied up in bonds. */
+export function earningTotal(data: EarnData): number {
+  return data.pool.position + bondsTotal(data.bonds);
+}
+
+/** Sum of what the held bonds are worth today. */
+export function bondsWorth(bonds: HeldBond[]): number {
+  return bonds.reduce((sum, b) => sum + b.worthToday, 0);
+}
+
+/** "Mar 14, 2028" → "Mar 2028": enough to plan around, short enough for a row. */
+export function monthYear(date: string): string {
+  const month = date.split(' ')[0];
+  const year = date.split(', ')[1];
+  return year ? `${month} ${year}` : date;
+}
+
+/** How far through its term a bond is, 0–1. */
+export function bondElapsed(bond: HeldBond): number {
+  return bond.months > 0 ? Math.max(0, Math.min(1, (bond.months - bond.monthsLeft) / bond.months)) : 0;
+}
+
+/**
+ * What each product backs on the credit line.
+ *
+ * This is the whole reason the two products aren't just savings accounts: money locked in them
+ * still raises the limit, at the loan-to-value the tier lends at.
+ *
+ * **Rounded to cents, not to dollars.** Rounding to whole dollars turned $5 of pool position into
+ * "$4.00 backs your limit" — 5 × 0.7 is 3.50, and `Math.round` took it up. Home reads the figure
+ * from the credit contracts and said $3.50, so the two disagreed by fifty cents on the same
+ * quantity, and the one that was wrong was rounding *up*: overstating what backs a member's limit
+ * is the worse direction to be wrong in.
+ *
+ * These still derive from the model rather than from chain, so they agree with the contracts only
+ * while `poolLtv` and `bondLtv` match the registry's haircuts. That is pinned by a test rather
+ * than left to hold by luck.
+ */
+const toCents = (value: number) => Math.round(value * 100) / 100;
+
+/*
+ * The haircuts, as `CollateralRegistry` registers them.
+ *
+ * One place, because there were three: the placeholder's POOL_LTV, the server's tierLimits, and a
+ * constant I added inside the pool dialog. Three copies of a number that decides how much credit a
+ * member gets, and the only thing keeping them equal was that nobody had changed one.
+ *
+ * They are co-op parameters set by governance, not by the minute — so stating them is reasonable.
+ * What is not reasonable is stating them repeatedly. A test pins these against the deployment.
+ */
+export const POOL_SHARE_HAIRCUT_BPS = 7_000;
+export const BOND_HAIRCUT_BPS = 9_500;
+
+export function poolBacking(data: EarnData): number {
+  return toCents(data.pool.position * data.poolLtv);
+}
+
+export function bondsBacking(data: EarnData): number {
+  return toCents(bondsWorth(data.bonds) * data.bondLtv);
+}
+
+/**
+ * What the Earn positions back on the credit line together — rounded DOWN to the dollar.
+ *
+ * 95% of $6,895.00 of bonds plus 70% of the pool is $8,300.25; Home's tier and the $12,300.00 total
+ * are whole dollars, so the two pages disagreed by twenty-five cents. Down is the conservative
+ * direction for a credit limit. The per-product figures stay in cents: they are what a row states.
+ */
+export function assetBackedLimit(data: EarnData): number {
+  return Math.floor(poolBacking(data) + bondsBacking(data));
+}
+
+/**
+ * What the Earn positions back, exactly: the pool at its LTV plus the bonds at theirs, in cents.
+ * Earn's "Backs your limit" shows this, so it adds up to the rows beneath it ($234.50 for 70% of a
+ * $335.00 pool), where `assetBackedLimit` would read $234.00.
+ */
+export function assetBacking(data: EarnData): number {
+  return toCents(poolBacking(data) + bondsBacking(data));
+}
+
+/**
+ * Earned to date, derived from the rows: pool interest plus what the bonds have appreciated
+ * (worth today less what was paid). A figure that included yield already withdrawn would be a
+ * different quantity and need a different label.
+ */
+export function earnedFromPositions(data: EarnData): number {
+  return toCents(data.pool.earned + bondsWorth(data.bonds) - bondsTotal(data.bonds));
+}
+
+/** Share of the pool lent out, 0–1. */
+export function poolUtilization(pool: YieldPool): number {
+  return pool.capacity > 0 ? Math.min(1, pool.lent / pool.capacity) : 0;
+}
+
+export interface MemberProfile {
+  name: string;
+  initials: string;
+  /** Uploaded photo, if there is one. Initials are the fallback, not a placeholder. */
+  avatarUrl?: string | null;
+  handle: string;
+  memberSince: string;
+  legalName: string;
+  phone: string;
+  email: string;
+  address: string;
+  region: string;
+  /** One member, one vote — the co-op rule, not a computed figure. */
+  votes: number;
+  walletAddress: string;
+  /** Masked — only the year is shown, since it's locked after verification. */
+  dateOfBirth: string;
+}
+
+export interface TrustedDevice {
+  id: string;
+  name: string;
+  /** "Redlands, CA · active now" */
+  detail: string;
+  /** The one you're on — can't be removed from itself. */
+  current?: boolean;
+}
+
+export interface NotificationPref {
+  id: string;
+  label: string;
+  /** What actually triggers it, so the label doesn't have to guess. */
+  detail: string;
+}
+
+export interface NotificationGroup {
+  title: string;
+  prefs: NotificationPref[];
+}
+
+/** One row of the standard-vs-accelerated comparison. */
+export interface AccelerationBenefit {
+  label: string;
+  standard: string;
+  accelerated: string;
+}
+
+export interface AccelerationPlan {
+  id: 'monthly' | 'annual';
+  price: number;
+  per: 'month' | 'year';
+}
+
+/**
+ * The free route to the same place. Clean cycles reach the Clear Boost increase without paying, and
+ * the acceleration page says how far along that route the member already is.
+ */
+export interface AccelerationCycles {
+  cleared: number;
+  /** Clean cycles that reach the Boost increase. */
+  needed: number;
+}
+
+/** What leaving would actually cost, spelled out before anyone commits. */
+export interface AccountClosure {
+  /** Where the payout goes. */
+  payoutAccount: string;
+  savings: number;
+  cash: number;
+  /** Credit carried. Closing waits until this is zero. */
+  creditToSettle: number;
+  creditsVested: number;
+  creditsVesting: number;
+  /** Credits in a whole Clear Deed, to say what the forfeited ones were worth. */
+  creditsPerDeed: number;
+  /** The member's co-op share at book value. No source yet. */
+  shareBookValue?: number;
+}
+
+/** Everything paid out on leaving: savings and cash together. */
+export function closurePayout(closure: AccountClosure): number {
+  return closure.savings + closure.cash;
+}
+
+/** Every credit is forfeited, vested or not — vesting protects against withdrawals, not leaving. */
+export function closureCreditsForfeited(closure: AccountClosure): number {
+  return closure.creditsVested + closure.creditsVesting;
+}
+
+/** A document the member has agreed to, or can read. */
+export interface LegalDoc {
+  id: string;
+  label: string;
+  detail?: string;
+  /** Documents that get amended carry a version; static ones don't. */
+  version?: string;
+}
+
+export interface HelpTopic {
+  id: string;
+  question: string;
+}
+
+export interface BylawArticle {
+  id: string;
+  title: string;
+  clauses: { number: string; text: string }[];
+}
+
+export interface Bylaws {
+  version: string;
+  /** e.g. "Jun 2026". */
+  updated: string;
+  articles: BylawArticle[];
+}
+
+/**
+ * Patronage — the co-op's surplus returned in proportion to how much a member
+ * used it, not how much they saved. Those are different mechanisms and the copy
+ * has to keep saying so.
+ */
+export interface Patronage {
+  fiscalYear: string;
+  /** The year alone, for the places that say "2026" or "after the 2026 close". */
+  year: string;
+  status: string;
+  /** The activity the share is calculated from; the basis is their sum. */
+  basisRows: PatronageBasisRow[];
+  /** Declared so far this year; absent while the year is still running. */
+  declared?: number;
+  history: { id: string; year: string; amount: number }[];
+}
+
+export interface Ballot {
+  id: string;
+  question: string;
+  closesOn: string;
+  closesInDays: number;
+  /** Turnout so far — the number that decides whether a vote is legitimate. */
+  voted: number;
+  members: number;
+  options: { id: string; label: string }[];
+}
+
+export interface PastVote {
+  id: string;
+  title: string;
+  /** e.g. "Jun 2026 · Passed 84%". */
+  detail: string;
+  participated: boolean;
+}
+
+export interface LoginEvent {
+  id: string;
+  device: string;
+  /** Where from and how, e.g. "Redlands, CA · Face ID". */
+  detail: string;
+  when: string;
+}
+
+/**
+ * One standing permission, as the member should read it.
+ *
+ * Two lines and no more. Underneath these are ERC-20 allowances with grant dates and caps, and
+ * every one of those is audit detail rather than what somebody opening this screen came for. The
+ * single figure that survives is the held amount, because that is the one they would actually
+ * check.
+ *
+ * `held` marks the permission that is not a grant at all: savings standing behind drawn credit,
+ * enforced by the token rather than approved by anyone. Its row swaps the button for a chip, and
+ * its `detail` carries the amount and the exit condition together -- the label answers "why can't
+ * I turn this off" before it is asked.
+ */
+export interface Permission {
+  id: string;
+  /** What it lets Clear do, in the member's words -- not the contract's. */
+  label: string;
+  /** The second line: what it covers, or for a held permission, the amount and how it lifts. */
+  detail: string;
+  /** Held while credit is carried: no button, a chip, and no way to switch it off. */
+  held?: boolean;
+}
+
+export interface SettingsData {
+  profile: MemberProfile;
+  accelerationActive: boolean;
+  accelerationBenefits: AccelerationBenefit[];
+  accelerationPlans: AccelerationPlan[];
+  accelerationCycles: AccelerationCycles;
+  faceIdOn: boolean;
+  /** Payments above this amount ask for biometrics again. */
+  paymentFaceIdOver: number;
+  /** Last sign-in, already formatted — "today, 8:02 AM". */
+  lastLogin: string;
+  /** Members who can vouch for a locked-out account. Empty reads "None set". */
+  recoveryContacts: string[];
+  devices: TrustedDevice[];
+  notificationGroups: NotificationGroup[];
+  linkedAccountCount: number;
+  externalBank: string;
+  employer: string;
+  closure: AccountClosure;
+  votesCast: number;
+  legalDocs: LegalDoc[];
+  helpTopics: HelpTopic[];
+  bylaws: Bylaws;
+  patronage: Patronage;
+  /** The vote currently open, if there is one. */
+  ballot?: Ballot;
+  pastVotes: PastVote[];
+  logins: LoginEvent[];
+  permissions: Permission[];
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  /** e.g. "@diegor". Members get one; everyone else is reached by phone or email. */
+  handle?: string;
+  /** Phone or email, for someone who hasn't joined yet. */
+  contactPoint?: string;
+  /** Shown in the avatar circle. */
+  initials: string;
+  role: 'member' | 'partner';
+  /**
+   * Not a member yet: sending creates a claim link instead of a transfer, and
+   * they get an Invite action rather than a send one.
+   */
+  pending?: boolean;
+}
+
+/** How a contact is identified under their name — handle if they have one. */
+export function contactHandle(contact: Contact): string {
+  return contact.handle ?? contact.contactPoint ?? '';
+}
+
+/** A business that accepts Clear Pay — spec §7. */
+export interface Partner {
+  id: string;
+  name: string;
+  initials: string;
+  /** e.g. "Modular homes", "Trades". */
+  category: string;
+  city: string;
+  /** Accepts split pay — "Credit means you can split there". */
+  credit?: boolean;
+  /** The most a member can split here in a cycle. */
+  splitCap?: number;
+  /** Who brought them in, e.g. "A member, Mar 2026". */
+  referredBy?: string;
+}
+
+/** The split plans a Credit partner offers. */
+export const PARTNER_SPLIT_CYCLES = [2, 4, 12];
+
+export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
+  member: 'Member',
+  partner: 'Clear Partner',
+};
+
+export interface PartnersData {
+  partners: Partner[];
+  /** Total, which can exceed what's listed. */
+  count: number;
+  /** Where the list spans, e.g. "the Inland Empire". */
+  region: string;
+  /** The member's town, which "Near you" is measured from. */
+  near: string;
+  /** How far the list reaches. */
+  radiusMiles: number;
+  /** Businesses this member has referred. */
+  referrals: number;
+}
+
+/**
+ * Category chips for the partner list, derived rather than curated so a new kind
+ * of business can't be filtered out by an out-of-date list. Every category shows
+ * on both layouts — the strip scrolls, and a filter you can't reach is the same
+ * as a filter that doesn't exist.
+ */
+export function partnerCategories(partners: Partner[]) {
+  const seen: string[] = [];
+  for (const p of partners) if (!seen.includes(p.category)) seen.push(p.category);
+  return [
+    { id: 'all', label: 'All', mobile: true },
+    ...seen.map((c) => ({ id: c, label: c, mobile: true })),
+  ];
+}
+
+export interface SendData {
+  /** The member's own handle, e.g. "@kaim". */
+  handle: string;
+  /** Where a send draws from, and the fee/settlement copy that goes with it. */
+  payFrom: PayFrom;
+  /** What the QR encodes — the link that opens a payment to this member. */
+  codeUrl: string;
+  contacts: Contact[];
+  /** The few partners shown inline; the full list is its own page. */
+  partners: Partner[];
+  /** How many partners there are in total, for the "See all" link. */
+  partnerCount: number;
+  /** Sent to members and partners this cycle — money that stayed in the co-op. */
+  keptInNetwork: number;
+  /** Money sent to someone who hasn't joined yet, still waiting to be claimed. */
+  pendingClaim?: PendingClaim;
+  /** Ready to allocate — what a send draws from. */
+  available?: number;
+  /** Spent at Clear partners this cycle, paid now or over time. */
+  atPartners?: number;
+  /** How many payments made up keptInNetwork this cycle. */
+  networkPayments?: number;
+  /** The member, for the full-screen code: "Kai Moore · Member since March 2026". */
+  name?: string;
+  memberSince?: string;
+}
+
+/** Match a contact on name or handle, for the Send search field. */
+export function searchContacts(contacts: Contact[], query: string): Contact[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return contacts;
+  return contacts.filter((c) => c.name.toLowerCase().includes(q));
+}
+
+/** A card capability the member can switch off without freezing the whole card. */
+export interface CardControl {
+  id: string;
+  label: string;
+  on: boolean;
+}
+
+/**
+ * One card in the wallet, as the list and the stack need it.
+ *
+ * Deliberately not the whole CardData: the cards behind the front one show no number and no chip,
+ * so carrying their PAN into the component that draws them would be carrying something it must not
+ * render — the honest reading of a wallet, and one less thing on screen in a coffee shop.
+ */
+/**
+ * Where a posted card has got to.
+ *
+ * A shipment rather than a checklist: ordered and live are the card's own state at the issuer,
+ * posted is the one event it reports, and there is no delivered — a carrier knows that and the
+ * issuer does not, which is why activation asks for the last four instead of assuming.
+ *
+ * A virtual card is 'live' from the moment it exists and never holds any of the others.
+ */
+export type CardStage = 'ordered' | 'posted' | 'live';
+
+export interface CardSummary {
+  id: string;
+  variant: 'physical' | 'virtual';
+  last4: string;
+  frozen: boolean;
+  /** Where this card lives, e.g. "In your wallet", "Apple Pay, online". */
+  where: string;
+  /** Live unless it is a physical card still on its way. */
+  stage?: CardStage;
+  /** The dates the rail shows. Each one is a thing that happened, not a plan. */
+  orderedAt?: string;
+  postedAt?: string;
+  /** What the post gave us to follow it with, when the method has tracking at all. */
+  tracking?: string;
+  /** What a member is told to expect, which is an estimate and says so. */
+  arrivesAbout?: string;
+}
+
+/** The co-op's daily ceiling on any one card — what Max means in Adjust limits. */
+export const CARD_DAILY_CEILING = 5000;
+
+export interface CardData {
+  /**
+   * Every card the member holds, newest first. The first is the one on the face.
+   *
+   * Empty or one-length is the ordinary case and the stack collapses to a single card — a pager
+   * under one card would be an affordance for something that cannot happen.
+   */
+  cards?: CardSummary[];
+  /** Before activation there's no PAN to show and nothing to freeze. */
+  activated: boolean;
+  last4: string;
+  cardholder: string;
+  /** MM/YY. */
+  expiry: string;
+  /** Network wordmark, e.g. "VISA". */
+  network: string;
+  frozen: boolean;
+  /** Full number and security code — only ever shown behind a timed reveal. */
+  pan: string;
+  cvc: string;
+  /** Statement period the transactions below cover, e.g. "October". */
+  period: string;
+  /** What the card spent over that period. */
+  periodTotal: number;
+  /** How many card transactions that period holds, when the list shown is only some of them. */
+  periodCount?: number;
+  /** Which card is on screen — the same account, two ways to present it. */
+  variant: 'physical' | 'virtual';
+  controls: CardControl[];
+  perTransactionLimit: number;
+  perDayLimit: number;
+  /*
+   * What a tap draws on, cheapest first.
+   *
+   * `cardCash` is deliberately optional and deliberately NOT the wallet's USDC balance: USDC on a
+   * member's smart wallet cannot settle a card authorization, only the card float can. Undefined
+   * means "no readable card balance", and the panel then shows the credit tiers alone — which is
+   * true — rather than printing a spendable figure the card could not actually honour.
+   */
+  cardCash?: number;
+  /** The credit behind the cash, i.e. the sum of what added tiers can still lend. */
+  creditAfterCash?: number;
+  /** The tiers themselves, so the bar can show what the limit is made of. */
+  tiers?: CreditTier[];
+  /** What backs the limit, for the breakdown this page links to. Absent until the tiers are read. */
+  backing?: LimitBacking;
+  /** Card transactions only — Activity shows everything (spec §9). */
+  transactions: ActivityRow[];
+}
+
+export interface HomeData {
+  cash: number;
+  credit: Credit;
+  cycle: Cycle;
+  savings: Savings;
+  cashAccount: CashAccount;
+  tasks: SetupTask[];
+  recent: ActivityRow[];
+  backing: LimitBacking;
+  termPlans: TermPlans;
+}
+
+/** Tiers are drawn cheapest-first, automatically (rule 7). */
+export const TIER_ORDER: TierKey[] = ['savings', 'asset', 'income', 'boost'];
+
+export function orderedTiers(tiers: CreditTier[]): CreditTier[] {
+  return [...tiers].sort((a, b) => TIER_ORDER.indexOf(a.key) - TIER_ORDER.indexOf(b.key));
+}
+
+/** Total credit drawn across every tier. */
+export function creditUsed(credit: Credit): number {
+  return credit.tiers.reduce((sum, t) => sum + t.used, 0);
+}
+
+/**
+ * Everything that has to clear for the line to read as clear on chain: what is drawn unsecured, and
+ * carry left on the ledger by a closed plan. Secured draws are covered by what the co-op holds and
+ * are not what a cycle asks the member to return.
+ */
+export function mustClear(credit: Credit): number {
+  return unsecuredUsed(credit) + (credit.ledgerCarry ?? 0);
+}
+
+/**
+ * The credit limit: what the added tiers back, summed. There is only one limit —
+ * it equals the total in the limit breakdown, because it IS that total.
+ *
+ * An opt-in tier that hasn't been taken up lends nothing until it's added, so it
+ * doesn't count. Fixed within a cycle (rule 3) because the tier limits are;
+ * only `used` moves in realtime.
+ */
+export function creditLimit(credit: Credit): number {
+  return credit.tiers.filter((t) => t.added).reduce((sum, t) => sum + t.limit, 0);
+}
+
+/** Credit still available this cycle. Never negative. */
+export function creditLeft(credit: Credit): number {
+  return Math.max(0, creditLimit(credit) - creditUsed(credit));
+}
+
+/** The opt-in tier a member could still switch on, if there is one. */
+export function addableTier(credit: Credit): CreditTier | undefined {
+  return credit.tiers.find((t) => !t.added && t.limit > 0);
+}
+
+/**
+ * available = cash + (limit − used) — rule 2. Cash spends first; credit engages
+ * only once cash hits zero. The ESA is never part of this (rule 5).
+ *
+ * `cash` here is SPENDABLE cash only — never `cashTotal`. USDC sitting on the member's smart wallet
+ * is theirs, but it cannot settle a card authorization, and counting it would offer spend the card
+ * would then decline. Same split the server's tier snapshot makes for the same reason.
+ */
+export function availableToSpend(cash: number, credit: Credit): number {
+  return Math.max(0, cash) + creditLeft(credit);
+}
+
+/**
+ * True once cash is spent and the member has crossed into credit (rule 6). Marks
+ * the crossing visibly — the cash figure takes the boost color and the credit card
+ * takes an accent border — but never alarmingly.
+ */
+export function isCreditEngaged(cash: number, credit: Credit): boolean {
+  return cash <= 0 && creditUsed(credit) > 0;
+}
+
+/**
+ * Total savings balance: the cash in savings (CLRUSD). Credits are not money — they have no cash
+ * value and are never added to it — so they are shown as a count beside it. Locked — never summed
+ * into "available to spend" (rule 5).
+ */
+export function savingsTotal(s: Savings): number {
+  return s.cash;
+}
+
+/** What a section actually backs. Opt-in rows not yet added contribute nothing. */
+export function sectionTotal(rows: LimitBackingRow[]): number {
+  return rows.filter((r) => !r.notAdded).reduce((sum, r) => sum + r.contribution, 0);
+}
+
+/**
+ * The limit being extended — both sections summed, and the same figure as
+ * `creditLimit()`. The breakdown explains the number on the credit card, so the
+ * two must never disagree.
+ */
+export function backingTotal(b: LimitBacking): number {
+  return sectionTotal(b.assetBacked) + sectionTotal(b.unsecured);
+}
+
+/** Bar fill and legend-dot color per tier. */
+export const TIER_FILL: Record<TierKey, string> = {
+  savings: 'bg-tier-savings',
+  asset: 'bg-tier-asset',
+  income: 'bg-tier-income',
+  boost: 'bg-tier-boost',
+};
+
+/**
+ * Headroom fill — the part of an added tier that hasn't been drawn on.
+ *
+ * A tint of the tier's own colour rather than plain track, so the credit bar
+ * reads as "this much of each tier is left" instead of one anonymous remainder.
+ */
+export const TIER_TINT: Record<TierKey, string> = {
+  savings: 'bg-tier-savings/25',
+  asset: 'bg-tier-asset/25',
+  income: 'bg-tier-income/25',
+  boost: 'bg-tier-boost/25',
+};
+
+/** Tier names short enough for a table column. */
+export const TIER_SHORT_LABEL: Record<TierKey, string> = {
+  savings: 'Savings',
+  asset: 'Asset-backed',
+  income: 'Income-backed',
+  boost: 'Boost',
+};
+
+export const TIER_TEXT: Record<TierKey, string> = {
+  savings: 'text-tier-savings-fg',
+  asset: 'text-tier-asset-fg',
+  income: 'text-tier-income-fg',
+  boost: 'text-tier-boost-fg',
+};
+
+/* ---- Term plans — design spec §4c -------------------------------------------------------------
+ *
+ * Credit over a set number of cycles: a merchant split or a cash plan. What makes something a term
+ * plan is not its size but what backs it — an ACH
+ * authorisation on a linked external account. That's more direct than a card, and it's why the
+ * co-op can issue to a member who may never route their paycheck to Clear.
+ *
+ * Locked rows are part of the shelf from the first minute, on both signup paths.
+ *
+ * The ELPA is NOT a term plan, credit or a mortgage (Addendum 3). It never appears on this shelf, in
+ * these limits or in the credit view; it lives in lib/elpa and is shown on Savings.
+ */
+
+export interface TermPlan {
+  id: string;
+  /** e.g. "Mike's Tire" or "Cash plan". */
+  name: string;
+  /** Merchant plans carry the month they were opened, e.g. "Jun". */
+  openedOn?: string;
+  /**
+   * What the plan was taken out for. Absent on a locked row — there's nothing to state until it's
+   * taken up, and a `$0.00` would read as a plan with nothing left rather than one never started.
+   *
+   * Not what's left: that's derived from the cycles still to run, so the two can't disagree.
+   */
+  balance?: number;
+  /** How many cycles the amount is spread over. */
+  splitInto?: number;
+  perCycle?: number;
+  cyclesLeft?: number;
+  /** e.g. "2% / cycle". */
+  rate?: string;
+  /** The same rate as a fraction, for quoting what a split costs. */
+  ratePerCycle?: number;
+  /** What it takes to unlock, e.g. "Unlocks after six clean cycles · 2.5% / cycle". */
+  lockedNote?: string;
+  /** What clears it today, carry included. Only on a live plan. */
+  owed?: number;
+  /** Paid against it so far, carry included, as the chain records it. Only on a live plan. */
+  paid?: number;
+  /** Anything behind plus the next installment: what keeps the plan on schedule. */
+  nextPayment?: number;
+  /** When the next installment falls due, e.g. "Oct 2". Absent once every one has. */
+  nextDueOn?: string;
+  /** How far behind schedule. Zero or absent when on time. */
+  behind?: number;
+  /** When a plan that is behind defaults if not caught up, e.g. "Nov 3". */
+  defaultsOn?: string;
+  /** Why the split cannot be changed right now, when it cannot. */
+  splitBlocked?: string;
+}
+
+export interface LinkedAccount {
+  id: string;
+  /** e.g. "Chase ····4471". */
+  name: string;
+  /** e.g. "Checking · paycheck arrives here". */
+  detail: string;
+  /** Short kind, e.g. "Checking". */
+  kind: string;
+  /** Whether the limit is read from this account's flow. Not every linked account is. */
+  readForLimit?: boolean;
+  /** Ownership verified at link. */
+  verified?: boolean;
+  /** When it was linked, e.g. "Mar 2026". */
+  linkedOn?: string;
+}
+
+export interface TermPlans {
+  plans: TermPlan[];
+  /** Cap on total outstanding across plans, stated beside the headline as "of $X". */
+  balanceLimit?: number;
+  /**
+   * What can be scheduled per cycle, and where it comes from. A different quantity from
+   * `balanceLimit` — this one paces the schedule, that one caps the debt — so they get separate
+   * fields and separate places on the card.
+   */
+  perCycleLimit?: number;
+  limitNote?: string;
+  /** Linked accounts the ACH fallback can draw on, and which one is active. */
+  accounts: LinkedAccount[];
+  clearsFromId?: string;
+  /** The splits offered at checkout, e.g. [1, 2, 4, 12]. */
+  splitOptions: number[];
+  /**
+   * Term credit paused by a missed plan: what is left to pay back of what was written off. Paying
+   * it restores term plans; so do six clean cycles.
+   */
+  paused?: { toPayBack: number };
+}
+
+/**
+ * What's still to pay on a plan, in principal.
+ *
+ * Derived from the cycles left rather than stored, so a plan can't claim a figure its own schedule
+ * contradicts. A plan without a split states its balance directly.
+ */
+export function planRemaining(plan: TermPlan): number {
+  // A plan read from chain knows what it owes; the cycle count is an estimate that a payment made
+  // ahead of schedule leaves behind.
+  if (plan.owed !== undefined) return plan.owed;
+  if (plan.balance === undefined) return 0;
+  if (!plan.splitInto || plan.cyclesLeft === undefined) return plan.balance;
+  return (plan.balance / plan.splitInto) * plan.cyclesLeft;
+}
+
+/**
+ * What's been paid down on a plan — the figure the shelf row leads with.
+ *
+ * Progress, not debt. The row answers "how far through am I", which is why it reads paid against the
+ * total rather than what's left: a plan taken minutes ago reads `$0.00 / $940.00`, and one nearly
+ * done reads close to its own total.
+ *
+ * Easy to get backwards, and the Home figures don't catch it — a plan exactly half elapsed has the
+ * same paid and remaining. The day-one case is the one that tells them apart.
+ */
+export function planPaid(plan: TermPlan): number {
+  if (plan.paid !== undefined) return plan.paid;
+  if (plan.balance === undefined) return 0;
+  return plan.balance - planRemaining(plan);
+}
+
+/** How far through a plan is, 0–1 — the same fact as the cleared amount, as a share. */
+export function planClearedShare(plan: TermPlan): number {
+  // Live: paid against everything the plan has cost so far, so carry neither inflates nor hides it.
+  if (plan.paid !== undefined && plan.owed !== undefined) {
+    const whole = plan.paid + plan.owed;
+    return whole > 0 ? Math.max(0, Math.min(1, plan.paid / whole)) : 0;
+  }
+  if (!plan.balance) return 0;
+  return Math.max(0, Math.min(1, planPaid(plan) / plan.balance));
+}
+
+/** A plan is live once it has a balance; everything else on the shelf is a locked row. */
+export function isPlanActive(plan: TermPlan): boolean {
+  return plan.balance !== undefined;
+}
+
+export function activePlans(data: TermPlans): TermPlan[] {
+  return data.plans.filter(isPlanActive);
+}
+
+/**
+ * What's outstanding across every live plan.
+ *
+ * What the plans were taken out for — the same figure the rows lead with. Summed rather than
+ * stated, so the headline can't drift from the rows beneath it, which is exactly what the reference
+ * mockups did between their desktop and mobile drafts.
+ */
+export function termPlansTotal(data: TermPlans): number {
+  return activePlans(data).reduce((sum, p) => sum + (p.balance ?? 0), 0);
+}
+
+export function clearsFromAccount(data: TermPlans): LinkedAccount | undefined {
+  return data.accounts.find((a) => a.id === data.clearsFromId);
+}
+
+/**
+ * What the footer's "Clears from" cell names.
+ *
+ * Just the account. The Clear balance always goes first and the modal behind this says so, but the
+ * cell has room for one fact and the useful one is which bank the rest comes out of.
+ */
+export function clearsFromLabel(data: TermPlans): string {
+  return clearsFromAccount(data)?.name ?? 'Balance only';
+}
+
+/** What every open plan bills in a cycle, together — the figure the per-cycle limit binds. */
+export function termPlansPerCycle(data: TermPlans): number {
+  return activePlans(data).reduce((sum, p) => sum + (planPerCycle(p) ?? 0), 0);
+}
+
+/**
+ * Which of the two limits is actually binding — spec §4c, "Your term limit".
+ *
+ * Two constraints, and the lower one applies: what can be scheduled per cycle, and how much can be
+ * open at once. Whichever is closer to its ceiling is the one holding the member back, and it's the
+ * one that carries the accent. Both are still shown, because a member who only sees the binding one
+ * can't tell what would move it.
+ */
+export function bindingTermLimit(data: TermPlans): 'perCycle' | 'balance' | undefined {
+  const perCycle = data.perCycleLimit ? termPlansPerCycle(data) / data.perCycleLimit : -1;
+  const balance = data.balanceLimit ? termPlansTotal(data) / data.balanceLimit : -1;
+  if (perCycle < 0 && balance < 0) return undefined;
+  return perCycle >= balance ? 'perCycle' : 'balance';
+}
+
+/**
+ * Split and carry now live in `@clear/domain`, because the merchant app quotes the same figures at
+ * the counter that the member approves here. Re-exported so the pages that read this module keep
+ * one import, and so there is exactly one implementation behind both surfaces.
+ */
+export type { SplitQuote } from '@clear/domain';
+export { splitQuote };
+
+/**
+ * What a plan bills each cycle.
+ *
+ * Derived wherever the parts are known, so the shelf row and the chooser can't quote different
+ * figures for the same plan. A plan without the parts states its payment outright.
+ */
+export function planPerCycle(plan: TermPlan): number | undefined {
+  // The contract fixes the installment; quoting an estimate beside it would disagree by cents.
+  if (plan.owed !== undefined && plan.perCycle !== undefined) return plan.perCycle;
+  if (plan.balance !== undefined && plan.splitInto && plan.ratePerCycle !== undefined) {
+    return splitQuote(plan.balance, plan.splitInto, plan.ratePerCycle).perCycle;
+  }
+  return plan.perCycle;
+}
+
+// ---- Disputes ------------------------------------------------------------------------------------
+
+export type DisputeKind = 'card' | 'partner' | 'member';
+
+/** One kind of dispute, and who decides it — the page's argument is that this changes by kind. */
+export interface DisputeKindInfo {
+  kind: DisputeKind;
+  title: string;
+  detail: string;
+  whoDecides: string;
+  /** Who decides, as the modal's consequence line says it. */
+  whoDecidesLine: string;
+  takes: string;
+  /** What happens to the amount while it is open, for this kind. A claimed send cannot be held. */
+  heldLine: string;
+}
+
+/** One of the member's own disputes, as the API reports it. */
+export interface MemberDispute {
+  token: string;
+  kind: DisputeKind;
+  subjectLabel: string;
+  amountCents: number;
+  status: 'open' | 'with_network' | 'decided' | 'withdrawn';
+  holdState: 'held' | 'not_held' | 'released' | null;
+  resolution: 'member' | 'merchant' | 'withdrawn' | null;
+  createdAt: string;
+  /**
+   * A partner purchase that went against the member (or was withdrawn) waits off any plan until
+   * they sign the reopened plan's terms: `TermIssuer.openPlan` needs their signature (audit H-4).
+   */
+  awaitingPlanSignature?: boolean;
+}
+
+/** A payment the member can dispute, as the server read it. */
+export interface DisputeCandidate {
+  kind: DisputeKind;
+  ref: string;
+  label: string;
+  amountCents: number;
+  at: string;
+}
+
+/** Card disputes carry a network reason; these are the plain words for them. */
+export type CardDisputeReason = 'wrong_amount' | 'charged_twice' | 'not_received' | 'not_as_described' | 'other';

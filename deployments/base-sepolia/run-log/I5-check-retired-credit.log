@@ -1,0 +1,88 @@
+Retired credit check on base-sepolia, chain 84532 (a testnet: loans, legs, the backstop and balances left in retired contracts are WARN (test money, decision 50)): 19 retired contract(s). Sends nothing.
+
+WARN  BondVault.payoutPool(): names the retired PayoutPoolPreAudit 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66; the change that clears it (setBackstops, payoutPool 0x0000000000000000000000000000000000000000) is scheduled in the Earn timelock and may run from 2026-11-24T18:35:48.000Z (decision 52: on a testnet a change waiting in a timelock does not hold the apps)
+WARN  PayoutPoolPreAudit: holds 10.5 USDC (test money, decision 50)
+PASS  LendingPool.encumbranceSource(): 0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A, not a retired contract
+PASS  LendingPool.earnControls(): 0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97, not a retired contract
+PASS  LendingPool.deploymentAccount(): 0xfAFf1081F77bF528bA21eea590f251a755bCdf65, not a retired contract
+PASS  LendingPool.enforcementDestination(): 0xEB6f2c654d078Df56D78946767d5A43307eb4fa1, not a retired contract
+PASS  ClearUSDUpgradeable.encumbranceSource(): 0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A, not a retired contract
+PASS  ClearUSDUpgradeable.membershipSource(): 0x23aF9715761156C24C2de3666587753168f28DBe, not a retired contract
+PASS  ClearUSDUpgradeable.intentFactory(): 0xF8074182d9ec61970bBC9E4aaE182B42dF7Bb74B, not a retired contract
+PASS  ESADepositVault.stateSource(): 0xee10a0d79a718cd13c49b68ce6ccCda398781164, not a retired contract
+PASS  ESADepositVault.clrusd(): 0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1, not a retired contract
+PASS  BondVault.encumbranceSource(): 0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A, not a retired contract
+PASS  BondVault.treasury(): 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, not a retired contract
+PASS  BondVault.agent(): 0x48840620F9F4780e7d5986F6365A4acdD7D82825, not a retired contract
+PASS  BondVault.controls(): 0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97, not a retired contract
+PASS  ClaimEscrow.PAYOUT_TREASURY(): 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, not a retired contract
+PASS  EarnControls.membership(): 0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8, not a retired contract
+PASS  EarnControls.yieldPool(): 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23, not a retired contract
+PASS  EarnControls.reserveStatus(): 0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855, not a retired contract
+PASS  EarnControls.collateralAgent(): 0x48840620F9F4780e7d5986F6365A4acdD7D82825, not a retired contract
+PASS  EarnControls.reserveHook(): 0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855, not a retired contract
+PASS  AccessManager.membershipRegistry(): 0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8, not a retired contract
+PASS  AccessManagerPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  ClearCreditPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  NetworkRegistryPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  RevolvingIssuerPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  TermIssuerPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  CollateralRegistryPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  LimitCalculatorPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  MerchantRegistryPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  PayoutPoolPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  LiquidatorPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  OffersIssuerPreAudit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BurnerBondFactoryPre2f: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BurnerBondPre2f: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BurnerBondDepositPre2f: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BondValuerPre2f: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BurnerBondFactoryLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BurnerBondLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BurnerBondDepositLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  BondValuerLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow, EarnControls, AccessManager
+PASS  AccessManagerPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  ClearCreditPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  NetworkRegistryPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  RevolvingIssuerPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  TermIssuerPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  CollateralRegistryPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  LimitCalculatorPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  MerchantRegistryPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  PayoutPoolPreAudit: holds no CLRUSD or legacy CLRUSD
+PASS  LiquidatorPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  OffersIssuerPreAudit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondFactoryPre2f: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondPre2f: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondDepositPre2f: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BondValuerPre2f: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondFactoryLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondDepositLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BondValuerLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  ClearCreditPreAudit: refused by EarnControls
+PASS  RevolvingIssuerPreAudit: refused by EarnControls
+PASS  TermIssuerPreAudit: refused by EarnControls
+PASS  CollateralRegistryPreAudit: refused by EarnControls
+PASS  PayoutPoolPreAudit: refused by EarnControls
+PASS  LiquidatorPreAudit: refused by EarnControls
+PASS  OffersIssuerPreAudit: refused by EarnControls
+PASS  BurnerBondPre2f: refused by EarnControls
+PASS  BurnerBondDepositPre2f: refused by EarnControls
+PASS  BurnerBondLegacy: refused by EarnControls
+PASS  BurnerBondDepositLegacy: refused by EarnControls
+PASS  PayoutPoolPreAudit.borrowedFromVault(): 0
+PASS  PayoutPoolPreAudit.borrowedFromYield(): 0
+PASS  PayoutPoolPreAudit.yieldPool(): off
+PASS  PayoutPoolPreAudit.bondVault(): off
+PASS  BondVault.lentToPayoutPool(): 0
+INFO  AccessManagerPreAudit: not on the refused list: it holds no funds (decision 46(c))
+INFO  NetworkRegistryPreAudit: not on the refused list: it holds no funds (decision 46(c))
+INFO  LimitCalculatorPreAudit: not on the refused list: it holds no funds (decision 46(c))
+INFO  MerchantRegistryPreAudit: not on the refused list: it holds no funds (decision 46(c))
+INFO  BurnerBondFactoryPre2f: not on the refused list: it holds no funds (decision 46(c))
+INFO  BondValuerPre2f: not on the refused list: it holds no funds (decision 46(c))
+INFO  BurnerBondFactoryLegacy: not on the refused list: it holds no funds (decision 46(c))
+INFO  BondValuerLegacy: not on the refused list: it holds no funds (decision 46(c))
+
+0 FAIL, 2 WARN. Nothing retired is still connected.

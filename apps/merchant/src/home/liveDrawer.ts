@@ -1,0 +1,73 @@
+import { seesMoney, type StaffRole } from '@clear/domain';
+import type { CountsView, DrawerSession, OrderWithTenders, OwnCount, ShopSettings, TenderStatus } from '@clear/merchant-contracts';
+import { clockTime, firstName, type DrawerPrompt, type ShiftCell } from './model';
+
+/**
+ * A live shop's drawer on Home (UI Phase 6, step 6): what the panel says and which sheet its button
+ * opens, from the drawer session and the counts as this person may see them. Blind: no figure is
+ * named until both counts are in (the server's CountsView holds that line; this only words it).
+ */
+
+export type DrawerStep =
+  | { kind: 'open' }
+  | { kind: 'count'; which: 'first' | 'second' }
+  /** This person counted; the second count is someone else's. */
+  | { kind: 'wait' }
+  | { kind: 'result'; view: Extract<CountsView, { state: 'disagree' | 'compared' }> }
+  | { kind: 'close' };
+
+export function drawerStep(session: DrawerSession | null, view: CountsView | null, viewer: string): DrawerStep {
+  if (!session) return { kind: 'open' };
+  if (!view || view.state === 'awaiting_first') return { kind: 'count', which: 'first' };
+  if (view.state === 'awaiting_second') return view.mine?.counter === viewer ? { kind: 'wait' } : { kind: 'count', which: 'second' };
+  if (view.state === 'disagree' || view.signoffNeeded) return { kind: 'result', view };
+  return { kind: 'close' };
+}
+
+const counterName = (c: OwnCount | null | undefined, names: Map<string, string>) => (c ? firstName(names.get(c.counter) ?? 'Someone') : 'Someone');
+
+/** Settings › Closing › Who can close: owners and managers always; anyone on shift when the owner says so. */
+export const mayCloseDay = (role: StaffRole | undefined, settings: Pick<ShopSettings, 'whoCanClose'> | null | undefined): boolean =>
+  !!role && (seesMoney(role) || settings?.whoCanClose === 'anyone');
+
+export function drawerPrompt(session: DrawerSession | null, view: CountsView | null, viewer: string, names: Map<string, string>, mayClose = true): DrawerPrompt {
+  const step = drawerStep(session, view, viewer);
+  if (step.kind === 'open' || !session) return { t: 'Not open yet', det: 'Open it with the starting cash before the first cash sale.', cta: 'Open the drawer' };
+  const t = `Open since ${clockTime(session.openedAt)}`;
+  switch (step.kind) {
+    case 'count':
+      return step.which === 'first'
+        ? // Said as the closing count it is: straight after opening it read as a check of the float,
+          // and agreeing led on to Close the day.
+          { t, det: 'Open for the day. At close, two people count it blind: neither sees the other’s, or what it should hold.', cta: 'Count to close' }
+        : { t, det: 'One closing count is in, hidden. The second is yours.', cta: 'Count to close' };
+    case 'wait':
+      return { t, det: 'You’ve counted for close. The second count is someone else’s.' };
+    case 'result':
+      return step.view.state === 'disagree'
+        ? { t, det: 'The two counts disagree. One of you counts again.', cta: 'See the counts' }
+        : { t, det: `${counterName(step.view.counts[0], names)} and ${counterName(step.view.counts[1] ?? step.view.counts[0], names)} agree; it doesn’t match. A manager signs it off.`, cta: 'See the counts' };
+    case 'close':
+      // Someone who can't close is told who does; the button asks for them (the owner's sign-in).
+      return mayClose
+        ? { t, det: 'Counted and settled. Close the day to lock it.', cta: 'Close the day' }
+        : { t, det: 'Counted and settled. An owner or manager closes the day.', cta: 'Close the day' };
+  }
+}
+
+/** A cash tender that happened: taken, not tried and failed. A refund later doesn't undo the sale. */
+const TOOK: readonly TenderStatus[] = ['approved', 'captured', 'refunded', 'partly_refunded'];
+
+/**
+ * The Drawer row in a counter's shift column. Nothing once the day is closed. While it's open, the
+ * starting cash and how many cash sales went in, never a dollar total: start plus cash in is what
+ * the drawer should hold, and the closing counts are blind to it (the server sends it only once
+ * both are in). Once they are, the whole row, from the server's figure.
+ */
+export function shiftDrawer(session: DrawerSession | null, view: CountsView | null, orders: OrderWithTenders[] | null): ShiftCell['drawer'] {
+  if (!session || session.status === 'closed' || session.closedAt) return undefined;
+  const startCents = session.startingCashCents;
+  if (view?.state === 'compared') return { startCents, cashInCents: view.expectedCents - startCents };
+  const cashSales = orders?.filter((o) => o.businessDate === session.businessDate && o.tenders.some((t) => t.method === 'cash' && TOOK.includes(t.status))).length;
+  return { startCents, cashSales };
+}

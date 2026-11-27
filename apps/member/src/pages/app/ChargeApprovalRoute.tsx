@@ -1,0 +1,497 @@
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { track } from '@/lib/analytics';
+import {
+  approveCharge,
+  prepareChargeApproval,
+  declineCharge,
+  getCharge,
+  getCredit,
+  releasePayNow,
+  type ChargeView,
+} from '@/utils/apiClient';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useInstallMode } from '@/hooks/useInstallMode';
+import { usePayNow, type PayNowStep } from '@/hooks/usePayNow';
+import { ClearBalancesProvider, useClearBalances } from '@/hooks/useClearBalances';
+import { BridgeProvider } from '@/context/BridgeContext';
+import { KycProvider } from '@/context/KycContext';
+import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
+import AddMoneyModal from '@/components/app-ui/AddMoneyModal';
+import { getNetworkByChainId } from '@/config/networks';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
+import { disclosureFor, signPlanTerms } from '@/lib/planSigning';
+import type { PlanTermsTypedData } from '@clear/domain';
+import { PAY_OVER_TIME_MIN_CENTS, shopSlug, splitsOffered } from '@clear/domain';
+import { chooserRate, chooserSplits, closeOrFallback, doneLine, hasNoClearAccount, overTimeShown as showsOverTime, shopHostFor, type ApprovalView } from '@/lib/approvalPage';
+import ChargeApproval, { type PayMode } from './ChargeApproval';
+import { NoClearAccount } from './ApprovalPage';
+
+/**
+ * `/c/<code>` — the link in the text a member gets when a merchant raises a charge.
+ *
+ * The code identifies the charge and nothing more. It travels by text and text gets forwarded, so
+ * the server re-checks on every call that the charge belongs to the caller's own wallet; a member
+ * who opens somebody else's link gets a 404-shaped answer rather than a screen.
+ *
+ * Approving is the only thing here that costs anything, and it is deliberately not optimistic. The
+ * screen waits for the chain call, because a confirmation shown before the plan exists is a
+ * promise the app cannot keep — and the reference's own line, "nothing is charged until you
+ * approve", cuts both ways.
+ */
+/** The splits the approval screen offers, when the charge is big enough to split at all. */
+const SPLITS = [1, 2, 4, 12];
+
+/**
+ * What paying now needs around it: the member's balances, and Add money for when they are short.
+ *
+ * This route renders outside AppShell (a scanned link must open without the app's chrome), so it
+ * brings the few providers those need itself, rather than sending somebody standing at a counter
+ * away from the charge to add money.
+ */
+function PayNowProviders({ children }: { children: ReactNode }) {
+  return (
+    <BridgeProvider>
+      <KycProvider>
+        <ClearBalancesProvider>
+          <LinkedWalletsProvider>{children}</LinkedWalletsProvider>
+        </ClearBalancesProvider>
+      </KycProvider>
+    </BridgeProvider>
+  );
+}
+
+const PAYING: Record<PayNowStep, string> = { 1: 'Confirm with Face ID…', 2: 'Paying…', 3: 'Checking…' };
+
+/** The same words the server uses (chainErrors STATE_NOT_CONFIRMED): not a refusal, a wait. */
+const STATE_NOT_CONFIRMED =
+  'Your state of residence isn’t confirmed yet, so Clear can’t offer you credit. Nothing was charged. You can still pay now, and credit opens once your state is confirmed.';
+
+/**
+ * `approval`: opened as Pay with Clear's approval page (`/approve/:id`, ApprovalPageRoute), which has
+ * already read the payment. The charge is its `chargeCode`, and the screen is the online sheet; when
+ * it is done the page closes itself, back to the shop's tab.
+ */
+export default function ChargeApprovalRoute({ approval }: { approval?: ApprovalView } = {}) {
+  return (
+    <PayNowProviders>
+      <ChargeApprovalScreen approval={approval ?? null} />
+    </PayNowProviders>
+  );
+}
+
+function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
+  const params = useParams<{ code: string }>();
+  const code = approval?.chargeCode ?? params.code ?? '';
+  const { isAuthenticated, address } = useAppKitAuth();
+  const { memberStatus, loaded: profileLoaded } = useMemberProfile();
+  const installMode = useInstallMode();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [charge, setCharge] = useState<ChargeView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [splitInto, setSplitInto] = useState(4);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /** The plan terms fetched to sign, and the disclosure rebuilt from them (audit H-4). */
+  const [prepared, setPrepared] = useState<{ typedData: PlanTermsTypedData; disclosure: string[] } | null>(null);
+  const [perCycleLimit, setPerCycleLimit] = useState<number | null>(null);
+  /** Nobody has attested the member's state yet, so the chain refuses any plan (Phase 2). */
+  const [stateUnconfirmed, setStateUnconfirmed] = useState(false);
+  const [mode, setMode] = useState<PayMode>('choose');
+  const [paying, setPaying] = useState<PayNowStep | null>(null);
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  /** The approval page found no Clear account behind this sign-in. */
+  const [noAccount, setNoAccount] = useState(false);
+  /** Done, and the window wouldn't close itself: say where to go instead. */
+  const [stillOpen, setStillOpen] = useState(false);
+  const payNow = usePayNow();
+  const { cash, loading: balancesLoading, applyOptimistic } = useClearBalances();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      // Signing in is the gate, not the code. Coming back here afterwards is the whole point of
+      // the link, so the destination rides along in `state.from` — the same shape ProtectedRoute
+      // uses and the only one LoginPage reads. A `?next=` here would be silently ignored and drop
+      // somebody on the home screen wondering where their charge went.
+      navigate('/login', { state: { from: location }, replace: true });
+      return;
+    }
+    /**
+     * Wait for the profile before reading the charge.
+     *
+     * `memberStatus` is null while it loads, and reading the charge first would render the
+     * approval screen to somebody who is not a member yet -- then yank it away a beat later when
+     * the status lands. Opening a charge also claims it, so this is a screen with a side effect;
+     * it should happen once, after there is enough known to say where it belongs.
+     */
+    if (!profileLoaded) return;
+
+    /*
+     * The approval page, signed in with no Clear account behind it (a rewards-only sign-in, or
+     * nobody yet). There's nothing here they can approve, and opening the charge would claim it, so
+     * it isn't opened: the code they were sent works on the shop's page, and so does a card.
+     */
+    if (approval && hasNoClearAccount(memberStatus)) {
+      setNoAccount(true);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    void getCharge(code)
+      .then((found) => {
+        if (cancelled) return;
+
+        /**
+         * Scanned by somebody who is not a member yet — merchant reference section 03.
+         *
+         * "Scanning installs the app and starts signup with this charge already waiting." Signing
+         * in creates a Privy account, which is not the same as being a member: no region check, no
+         * terms, no credit. Landing them on an approval screen they cannot act on is the worst
+         * version of this, because a writer has already turned the tablet toward them and said it
+         * is waiting.
+         *
+         * So they go to the counter flow — the one built for signing up while standing at a shop —
+         * and the code rides along so approval is where they finish rather than something they
+         * have to find again.
+         */
+        if (found && memberStatus === 'ONBOARDING') {
+          const params = new URLSearchParams({ c: code });
+          // `?total=` is display only on the counter flow, and it is dollars there.
+          if (found.amountCents) params.set('total', String(found.amountCents / 100));
+          navigate(`/s/${shopSlug(found.merchantName ?? 'clear')}?${params}`, { replace: true });
+          return;
+        }
+
+        setCharge(found);
+        if (found?.splitInto) setSplitInto(found.splitInto);
+        // Came back to a charge held for paying now (a reload mid-payment): that is where it was.
+        if (found?.payingNow) setMode('now');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [code, approval, isAuthenticated, memberStatus, profileLoaded, navigate, location]);
+
+  /**
+   * The limit shown on the footer — the one this decision is checked against.
+   *
+   * The term ceiling, not the revolving tiers. TermIssuer.openPlan measures a new plan against
+   * `termLimitOf(member)`, and the contract is explicit that this is a separate line: underwritten
+   * off-chain against attested income, where the tiers are backed by pledged collateral. Summing
+   * the tiers here quoted a member $747.59 of room on a line the plan cannot draw on, and the
+   * approval then reverted with a ceiling of zero.
+   *
+   * Left null when the read fails. "Not set" is the honest thing to show when we could not ask — a
+   * number invented here would be sitting next to a decision somebody is about to make.
+   */
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    void getCredit(address).then((credit) => {
+      if (cancelled) return;
+      // Phase 2: no plan (in full included) without an attested state. Paying now still works.
+      if (credit?.stateConfirmed === false) setStateUnconfirmed(true);
+      if (!credit?.term) return;
+      setPerCycleLimit(credit.term.availableCents / 100);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  const amount = useMemo(() => (charge ? charge.amountCents / 100 : 0), [charge]);
+  // Under the pay-over-time minimum a charge is paid now: over time is shown greyed, with the reason.
+  const offered = useMemo(() => (charge ? splitsOffered(charge.amountCents, SPLITS) : SPLITS), [charge]);
+  /*
+   * The chain prices every split before one is picked (the charge's `splitQuotes`), so the chooser
+   * shows the rate the member will sign rather than an estimate. Splits the chain would refuse are
+   * not offered; if it would refuse them all, they stay, and the refusal is said when one is picked.
+   */
+  const quoteFor = (n: number) => charge?.splitQuotes?.find((q) => q.installments === n) ?? null;
+  const splitOptions = useMemo(() => chooserSplits(offered, charge?.splitQuotes), [offered, charge?.splitQuotes]);
+  // Under the pay-over-time minimum, not merely because the chain refused the longer splits.
+  const payNowOnly = offered.length === 1;
+  const chosenQuote = charge ? quoteFor(charge.splitInto ?? splitInto) : null;
+  // Monthly bps over a 30-day cycle; a free split is 0. No quote (the chain unread): the default.
+  const chosenRate = chooserRate(chosenQuote);
+  useEffect(() => {
+    if (payNowOnly) setSplitInto(1);
+  }, [payNowOnly]);
+  // A split the chain would refuse is not offered; move off it to the longest one that is.
+  useEffect(() => {
+    if (!splitOptions.includes(splitInto)) setSplitInto(splitOptions[splitOptions.length - 1]);
+  }, [splitOptions, splitInto]);
+
+  /*
+   * Online: the charge says so itself (`online`), or the approval page knows it from the payment.
+   * The site it names is the charge's, else the approval page's return address.
+   */
+  const online = charge?.online ?? (approval ? { channel: approval.channel, shopHost: null } : null);
+  const host = shopHostFor(charge?.online, approval?.returnUrl);
+
+  /*
+   * Paid, or approved over time: the approval page closes itself, and the shop's tab, which has been
+   * polling, moves on. A window the browser won't close (a texted link) says where to go instead.
+   * Never a redirect to the shop: the shop's tab is still there.
+   */
+  const finished = Boolean(charge && charge.status === 'approved');
+  useEffect(() => {
+    if (!approval || !finished) return;
+    closeOrFallback(window, () => setStillOpen(true));
+  }, [approval, finished]);
+
+  /**
+   * A payment on its way: asked again every few seconds until the server has seen it land. The
+   * server marks it paid on its own (its reconciliation finds it), so this is only the screen
+   * catching up, never the thing that makes it true.
+   */
+  const onItsWay = charge?.status === 'resolving' && Boolean(charge.payingNow?.sent);
+  useEffect(() => {
+    if (!onItsWay) return;
+    const timer = setInterval(() => {
+      void getCharge(code).then((next) => {
+        if (next && next.status !== 'resolving') setCharge(next);
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [onItsWay, code]);
+
+  /**
+   * Leaving: home, as ever. The approval page was opened over the shop's page, so it closes, back to
+   * the shop's tab, and goes home only when the browser won't let it.
+   */
+  const leave = useCallback(() => {
+    if (!approval) {
+      navigate('/', { replace: true });
+      return;
+    }
+    closeOrFallback(window, () => navigate('/', { replace: true }));
+  }, [approval, navigate]);
+
+  const onPayNow = useCallback(async () => {
+    if (!charge) return;
+    setError(null);
+    const result = await payNow(charge.code, setPaying);
+    setPaying(null);
+    if (result.charge) setCharge(result.charge);
+    if (result.error) setError(result.error);
+    if (result.charge?.paidNow || result.pending) {
+      applyOptimistic(-charge.amountCents / 100, 0);
+      track('charge_paid_now', {}); // no amount and no merchant
+    }
+  }, [charge, payNow, applyOptimistic]);
+
+  /**
+   * Back from Pay now. If Pay was pressed and nothing left the wallet, the server is still holding
+   * the charge for it: let it go, so over time (or the shop) can act on it again.
+   */
+  const onModeChange = useCallback(
+    (next: PayMode) => {
+      setError(null);
+      setMode(next);
+      if (next !== 'now' && charge?.status === 'resolving' && charge.payingNow && !charge.payingNow.sent) {
+        void releasePayNow(charge.code).then((r) => r.charge && setCharge(r.charge));
+      }
+    },
+    [charge],
+  );
+
+  // Terms are for one split: choosing another means fetching (and reading) them again.
+  useEffect(() => {
+    setPrepared(null);
+  }, [splitInto]);
+
+  /**
+   * Approving over time is reading the terms, then signing them (audit H-4).
+   *
+   * The first press fetches the plan's terms and shows them, rebuilt on this phone from the fields
+   * being signed. The second signs them with the member's own wallet, after checking them against
+   * the screen, and the server submits that signature: TermIssuer opens a plan only on it.
+   */
+  const onApprove = useCallback(async () => {
+    if (!charge || !address) return;
+    if (stateUnconfirmed) {
+      setError(STATE_NOT_CONFIRMED);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const fresh =
+        prepared &&
+        Number(prepared.typedData.message.installments) === splitInto &&
+        Number(prepared.typedData.message.deadline) > Math.floor(Date.now() / 1000) + 30;
+      if (!fresh) {
+        const next = await prepareChargeApproval(charge.code, splitInto);
+        if (next.error || !next.typedData) {
+          setError(next.error ?? 'We could not get this plan ready. Nothing was charged.');
+          return;
+        }
+        setPrepared({ typedData: next.typedData, disclosure: disclosureFor(next.typedData, charge.merchantName) });
+        return;
+      }
+
+      const termIssuer = clearContracts(ACTIVE_CHAIN_ID)?.termIssuer;
+      if (!termIssuer) {
+        setError('Paying over time is not available on this network yet.');
+        return;
+      }
+      const signed = await signPlanTerms({
+        typedData: prepared.typedData,
+        shown: { member: address, purchaseCents: charge.amountCents, installments: splitInto, disclosure: prepared.disclosure },
+        expected: { chainId: ACTIVE_CHAIN_ID, termIssuer },
+      });
+      const result = await approveCharge(charge.code, splitInto, signed);
+      // Signed terms are good for one attempt: a nonce is used either way, so the next press starts over.
+      setPrepared(null);
+      if (result.error || !result.charge) {
+        setError(result.error ?? 'We could not approve this charge.');
+        return;
+      }
+      setCharge(result.charge);
+      track('charge_approved', { installments: splitInto }); // split only, no amount and no merchant
+    } catch (e) {
+      setPrepared(null);
+      setError(e instanceof Error && e.message.startsWith('These terms') ? e.message : 'Nothing was signed, and nothing was charged.');
+    } finally {
+      setBusy(false);
+    }
+  }, [charge, splitInto, address, prepared, stateUnconfirmed]);
+
+  const onDecline = useCallback(async () => {
+    if (!charge) return;
+    setBusy(true);
+    setError(null);
+    const result = await declineCharge(charge.code);
+    setBusy(false);
+    if (result.error || !result.charge) {
+      setError(result.error ?? 'We could not decline this charge.');
+      return;
+    }
+    track('charge_declined', {});
+    leave();
+  }, [charge, leave]);
+
+  /**
+   * Hold until the profile has answered, because the answer decides whose screen this is.
+   *
+   * Rendering first would show a non-member an approval they cannot give and then pull it away a
+   * beat later. `loaded` rather than `memberStatus !== null`: a failed read has also answered, and
+   * gating on the status would park an existing member on a spinner for as long as the API is
+   * unhappy.
+   */
+  if (loading || (isAuthenticated && !profileLoaded)) {
+    return <p className="px-5 py-8 text-center text-[13px] text-muted-foreground">Loading…</p>;
+  }
+
+  if (noAccount && approval) {
+    return <NoClearAccount shopName={approval.shop.name} host={host} />;
+  }
+
+  if (!charge) {
+    return (
+      <div className="w-full px-5 py-8 lg:mx-auto lg:max-w-[420px] text-center">
+        <p className="mb-1.5 text-[19px] font-medium">Nothing to approve</p>
+        <p className="text-[13px] leading-relaxed text-foreground-secondary">
+          This charge has already been dealt with, or it was never yours.
+        </p>
+      </div>
+    );
+  }
+
+  // Every state that is not "waiting on you" says which one it is. A single "unavailable" would
+  // leave somebody unsure whether they had already paid. Held for paying now is still theirs.
+  const heldForThem = charge.status === 'resolving' && Boolean(charge.payingNow);
+  if (charge.status !== 'pending' && charge.status !== 'approved' && !heldForThem) {
+    const explain =
+      charge.status === 'expired'
+        ? 'This charge expired. Ask the shop to send a new one — nothing was charged.'
+        : charge.status === 'declined'
+          ? 'You declined this charge. Nothing was charged.'
+          : charge.status === 'cancelled'
+            ? 'The shop cancelled this charge before you answered. Nothing was charged.'
+            : charge.status === 'refunded'
+              ? 'The shop refunded this charge. It’s back where it came from.'
+              : charge.status === 'disputed'
+                ? 'You disputed this charge. It’s on hold while it’s looked into.'
+                : 'This one is still going through. Give it a moment before trying again.';
+    return (
+      <div className="w-full px-5 py-8 lg:mx-auto lg:max-w-[420px] text-center">
+        <p className="mb-1.5 text-[19px] font-medium">{charge.merchantName}</p>
+        <p className="text-[13px] leading-relaxed text-foreground-secondary">{explain}</p>
+      </div>
+    );
+  }
+
+  const explorer = getNetworkByChainId(ACTIVE_CHAIN_ID)?.blockExplorer;
+  const paidNow = charge.status === 'approved' && charge.paidNow;
+
+  return (
+    <>
+    <ChargeApproval
+      merchantName={charge.merchantName}
+      amount={amount}
+      raisedBy={charge.raisedBy}
+      raisedAt={charge.createdAt}
+      items={charge.items ?? approval?.order.lines.map((l) => ({ name: l.name, quantity: l.quantity, cents: l.lineCents })) ?? null}
+      taxCents={charge.taxCents}
+      discountCents={charge.discountCents}
+      table={charge.table ?? null}
+      shopPaysBps={charge.paidNowBps ?? null}
+      mode={mode}
+      onModeChange={onModeChange}
+      overTimeMinimum={payNowOnly ? PAY_OVER_TIME_MIN_CENTS / 100 : null}
+      // A shop's Pay now only: no Over time at all (the server refuses a plan on it either way).
+      overTimeShown={showsOverTime(charge.overTime)}
+      online={online ? { channel: online.channel, host } : null}
+      doneLine={stillOpen ? doneLine(host) : null}
+      readyToAllocate={balancesLoading ? null : cash}
+      spendable={null}
+      onPayNow={onPayNow}
+      payingLabel={paying ? PAYING[paying] : null}
+      onAddMoney={() => setAddMoneyOpen(true)}
+      paid={
+        paidNow
+          ? {
+              at: charge.paidAt ?? null,
+              left: balancesLoading ? null : Math.max(0, cash),
+              receiptUrl: explorer && charge.txHash ? `${explorer}/tx/${charge.txHash}` : null,
+            }
+          : null
+      }
+      onItsWay={onItsWay}
+      onDone={leave}
+      splitInto={charge.splitInto ?? splitInto}
+      onSplitChange={setSplitInto}
+      splitOptions={splitOptions}
+      ratePerCycle={chosenRate ?? undefined}
+      perCycleLimit={perCycleLimit}
+      doneBy={(n) => `${n} cycle${n === 1 ? '' : 's'} from now`}
+      busy={busy}
+      error={error ?? chosenQuote?.refusal ?? null}
+      planTerms={prepared?.disclosure ?? null}
+      onApprove={onApprove}
+      onDecline={onDecline}
+      // Closing leaves it waiting: Shop charges and the banner on Send and Activity bring it back.
+      onLeave={leave}
+      approved={charge.status === 'approved' && !charge.paidNow}
+      /*
+       * Only on iOS, and only outside the installed app.
+       *
+       * That is the one combination the platform strands: Android hands a scanned link to the
+       * installed PWA, and inside the app there is nowhere to hand off to. On Android without the
+       * app the useful offer is to install it, which is not this line's job.
+       */
+      appHandoffCode={installMode === 'ios' ? charge.code : null}
+    />
+    <AddMoneyModal open={addMoneyOpen} onOpenChange={setAddMoneyOpen} />
+    </>
+  );
+}

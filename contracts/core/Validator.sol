@@ -151,6 +151,20 @@ contract Validator is
     // Mapping to track royalty balances per token
     mapping(address => uint256) private royaltyBalances;
 
+    // ============ Trust agreement v5 (appended) ============
+
+    /// @notice Agreement and rider versions this validator has adopted, per asset type: asset type =>
+    ///         content hash => URI. Empty = not adopted. DeedNFT mints and elections accept only adopted
+    ///         hashes (brief item 4; DECISIONS, Addendum 1 item 4).
+    mapping(uint256 => mapping(bytes32 => string)) public agreementVersionURI;
+
+    event AgreementVersionAdopted(uint256 indexed assetTypeId, bytes32 indexed versionHash, string uri);
+    event AgreementVersionRevoked(uint256 indexed assetTypeId, bytes32 indexed versionHash);
+
+    /// @dev The trust agreement applies only to Land and Estate (Addendum 1).
+    error AgreementOutsideAssetScope(uint256 assetTypeId);
+    error EmptyAgreementVersion();
+
     // ============ Constructor ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -262,6 +276,15 @@ contract Validator is
         require(hasRole(METADATA_ROLE, msg.sender), "Validator: Caller must have METADATA_ROLE");
         require(bytes(_uri).length > 0, "Validator: URI cannot be empty");
         delete operatingAgreements[_uri];
+        // De-register it as a prefix too (audit D-14): a removed agreement must stop validating.
+        bytes32 h = keccak256(bytes(_uri));
+        for (uint256 i = 0; i < registeredAgreementURIs.length; i++) {
+            if (keccak256(bytes(registeredAgreementURIs[i])) == h) {
+                registeredAgreementURIs[i] = registeredAgreementURIs[registeredAgreementURIs.length - 1];
+                registeredAgreementURIs.pop();
+                break;
+            }
+        }
     }
 
     /**
@@ -378,15 +401,13 @@ contract Validator is
         // Get the asset type from traits
         bytes memory assetTypeBytes = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256("assetType"));
         if (assetTypeBytes.length == 0) {
-            emit ValidationError(_tokenId, "Failed to retrieve asset type");
-            return false;
+            return _rejectDeed(deedNFTAddress, _tokenId, "Failed to retrieve asset type");
         }
         uint256 assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
         
         // Check if the asset type is supported
         if (!supportedAssetTypes[assetTypeId]) {
-            emit ValidationError(_tokenId, "Asset type not supported");
-            return false;
+            return _rejectDeed(deedNFTAddress, _tokenId, "Asset type not supported");
         }
         
         // Get validation criteria for the asset type
@@ -396,13 +417,11 @@ contract Validator is
         if (criteria.requireOperatingAgreement) {
             bytes memory agreementBytes = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256("operatingAgreement"));
             if (agreementBytes.length == 0) {
-                emit ValidationError(_tokenId, "Operating agreement is required but not set");
-                return false;
+                return _rejectDeed(deedNFTAddress, _tokenId, "Operating agreement is required but not set");
             }
             string memory agreement = abi.decode(agreementBytes, (string));
-            if (bytes(agreement).length == 0 || !_validateOperatingAgreement(agreement)) {
-                emit ValidationError(_tokenId, "Invalid operating agreement");
-                return false;
+            if (bytes(agreement).length == 0 || !_validateOperatingAgreement(agreement, _tokenId)) {
+                return _rejectDeed(deedNFTAddress, _tokenId, "Invalid operating agreement");
             }
         }
         
@@ -410,13 +429,11 @@ contract Validator is
         if (criteria.requireDefinition) {
             bytes memory definitionBytes = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256("definition"));
             if (definitionBytes.length == 0) {
-                emit ValidationError(_tokenId, "Definition is required but not set");
-                return false;
+                return _rejectDeed(deedNFTAddress, _tokenId, "Definition is required but not set");
             }
             string memory definition = abi.decode(definitionBytes, (string));
             if (bytes(definition).length == 0) {
-                emit ValidationError(_tokenId, "Definition cannot be empty");
-                return false;
+                return _rejectDeed(deedNFTAddress, _tokenId, "Definition cannot be empty");
             }
         }
         
@@ -464,15 +481,13 @@ contract Validator is
         // Get the asset type from subdivision unit traits
         bytes memory assetTypeBytes = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256("assetType"));
         if (assetTypeBytes.length == 0) {
-            emit ValidationError(tokenId, "Failed to retrieve asset type");
-            return false;
+            return _rejectUnit(subdivideContract, deedId, unitId, "Failed to retrieve asset type");
         }
         uint256 assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
         
         // Check if the asset type is supported
         if (!supportedAssetTypes[assetTypeId]) {
-            emit ValidationError(tokenId, "Asset type not supported");
-            return false;
+            return _rejectUnit(subdivideContract, deedId, unitId, "Asset type not supported");
         }
         
         // Get validation criteria for the asset type
@@ -482,13 +497,12 @@ contract Validator is
         if (criteria.requireOperatingAgreement) {
             bytes memory agreementBytes = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256("operatingAgreement"));
             if (agreementBytes.length == 0) {
-                emit ValidationError(tokenId, "Operating agreement is required but not set");
-                return false;
+                return _rejectUnit(subdivideContract, deedId, unitId, "Operating agreement is required but not set");
             }
             string memory agreement = abi.decode(agreementBytes, (string));
-            if (bytes(agreement).length == 0 || !_validateOperatingAgreement(agreement)) {
-                emit ValidationError(tokenId, "Invalid operating agreement");
-                return false;
+            // Units inherit the parent deed's agreement, so the suffix is the parent deed ID.
+            if (bytes(agreement).length == 0 || !_validateOperatingAgreement(agreement, deedId)) {
+                return _rejectUnit(subdivideContract, deedId, unitId, "Invalid operating agreement");
             }
         }
         
@@ -496,13 +510,11 @@ contract Validator is
         if (criteria.requireDefinition) {
             bytes memory definitionBytes = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256("definition"));
             if (definitionBytes.length == 0) {
-                emit ValidationError(tokenId, "Definition is required but not set");
-                return false;
+                return _rejectUnit(subdivideContract, deedId, unitId, "Definition is required but not set");
             }
             string memory definition = abi.decode(definitionBytes, (string));
             if (bytes(definition).length == 0) {
-                emit ValidationError(tokenId, "Definition cannot be empty");
-                return false;
+                return _rejectUnit(subdivideContract, deedId, unitId, "Definition cannot be empty");
             }
         }
         
@@ -525,6 +537,27 @@ contract Validator is
         return isValid;
     }
     
+    /**
+     * @dev A failed check records `false` on the deed. It used to return early and leave any earlier
+     *      `true` in place, so a validator re-checking a deed whose agreement or traits had gone bad could
+     *      not withdraw its verdict (found while fixing audit D-14).
+     */
+    function _rejectDeed(address deedNFTAddress, uint256 tokenId, string memory reason) private returns (bool) {
+        emit ValidationError(tokenId, reason);
+        IDeedNFT(deedNFTAddress).updateValidationStatus(tokenId, false, address(this));
+        emit DeedValidated(tokenId, false);
+        return false;
+    }
+
+    /// @dev Unit counterpart of {_rejectDeed}.
+    function _rejectUnit(address subdivideContract, uint256 deedId, uint256 unitId, string memory reason) private returns (bool) {
+        uint256 tokenId = (deedId << 128) | unitId;
+        emit ValidationError(tokenId, reason);
+        ISubdivide(subdivideContract).updateUnitValidationStatus(deedId, unitId, false, address(this));
+        emit DeedValidated(tokenId, false);
+        return false;
+    }
+
     /**
      * @dev Validates a subdivision unit definition against criteria
      * @param deedId ID of the parent DeedNFT
@@ -617,31 +650,39 @@ contract Validator is
     }
 
     /**
-     * @dev Internal function to validate an operating agreement
+     * @dev Internal function to validate an operating agreement.
+     *      Audit D-14: substring matching let `https://evil/forged.pdf?x=<registered URI>` through. An
+     *      agreement is accepted only if it is exactly a named registered URI, or exactly one of the
+     *      accepted bases (a named registered URI, the default agreement URI, or baseUri) followed by the
+     *      deed's token ID in decimal, which is how mintAsset builds it.
      * @param agreement The operating agreement to validate
+     * @param tokenId The deed whose ID the agreement may carry as its suffix
      * @return Whether the agreement is valid
      */
-    function _validateOperatingAgreement(string memory agreement) internal view returns (bool) {
-        // Check if the operating agreement is registered
+    function _validateOperatingAgreement(string memory agreement, uint256 tokenId) internal view returns (bool) {
+        // Check if the operating agreement is registered (and still named)
         if (bytes(operatingAgreements[agreement]).length > 0) {
             return true;
         }
-        
-        // Check if the agreement contains the baseUri (for default agreements)
-        if (bytes(baseUri).length > 0 && StringUtils.contains(agreement, baseUri)) {
+        bytes32 h = keccak256(bytes(agreement));
+        string memory suffix = tokenId.toString();
+        if (_isBasePlusSuffix(h, defaultOperatingAgreementUri, suffix) || _isBasePlusSuffix(h, baseUri, suffix)) {
             return true;
         }
-        
-        // Check if the agreement is a registered agreement with tokenId appended
-        // Check each registered agreement to see if it's a prefix of the provided agreement
         for (uint256 i = 0; i < registeredAgreementURIs.length; i++) {
             string memory registeredAgreement = registeredAgreementURIs[i];
-            if (StringUtils.contains(agreement, registeredAgreement)) {
+            // A removed name de-registers the agreement (audit D-14)
+            if (bytes(operatingAgreements[registeredAgreement]).length == 0) continue;
+            if (_isBasePlusSuffix(h, registeredAgreement, suffix)) {
                 return true;
             }
         }
-        
         return false;
+    }
+
+    /// @dev Exact match of `base ++ suffix` against an agreement hash; an empty base never matches.
+    function _isBasePlusSuffix(bytes32 agreementHash, string memory base, string memory suffix) private pure returns (bool) {
+        return bytes(base).length > 0 && keccak256(bytes.concat(bytes(base), bytes(suffix))) == agreementHash;
     }
 
     /**
@@ -696,6 +737,18 @@ contract Validator is
         
         // Enable this asset type
         supportedAssetTypes[assetTypeId] = true;
+    }
+
+    /**
+     * @notice Whether `traitKey` (keccak256 of the trait name) is a required trait for the asset type.
+     *         DeedNFT uses it to stop a holder changing what this validator vouched for (audit D-1).
+     */
+    function isRequiredTrait(uint256 assetTypeId, bytes32 traitKey) external view returns (bool) {
+        string[] storage required = validationCriteria[assetTypeId].requiredTraits;
+        for (uint256 i = 0; i < required.length; i++) {
+            if (keccak256(bytes(required[i])) == traitKey) return true;
+        }
+        return false;
     }
 
     /**
@@ -852,6 +905,33 @@ contract Validator is
     }
 
     /**
+     * @notice Adopts a trust agreement (or rider) version for an asset type, so holders of this validator's
+     *         deeds may mint with it or elect it. Land and Estate only: the validator refuses to attach the
+     *         agreement to Vehicle or CommercialEquipment (Addendum 1). The URI is also registered by name,
+     *         so validateDeed accepts it as the deed's operating agreement.
+     * @dev Adoption is forward-looking: revoking it stops new mints and elections and never touches a deed
+     *      already on it. A validator cannot change any deed's agreement hash.
+     */
+    function adoptAgreementVersion(uint256 assetTypeId, bytes32 versionHash, string calldata uri, string calldata name)
+        external
+        onlyRole(METADATA_ROLE)
+    {
+        if (assetTypeId != uint256(IDeedNFT.AssetType.Land) && assetTypeId != uint256(IDeedNFT.AssetType.Estate)) {
+            revert AgreementOutsideAssetScope(assetTypeId);
+        }
+        if (versionHash == bytes32(0) || bytes(uri).length == 0 || bytes(name).length == 0) revert EmptyAgreementVersion();
+        agreementVersionURI[assetTypeId][versionHash] = uri;
+        operatingAgreements[uri] = name;
+        emit AgreementVersionAdopted(assetTypeId, versionHash, uri);
+    }
+
+    /// @notice Stops new mints and elections on a version. Deeds already on it keep it.
+    function revokeAgreementVersion(uint256 assetTypeId, bytes32 versionHash) external onlyRole(METADATA_ROLE) {
+        delete agreementVersionURI[assetTypeId][versionHash];
+        emit AgreementVersionRevoked(assetTypeId, versionHash);
+    }
+
+    /**
      * @dev Validates a deed NFT's operating agreement
      * @param operatingAgreement URI of the operating agreement
      * @return Whether the operating agreement is valid
@@ -859,15 +939,30 @@ contract Validator is
     function validateOperatingAgreement(
         string memory operatingAgreement
     ) external view override returns (bool) {
-        // Check if the operating agreement is registered
-        if (bytes(operatingAgreements[operatingAgreement]).length == 0 && 
-            !StringUtils.contains(operatingAgreement, defaultOperatingAgreementUri)) {
+        // Exact registered name, or the default agreement URI followed only by a decimal token ID
+        // (audit D-14: substring matching accepted any URI that merely contained the default).
+        if (bytes(operatingAgreements[operatingAgreement]).length == 0 &&
+            !_isDecimalSuffixOf(operatingAgreement, defaultOperatingAgreementUri)) {
             return false;
         }
         
         // Additional validation logic can be added here
         // For example, checking if the operating agreement is appropriate for the asset type
         
+        return true;
+    }
+
+    /// @dev True when `s` is `base` followed by one or more decimal digits and nothing else.
+    function _isDecimalSuffixOf(string memory s, string memory base) private pure returns (bool) {
+        bytes memory sb = bytes(s);
+        bytes memory bb = bytes(base);
+        if (bb.length == 0 || sb.length <= bb.length) return false;
+        for (uint256 i = 0; i < bb.length; i++) {
+            if (sb[i] != bb[i]) return false;
+        }
+        for (uint256 i = bb.length; i < sb.length; i++) {
+            if (sb[i] < 0x30 || sb[i] > 0x39) return false;
+        }
         return true;
     }
 

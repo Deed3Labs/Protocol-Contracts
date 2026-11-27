@@ -1,0 +1,235 @@
+{
+ "money.book": {
+  "credit": 14212.4,
+  "savingsBacked": 8640,
+  "unsecured": 5572.4,
+  "limits": 41600,
+  "lost": 612
+ },
+ "money.payouts_due": {
+  "owed14": 12839.25,
+  "dueMembers": 1482.36
+ },
+ "money.floor": 0.2,
+ "money.yield.pool": {
+  "principal": 8962.1,
+  "queued": 0,
+  "opened": "15 Oct",
+  "cycleDays": 30,
+  "curve": {
+   "base": 25,
+   "s1": 75,
+   "s2": 900,
+   "kink": 0.8
+  }
+ },
+ "money.yield.history": {
+  "days": [
+   "15 Oct",
+   "16 Oct",
+   "17 Oct",
+   "18 Oct",
+   "19 Oct",
+   "20 Oct",
+   "21 Oct",
+   "22 Oct"
+  ],
+  "assets": [
+   8062.1,
+   8062.1,
+   8062.1,
+   7818.8,
+   7818.8,
+   8968.8,
+   9000
+  ],
+  "lent": [
+   5210,
+   5262.4,
+   5301.1,
+   5355.8,
+   5410.2,
+   5488,
+   5540.6
+  ]
+ },
+ "money.ap.balance_weeks": [
+  0,
+  400,
+  520,
+  690,
+  860,
+  1110
+ ],
+ "money.credit.unsecured_weeks": [
+  0,
+  900,
+  2050,
+  3450,
+  4400,
+  5100
+ ],
+ "money.coop.weekly": [
+  22.4,
+  39.4,
+  78.4,
+  109.2,
+  126.8,
+  100
+ ],
+ "money.flows": [
+  [
+   1,
+   "out",
+   412.6,
+   "Rosa’s Panadería",
+   "NET-14 payout"
+  ],
+  [
+   3,
+   "in",
+   592.94,
+   "Member repayments",
+   "Autopay batch"
+  ],
+  [
+   9,
+   "in",
+   889.42,
+   "Member repayments",
+   "Autopay batch"
+  ],
+  [
+   12,
+   "out",
+   9510.65,
+   "Monthly run",
+   "11 shops · NET-30"
+  ],
+  [
+   14,
+   "out",
+   2916,
+   "NET-14 payouts",
+   "Arrowhead Nails, Cajon Phone"
+  ],
+  [
+   16,
+   "in",
+   2310.2,
+   "Member repayments",
+   "Autopay batch"
+  ],
+  [
+   28,
+   "out",
+   1140.8,
+   "NET-14 payouts",
+   "Estimate"
+  ]
+ ],
+ "money.reserve": {
+  "ratio": "1 : 1",
+  "checked": "2 min ago"
+ },
+ "money.ap.losses": 3,
+ "money.ap.lent_out": 0,
+ "money.payout.queue": [
+  [
+   1792627200000,
+   "Rosa’s Panadería",
+   412.6
+  ],
+  [
+   1793577600000,
+   "Monthly run · 11 shops",
+   9510.65
+  ],
+  [
+   1793750400000,
+   "Arrowhead Nails",
+   732
+  ],
+  [
+   1793750400000,
+   "Cajon Phone Repair",
+   2184
+  ]
+ ],
+ "money.yield.since_opened": [
+  [
+   1792022400000,
+   "Opened",
+   "14 founding members",
+   8062.1
+  ],
+  [
+   1792281600000,
+   "Withdrawal",
+   "1 member · paid at once",
+   -250
+  ],
+  [
+   1792454400000,
+   "Deposits",
+   "4 new members",
+   1150
+  ]
+ ],
+ "money.yield.joined_this_week": 4,
+ "money.credit.outstanding_weeks": [
+  0,
+  900,
+  3100,
+  6200,
+  9400,
+  12100
+ ],
+ "money.credit.limits_weeks": [
+  0,
+  8000,
+  15400,
+  24600,
+  31800,
+  37200
+ ],
+ "money.credit.owed_month_start": 7040,
+ "money.credit.autopay": 98,
+ "money.credit.aging": [
+  [
+   "Current",
+   12480.2
+  ],
+  [
+   "1–30 d",
+   1310.4
+  ],
+  [
+   "31–60 d",
+   421.8
+  ]
+ ],
+ "money.credit.limit_sizes": [
+  [
+   "$100",
+   38
+  ],
+  [
+   "$250",
+   46
+  ],
+  [
+   "$500",
+   28
+  ],
+  [
+   "$1,000+",
+   12
+  ]
+ ],
+ "money.credit.limit_range": {
+  "smallest": 100,
+  "largest": 1500
+ },
+ "money.credit.recovered": 0
+}

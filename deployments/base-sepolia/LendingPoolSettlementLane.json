@@ -1,0 +1,4287 @@
+{
+  "address": "0xeccfDDCac073a657CFB94D3Ff9f22997e7EcBAbD",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "valuation_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolAlreadyInitialized",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolBadReason",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "reason"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolBelowMinimum",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolChargePending",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolDirectBorrowOff",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolEncumbered",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "free"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolEncumbranceUnreadable",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolFinalMaturity",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolHolderCap",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "held"
+        },
+        {
+          "type": "uint256",
+          "name": "cap"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolInsufficientCash",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "available"
+        },
+        {
+          "type": "uint256",
+          "name": "requested"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolInvalidAmount",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolInvalidRateModel",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolModuleMismatch",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNoControls",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNoValuationEvent",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNotAuthorized",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNotFinalMaturity",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNotRenewable",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNotRequestOwner",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNotSuspended",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNotYet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "effectiveAt"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolNothingQueued",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolQueueOpen",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolRateNotice",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "effectiveAt"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolRateQuarter",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "quarter"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolReceiverNotOwner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolReleasePending",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolResolutionRequired",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolSeizureExceedsEncumbrance",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "encumbered"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolSettlementCap",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "usedInPeriod"
+        },
+        {
+          "type": "uint256",
+          "name": "capPerPeriod"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolSubscriptionsPaused",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolSuspended",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolSuspensionCeiling",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolTierCap",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "deployedBalance"
+        },
+        {
+          "type": "uint256",
+          "name": "poolTierPrincipal"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolTransferNotAllowed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LendingPoolUtilizationCap",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "utilization"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionApproved",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionProposed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AllowancePosted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "holdbackRate",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "poolAssets",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Approval",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "owner",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "spender",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Deployed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "deploymentId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DeploymentAccountUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Deposit",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "owner",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "assets",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EarnControlsUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "controls",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EncumbranceSourceReverted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "lastKnownLock",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EncumbranceSourceUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EnforcementDestinationUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "destination",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldbackApplied",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "lossChargeId",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldbackMaxAgeUpdated",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "maxAge",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldbackRecorded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "gross",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "held",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldbackReleased",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "InitialClosingRecorded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "at",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "finalMaturity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "InterestAccrued",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "rate",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "interestAccrued",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "InterestBilled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "dueAt",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "InterestCapitalized",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "deployedBalance",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LeftoverSetAside",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "recognizedBy",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LegalHoldPlaced",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "holdId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "orderHash",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "expiresAt",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LegalHoldReleased",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "holdId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LegendScheduled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "legendHash",
+          "indexed": true
+        },
+        {
+          "type": "string",
+          "name": "legend",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "effectiveAt",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LegendSet",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "legendHash",
+          "indexed": true
+        },
+        {
+          "type": "string",
+          "name": "legend",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LossChargeCompleted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "lossChargeId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "absorbed",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "toDeployed",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "toInterest",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "paidOut",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LossChargePosted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "lossChargeId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "denominator",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PaymentDeferred",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PoolTierPrincipalPosted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "QueueCancelled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "by",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "remainingShares",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "QueueFilled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "gross",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "paid",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "remainingShares",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "QueueRequested",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "owner",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "receiver",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "enforcement",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RateModelApplied",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "r0",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "s1",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "k",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "s2",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RateModelProposed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "r0",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "s1",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "k",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "s2",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "effectiveAt",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "lowers",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RecoveryPosted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "unrestored",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Repaid",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Returned",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "interestPaid",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "principalPaid",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "excess",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleAdminChanged",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "previousAdminRole",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "newAdminRole",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleGranted",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleRevoked",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RunOffRequested",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettlementDeployed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "periodUsed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettlementFunderSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "funder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "capPerPeriod",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "periodSeconds",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettlementFunderStopped",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "funder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "by",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettlementHeadroomSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Subscribed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "receiver",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "assets",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "exemptionCode",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SuccessorRedemptionRequested",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "successor",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Suspended",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "eventId",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "reason",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "expiresAt",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SuspensionLifted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "eventId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SuspensionRenewed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "eventId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "expiresAt",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "orderHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Transfer",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "UnpaidClaimed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ValuationEventCleared",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ValuationEventRecorded",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Withdraw",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "receiver",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "owner",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "assets",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WithdrawalClaimed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "receiver",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "assets",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "YieldPoolInitialized",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "controls",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "deploymentAccount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "openingDeployedBalance",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "fallback",
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "BORROWER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "CCO_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_ADMIN_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEPLOYER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ENFORCER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LEFTOVER_PERIOD",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LEGAL_ORDER",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LIQUIDATOR_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LOSS_EVENT",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LOSS_REPORTER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_UTILIZATION",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_SUBSCRIPTION_UNITS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "NO_REQUEST",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "OPERATOR_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "SUSPENSION_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "TREASURER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "USDC_OR_NETWORK",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "VALUATION_PENDING",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "VALUATION_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "accruedInterest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "allowance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "owner"
+        },
+        {
+          "type": "address",
+          "name": "spender"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "allowancePostedAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "applyHoldbacks",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "applyRateModel",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "approve",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "spender"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "asset",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "availableCash",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "balanceOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "borrow",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "borrowableToday",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cancelRequest",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "claimUnpaid",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "claimWithdrawal",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "collateralKind",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "convertToAssets",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "convertToShares",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "decimals",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "decreaseAllowance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "spender"
+        },
+        {
+          "type": "uint256",
+          "name": "subtractedValue"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deploy",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "deploySettlement",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "deployedBalance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deploymentAccount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deploymentCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deposit",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "earnControls",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "encumberedOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "encumbranceSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementDestination",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementFilledOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "key"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        },
+        {
+          "type": "uint256",
+          "name": "paid"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementQueuedOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "key"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementRedeem",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fillQueue",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "maxCount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "filled"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "finalMaturity",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "freeSharesOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingRate",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingRateAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getRoleAdmin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "grantRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "hasRole",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdbackAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "createdAt"
+        },
+        {
+          "type": "uint256",
+          "name": "maxAge"
+        },
+        {
+          "type": "uint256",
+          "name": "gross"
+        },
+        {
+          "type": "uint256",
+          "name": "held"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdbackBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdbackCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdbackHead",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdbackMaxAge",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdbackOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "key"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "increaseAllowance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "spender"
+        },
+        {
+          "type": "uint256",
+          "name": "addedValue"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialClosing",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "admin"
+        },
+        {
+          "type": "address",
+          "name": "reserveToken"
+        },
+        {
+          "type": "string",
+          "name": "name_"
+        },
+        {
+          "type": "string",
+          "name": "symbol_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "initializeYieldPool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "isSuspended",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lastAccrualAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lastKnownLock",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lastLoweringQuarter",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ledger",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ledgerView",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "liftSuspension",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "lossChargeCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "maxDeposit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "maxMint",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "maxRedeem",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "owner"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "maxWithdraw",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "owner"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "mint",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "name",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "string",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "oldestRequestAge",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingLossCharge",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "pending"
+        },
+        {
+          "type": "uint256",
+          "name": "id"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "absorbed"
+        },
+        {
+          "type": "uint256",
+          "name": "cursor"
+        },
+        {
+          "type": "uint256",
+          "name": "end"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingRate",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "r0"
+        },
+        {
+          "type": "uint256",
+          "name": "s1"
+        },
+        {
+          "type": "uint256",
+          "name": "k"
+        },
+        {
+          "type": "uint256",
+          "name": "s2"
+        },
+        {
+          "type": "uint256",
+          "name": "effectiveAt"
+        },
+        {
+          "type": "bool",
+          "name": "lowers"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "poolLossAllowance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "postAllowance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "postLossCharge",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "previewDeposit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "previewMint",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "previewRedeem",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "previewWithdraw",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proposeRateModel",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "proposerOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "key"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "queueHead",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "queueLength",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "queueRequest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "owner"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "uint256",
+          "name": "shares"
+        },
+        {
+          "type": "uint256",
+          "name": "requestedAt"
+        },
+        {
+          "type": "bool",
+          "name": "enforcement"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "queuedAssets",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "queuedShares",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "queuedSharesOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "key"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "rateModel",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "r0"
+        },
+        {
+          "type": "uint256",
+          "name": "s1"
+        },
+        {
+          "type": "uint256",
+          "name": "k"
+        },
+        {
+          "type": "uint256",
+          "name": "s2"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "redeem",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "address",
+          "name": "owner"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "redeemOrQueue",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "paidNow"
+        },
+        {
+          "type": "uint256",
+          "name": "requestId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "releasableAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "releaseHoldbacks",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "releasePending",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "renewSuspension",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renounceRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repay",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "requestAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "owner"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "uint256",
+          "name": "assets"
+        },
+        {
+          "type": "uint64",
+          "name": "requestedAt"
+        },
+        {
+          "type": "bool",
+          "name": "claimed"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "requestRunOff",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "requestWithdrawal",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "returnFunds",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "revokeRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setDeploymentAccount",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setEarnControls",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setEncumbranceSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setEnforcementDestination",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setHoldbackMaxAge",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSettlementFunder",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSettlementHeadroom",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settlementLane",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "funder"
+        },
+        {
+          "type": "uint256",
+          "name": "capPerPeriod"
+        },
+        {
+          "type": "uint256",
+          "name": "periodSeconds"
+        },
+        {
+          "type": "uint256",
+          "name": "periodStart"
+        },
+        {
+          "type": "uint256",
+          "name": "usedInPeriod"
+        },
+        {
+          "type": "bool",
+          "name": "stopped"
+        },
+        {
+          "type": "uint256",
+          "name": "epoch"
+        },
+        {
+          "type": "uint256",
+          "name": "headroom"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "shareValue",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "stopSettlementFunder",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "subscribe",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "bytes",
+          "name": "attestation"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes4",
+          "name": "interfaceId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "suspend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "suspension",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "eventId"
+        },
+        {
+          "type": "uint8",
+          "name": "reason"
+        },
+        {
+          "type": "uint256",
+          "name": "startedAt"
+        },
+        {
+          "type": "uint256",
+          "name": "expiresAt"
+        },
+        {
+          "type": "address",
+          "name": "lastSigner"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "symbol",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "string",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "syncEncumbrance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalAssets",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalBorrowed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalDeployed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalHoldback",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalSupply",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalUnpaid",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transfer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferFrom",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "unpaidOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "key"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "utilization",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "utilizationBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "valuation",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "vaultCash",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "withdraw",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "assets"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "address",
+          "name": "owner"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}

@@ -1,0 +1,38 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "protocol-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@clear/member"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "clear-merchant",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@clear/merchant"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@clear/docs"
+      ],
+      "port": 5240
+    }
+  ]
+}

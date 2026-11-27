@@ -1,0 +1,8 @@
+@import "tailwindcss";
+/* Clear's own components, for Clear's screens inside the app (Set up Clear runs the Clear app's onboarding). */
+@import "@clear/member-kit/styles/clear-tokens.css";
+@import "@clear/member-kit/styles/clear-components.css" layer(components);
+@source "../../../packages/member-kit/src";
+/* The spec's phone frames, transcribed (scripts/reference-css.mjs), then this app's decisions. */
+@import "./styles/reference.css" layer(components);
+@import "./styles/app.css" layer(components);

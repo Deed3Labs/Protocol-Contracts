@@ -1,0 +1,21 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "apps/api/Dockerfile",
+    "watchPatterns": [
+      "apps/api/**",
+      "packages/domain/**",
+      "packages/merchant-contracts/**",
+      "packages/public-api-contracts/**",
+      "packages/command-types/**",
+      "Dockerfile",
+      "railway.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "bun src/index.ts",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}

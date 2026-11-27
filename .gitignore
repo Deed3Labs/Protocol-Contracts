@@ -33,6 +33,8 @@ yarn-error.log*
 # Build
 dist/
 build/
+.turbo/
+**/.turbo/
 
 # Webflow specific
 webflow/node_modules/
@@ -51,11 +53,16 @@ webflow/.vite/
 # Local OP-stack / infra runtime + heavy data (never commit — ~GBs of chaindata, secrets, etc.)
 ops/
 tmp/
-tools/
+tools/*
+# ... except the signing page (tools/signing-page/README.md), which is source.
+!tools/signing-page/
 *.sst
 **/jwt.txt
 
 # Stray Finder/iCloud "<name> 2" copy artifacts
+# .sol matters most: contracts/ is hardhat's sources dir, so a duplicate compiles as a second
+# copy of the contract and getContractFactory then fails with HH701 (multiple artifacts).
+* 2.sol
 * 2.ts
 * 2.tsx
 *\ 2/
@@ -64,3 +71,23 @@ typechain-types\ 2/
 
 # OpenZeppelin upgrade manifest stale backups (keep the live <network>.json)
 .openzeppelin/*.stale-*.json
+
+# iCloud duplicates. Documents/GitHub is synced, so it makes "<name> 2.ext" copies of files it
+# thinks conflict — they are byte-for-byte junk that git add -A will happily commit.
+* [0-9].*
+
+# The rewards app's dev comparator (public/_ref/cmp.html beside a copy of the spec), not shipped.
+apps/rewards/public/_ref/
+
+# The pay app's dev copy of the spec, for comparing frames, not shipped.
+apps/pay/public/_ref/
+
+# The browser script, copied in by apps/pay's prebuild for js.useclear.org (packages/clear-js), not committed.
+apps/pay/public/js/
+
+# The Base Sepolia fork rehearsal's scratch records (docs/audit/SEPOLIA-REHEARSAL.md): never committed
+deployments/base-sepolia-fork/
+# The signing plan's Safe batches (scripts/signing_plan.ts): regenerated from the chain after each stage. The plan
+# itself, deployments/*/signing-plan.json, is committed after each plan run: Command Center's Build → Signing reads
+# it from the repo (public addresses and call data only).
+deployments/*/safe-batches/signing-*.json

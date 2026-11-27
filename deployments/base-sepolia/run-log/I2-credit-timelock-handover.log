@@ -1,0 +1,19 @@
++ CreditTimelock deployed to 0x39411C23825844c4B14ad964a661d1Cb8238d330
+revolving: owner -> timelock
+term: owner -> timelock
+rateSchedule: owner -> timelock
+networkRegistry: admin -> timelock
+collateral: admin -> timelock
+limits: admin -> timelock
+liquidator: admin -> timelock
+merchantRegistry: admin -> timelock
+claimEscrow: admin -> timelock
+access: admin -> timelock
+membershipRegistry: admin -> timelock
+payoutPool: admin -> timelock
+access: ProxyAdmin -> timelock
+membershipRegistry: ProxyAdmin -> timelock
+
+Credit handover done. The deployer holds no credit admin power.
+ESADepositVault and CLRUSD are not part of it: run vault_timelock_handover.ts.
+LendingPool, the BondVault and the bond collections are not part of it: run earn_timelock_handover.ts.

@@ -1,0 +1,197 @@
+/**
+ * The card-connector interface (card-processing prompt, Phase 9): what the rest of the merchant
+ * back office needs from a card processor, with nothing Stripe-shaped in it.
+ *
+ *   connect      createAccount, onboardingLink, dashboardUrl, accountStatus (availability reads it)
+ *   readers      createLocation, updateLocation, connectionToken, registerReader, presentOnReader, clearReader
+ *   payments     createPayment, getPayment, raiseAuthorisation, capture, cancel, refund
+ *   deposits     getPayout, listPayouts, payoutItems, balanceItems (payouts and fee data)
+ *   Clear's fee  supportsPlatformFee: taken off each sale, or billed monthly (fees/feeBilling.ts)
+ *
+ * Stripe is the first implementation (stripeConnector.ts, with its webhooks in stripeEvents/).
+ * Square has a stub and a note (squareConnector.ts, SQUARE.md). Only connector files import a
+ * processor's SDK, and only registry.ts picks a connector.
+ */
+
+export type CardProviderName = 'stripe' | 'square';
+
+export interface ConnectorAccountStatus {
+  chargesEnabled: boolean;
+  detailsSubmitted: boolean;
+}
+
+/** A card payment as the processor sees it. */
+export interface PaymentSnapshot {
+  paymentId: string;
+  /**
+   * - `waiting`: created, no card yet (or a card was declined and nothing is held)
+   * - `authorised`: a hold on the card, not yet captured
+   * - `captured`: taken
+   * - `cancelled`: voided, or expired uncaptured
+   * - `processing`: in flight at the processor
+   */
+  state: 'waiting' | 'authorised' | 'captured' | 'cancelled' | 'processing';
+  /** What the payment is for, tip included. */
+  amountCents: number;
+  /** Held on the card and capturable now; 0 unless authorised. */
+  capturableCents: number;
+  /** Set when the last attempt was declined. The code, never shown to the counter. */
+  declineCode: string | null;
+  card: { brand: string | null; last4: string | null } | null;
+  /** The card allows raising the hold (a tip added after the tap). */
+  incrementalSupported: boolean;
+}
+
+export interface RefundSnapshot {
+  refundId: string;
+  state: 'succeeded' | 'pending' | 'failed';
+  failureReason: string | null;
+}
+
+/** One money movement in the shop's processor balance, with the processor's own fee split. */
+export interface BalanceItem {
+  id: string;
+  /** charge, refund, adjustment (disputes), and so on: the processor's word. */
+  type: string;
+  /** Signed: a charge is positive, a refund negative. */
+  amountCents: number;
+  /** Fees on it, as the processor charged them: its own, and the platform's (Clear's). */
+  processorFeeCents: number;
+  platformFeeCents: number;
+  netCents: number;
+  paymentId: string | null;
+  createdAt: string;
+}
+
+export interface Payout {
+  id: string;
+  status: 'pending' | 'in_transit' | 'paid' | 'failed' | 'canceled';
+  amountCents: number;
+  arrivalDate: string;
+  automatic: boolean;
+}
+
+export class CardDeclined extends Error {
+  constructor(readonly code: string | null) {
+    super('The card was declined');
+    this.name = 'CardDeclined';
+  }
+}
+
+export class ReaderUnavailable extends Error {
+  constructor(
+    readonly reason: 'busy' | 'offline' | 'timeout',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ReaderUnavailable';
+  }
+}
+
+export interface Address {
+  line1: string;
+  line2: string | null;
+  city: string;
+  region: string;
+  postalCode: string;
+  country: string;
+}
+
+export interface CardConnectorProvider {
+  readonly provider: CardProviderName;
+  /** Whether the processor can take Clear's fee off each sale. Stripe can; a provider that can't is billed monthly (Phase 9). */
+  readonly supportsPlatformFee: boolean;
+  /**
+   * How long an uncaptured in-person authorisation holds before the processor lets it go: Stripe
+   * 2 days, Square 36 hours. The safety capture takes anything nobody closed well inside it.
+   */
+  readonly authorisationHoldMs: number;
+  /**
+   * Opens the shop's own processor account. `idempotencyKey` makes a retried request return the
+   * account the first one opened rather than a second account.
+   */
+  createAccount(input: {
+    merchant: string;
+    businessName: string;
+    email: string | null;
+    idempotencyKey: string;
+  }): Promise<{ externalAccountId: string }>;
+  /** A single-use link into the processor's hosted onboarding. */
+  onboardingLink(externalAccountId: string, urls: { returnUrl: string; refreshUrl: string }): Promise<{ url: string }>;
+  /** Where an already-connected shop manages its account. */
+  dashboardUrl(externalAccountId: string): string;
+  /** The account's status, asked of the processor directly rather than waiting for a webhook. */
+  accountStatus(externalAccountId: string): Promise<ConnectorAccountStatus>;
+
+  // ---- Readers ---------------------------------------------------------------------------------
+  /** The shop's one reader location on its own account, at its address. */
+  createLocation(account: string, input: { name: string; address: Address }): Promise<{ locationId: string }>;
+  /** The shop moved or renamed: its reader location follows. */
+  updateLocation(account: string, locationId: string, input: { name: string; address: Address }): Promise<void>;
+  /** For the reader SDKs, scoped to the shop's location. */
+  connectionToken(account: string, locationId: string): Promise<{ secret: string }>;
+  /** A smart reader, by the code it shows on its screen. */
+  registerReader(account: string, input: { registrationCode: string; label: string; locationId: string }): Promise<{ externalReaderId: string; label: string }>;
+
+  // ---- Payments --------------------------------------------------------------------------------
+  /** A card-present payment, captured later. `amountCents` includes the tip. */
+  createPayment(
+    account: string,
+    input: { amountCents: number; applicationFeeCents: number; metadata: Record<string, string>; idempotencyKey: string },
+  ): Promise<{ snapshot: PaymentSnapshot; clientSecret: string }>;
+  /**
+   * A card paid from the phone page (Clear Terminal): a hosted checkout on the shop's own account,
+   * captured when paid, with Clear's fee taken as on any card sale. Optional: a processor without
+   * one simply doesn't offer card on the phone page.
+   */
+  createCheckout?(
+    account: string,
+    input: { amountCents: number; applicationFeeCents: number; lineName: string; successUrl: string; cancelUrl: string; metadata: Record<string, string>; idempotencyKey: string },
+  ): Promise<{ sessionId: string; url: string }>;
+  /**
+   * A card paid online (Pay with Clear's modal and link page): a PaymentIntent on the shop's own
+   * account for the processor's fields in Clear's frame, captured when the customer confirms. Clear's
+   * fee is taken as on any card sale. Optional: a processor without it doesn't offer card online.
+   */
+  createOnlinePayment?(
+    account: string,
+    input: { amountCents: number; applicationFeeCents: number; metadata: Record<string, string>; idempotencyKey: string },
+  ): Promise<{ snapshot: PaymentSnapshot; clientSecret: string }>;
+  /** The client secret of an online payment already started, so the fields can pick it back up. */
+  onlinePaymentSecret?(account: string, paymentId: string): Promise<string>;
+  /**
+   * Lets wallets (Apple Pay, Google Pay) show for a domain on the shop's account: the shop's website
+   * and Clear's pay host. Safe to repeat.
+   */
+  registerPaymentDomain?(account: string, domain: string): Promise<void>;
+  /** Whether the processor key here takes real money. Test-mode payments never run on a live key. */
+  readonly livemode?: boolean;
+  getPayment(account: string, paymentId: string): Promise<PaymentSnapshot>;
+  /** Raise the hold to a new total. Throws CardDeclined if the card won't take it; the old hold stands. */
+  raiseAuthorisation(account: string, paymentId: string, input: { amountCents: number; applicationFeeCents: number }): Promise<PaymentSnapshot>;
+  capture(account: string, paymentId: string, input: { amountCents: number; applicationFeeCents: number; idempotencyKey: string }): Promise<PaymentSnapshot>;
+  /**
+   * Sends a payment to a smart reader (server-driven): the reader asks for the card and authorises.
+   * Asynchronous; the outcome comes back on the payment. Throws ReaderUnavailable if the reader is
+   * busy, offline or didn't answer.
+   */
+  presentOnReader(account: string, externalReaderId: string, paymentId: string): Promise<void>;
+  /** Clears whatever the smart reader is asking for. Refused (ReaderUnavailable 'busy') mid-authorisation. */
+  clearReader(account: string, externalReaderId: string): Promise<void>;
+  /** Void: releases the hold. Safe to repeat. */
+  cancel(account: string, paymentId: string): Promise<PaymentSnapshot>;
+  refund(
+    account: string,
+    paymentId: string,
+    input: { amountCents: number; refundApplicationFee: boolean; idempotencyKey: string; metadata: Record<string, string> },
+  ): Promise<RefundSnapshot>;
+
+  // ---- Payouts and fee data (Phase 8) -----------------------------------------------------------
+  getPayout(account: string, payoutId: string): Promise<Payout>;
+  /** Payouts created since a moment, newest first. */
+  listPayouts(account: string, since: Date): Promise<Payout[]>;
+  /** What an automatic payout settled: every balance item in it (not the payout itself). */
+  payoutItems(account: string, payoutId: string): Promise<BalanceItem[]>;
+  /** Charges (and refunds) in the balance since a moment, for reconciliation. */
+  balanceItems(account: string, since: Date): Promise<BalanceItem[]>;
+}

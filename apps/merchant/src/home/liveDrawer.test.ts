@@ -1,0 +1,88 @@
+import { describe, expect, test } from 'bun:test';
+import { createMockMerchantApi } from '../data/merchantApi/mock';
+import { STAFF, STAFF_ID } from '../data/merchantApi/seed';
+import { drawerPrompt, drawerStep, mayCloseDay, shiftDrawer } from './liveDrawer';
+
+const names = new Map(STAFF.map((s) => [s.id, s.name]));
+
+describe('the drawer on a live Home', () => {
+  test('open → first count → the counter waits, someone else counts second → close', async () => {
+    const { api, controls } = createMockMerchantApi({ delayMs: 0, viewer: STAFF_ID.luis });
+    const s = (await api.drawer())!;
+    expect(drawerStep(null, null, STAFF_ID.luis)).toEqual({ kind: 'open' });
+    expect(drawerStep(s, await api.counts(s.id), STAFF_ID.luis)).toEqual({ kind: 'count', which: 'first' });
+    // Straight after opening, the count is plainly the closing one.
+    expect(drawerPrompt(s, await api.counts(s.id), STAFF_ID.luis, names)).toMatchObject({ cta: 'Count to close', det: expect.stringContaining('At close') });
+    await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
+    const after = await api.counts(s.id);
+    expect(drawerStep(s, after, STAFF_ID.luis)).toEqual({ kind: 'wait' });
+    // Blind: nothing the panel says names a figure.
+    expect(JSON.stringify(drawerPrompt(s, after, STAFF_ID.luis, names))).not.toMatch(/\\$|212/);
+    controls.setViewer(STAFF_ID.mike);
+    expect(drawerStep(s, await api.counts(s.id), STAFF_ID.mike)).toEqual({ kind: 'count', which: 'second' });
+    await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
+    expect(drawerStep(s, await api.counts(s.id), STAFF_ID.mike)).toEqual({ kind: 'close' });
+    // Agreeing doesn't close the day: the panel offers it.
+    expect(drawerPrompt(s, await api.counts(s.id), STAFF_ID.mike, names).cta).toBe('Close the day');
+  });
+
+  test('short: a sign-off first; disagree: a recount', async () => {
+    const short = createMockMerchantApi({ delayMs: 0, drawer: 'short', viewer: STAFF_ID.mike });
+    const s = (await short.api.drawer())!;
+    const v = await short.api.counts(s.id);
+    expect(drawerStep(s, v, STAFF_ID.mike)).toMatchObject({ kind: 'result' });
+    expect(drawerPrompt(s, v, STAFF_ID.mike, names).det).toContain('A manager signs it off');
+    await short.api.signOff(s.id, { note: 'Change error', pin: '9999' });
+    expect(drawerStep(s, await short.api.counts(s.id), STAFF_ID.mike)).toEqual({ kind: 'close' });
+
+    const dis = createMockMerchantApi({ delayMs: 0, drawer: 'disagree', viewer: STAFF_ID.mike });
+    const d = (await dis.api.drawer())!;
+    expect(drawerPrompt(d, await dis.api.counts(d.id), STAFF_ID.mike, names).det).toContain('One of you counts again');
+  });
+});
+
+describe('the Drawer row in the shift column', () => {
+  test('open: the start and the cash sales, never a total; counted: the whole row; closed: nothing', async () => {
+    const { api, controls } = createMockMerchantApi({ delayMs: 0, viewer: STAFF_ID.luis });
+    const s = (await api.drawer())!;
+    const day = await api.orderHistory({ from: s.businessDate, to: s.businessDate });
+    const cash = day.filter((o) => o.tenders.some((t) => t.method === 'cash' && ['approved', 'captured', 'refunded', 'partly_refunded'].includes(t.status))).length;
+
+    const open = shiftDrawer(s, await api.counts(s.id), day)!;
+    expect(open).toEqual({ startCents: s.startingCashCents, cashSales: cash });
+    expect(open).not.toHaveProperty('cashInCents');
+
+    // One count in: still blind.
+    await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
+    expect(shiftDrawer(s, await api.counts(s.id), day)).not.toHaveProperty('cashInCents');
+
+    controls.setViewer(STAFF_ID.mike);
+    await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
+    const v = await api.counts(s.id);
+    if (v?.state !== 'compared') throw new Error('expected both counts in');
+    expect(shiftDrawer(s, v, day)).toEqual({ startCents: s.startingCashCents, cashInCents: v.expectedCents - s.startingCashCents });
+
+    expect(shiftDrawer({ ...s, status: 'closed', closedAt: '2026-09-26T23:00:00Z' }, v, day)).toBeUndefined();
+    expect(shiftDrawer(null, null, null)).toBeUndefined();
+  });
+});
+
+describe('who can close (Settings › Closing)', () => {
+  test('owners and managers always; a counter only when the shop says anyone on shift', () => {
+    expect(mayCloseDay('owner', { whoCanClose: 'managers' })).toBe(true);
+    expect(mayCloseDay('manager', null)).toBe(true);
+    expect(mayCloseDay('counter', { whoCanClose: 'managers' })).toBe(false);
+    expect(mayCloseDay('counter', null)).toBe(false);
+    expect(mayCloseDay('counter', { whoCanClose: 'anyone' })).toBe(true);
+    expect(mayCloseDay(undefined, { whoCanClose: 'anyone' })).toBe(false);
+  });
+
+  test('a counter who can’t close is told who does', async () => {
+    const { api } = createMockMerchantApi({ delayMs: 0, drawer: 'balanced', viewer: STAFF_ID.jen });
+    const s = (await api.drawer())!;
+    const v = await api.counts(s.id);
+    expect(drawerPrompt(s, v, STAFF_ID.jen, names, false).det).toContain('An owner or manager closes the day');
+    expect(drawerPrompt(s, v, STAFF_ID.jen, names, true).det).toContain('Close the day to lock it');
+    await expect(api.closeDay(s.id)).rejects.toMatchObject({ status: 403 });
+  });
+});

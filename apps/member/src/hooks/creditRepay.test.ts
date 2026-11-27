@@ -1,0 +1,146 @@
+import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const read = (p: string) => readFileSync(join(import.meta.dirname, '..', p), 'utf8');
+const hook = read('hooks/useCreditRepay.ts');
+const dialog = read('components/clear/RepayDialog.tsx');
+const calls = read('lib/sendCalls.ts');
+
+describe('Repay repays on chain, in USDC, from the member’s wallet', () => {
+  test('one sponsored batch: approve USDC to StableCredit, then repayCreditBalance — Face ID first', () => {
+    expect(calls).toContain("functionName: 'repayCreditBalance', args: [args.ownerWallet as `0x${string}`, amt]");
+    expect(calls).toMatch(/export async function scRepayCredit[\s\S]{0,700}return runBatch\(/);
+    expect(calls).toMatch(/async function runBatch[\s\S]{0,400}if \(!walletEnforcesMfa\(\)\) await requireStepUp\(\)/);
+  });
+
+  test('never more than has settled on chain; the pending rest is named, not dropped', () => {
+    expect(hook).toContain('const repay = Math.min(amount, owed);');
+    expect(hook).toContain('pendingLeft: Math.max(0,');
+  });
+
+  test('the server records it from the transaction', () => {
+    expect(hook).toContain('await recordCreditRepayment(address, hash)');
+  });
+
+  test('carrying a balance, the amount cannot go past the debt — nothing spills to a card it cannot reach', () => {
+    expect(dialog).toContain('const capped = Math.min(Math.max(0, amount), source, carrying ? outstanding : Infinity);');
+    expect(dialog).toContain('onClick={carrying ? () => void repay() : undefined}');
+  });
+});
+
+describe('repay savings-backed credit from savings', () => {
+  test('offered only when savings-backed credit is used; settles the savings tier and nothing else', () => {
+    expect(dialog).toContain("{carrying && savingsUsed > 0 && (");
+    expect(dialog).toContain("credit.tiers.filter((t) => t.key === 'savings').map((tier) => ({ tier, applied: capped }))");
+  });
+
+  test('one sponsored call to the Liquidator, against the savings tier, through the revolving issuer', () => {
+    expect(calls).toContain("functionName: 'settleFromSavings', args: [c.revolvingIssuer, SAVINGS_TIER_ID, amt]");
+    expect(calls).toContain('export const SAVINGS_TIER_ID = 0n;');
+  });
+
+  test('capped at what the savings tier owes on chain, and recorded by the server', () => {
+    expect(hook).toContain("functionName: 'principalOf',");
+    // Repay, repay from savings, and pay a plan: every on-chain repayment is recorded by the server.
+    expect(hook.match(/await recordCreditRepayment\(address, hash\)/g)).toHaveLength(3);
+  });
+});
+
+describe('automatic repayment from USDC deposits', () => {
+  const autoHook = read('hooks/useAutoRepay.ts');
+  const panel = read('components/settings/PermissionsPanel.tsx');
+
+  test('Phase 2b: one sponsored call sets on/off and scope; no approval, so nothing is swept', () => {
+    expect(calls).toContain("functionName: 'setAutoClear',");
+    expect(calls).toContain('args: [args.enabled, args.scope, args.enabled ? autoClearAuthHash(args.scope) : ZERO_AUTH_HASH]');
+    const fn = calls.slice(calls.indexOf('export async function scSetAutoClear'), calls.indexOf('export async function scSetSavingsDrawAllowance'));
+    // Never an allowance to take the member's USDC; turning it off withdraws any old one.
+    expect(fn).not.toContain('MAX_UINT256');
+    expect(fn).toContain("functionName: 'approve', args: [c.stableCredit, 0n]");
+  });
+
+  test('the switch is real and lives on Permissions; it is recorded only after the wallet set it', () => {
+    expect(panel).toContain('Auto-clear from deposits');
+    expect(panel).toContain('autoRepay ? autoRepay.onChange(v) : setLocalAuto(v)');
+    expect(autoHook.indexOf('await scSetAutoClear(')).toBeLessThan(autoHook.indexOf('await recordAutoRepay('));
+  });
+
+  test('scope, "Clear $X now?" when off, and the Savings draw allowance are on the same page', () => {
+    expect(panel).toContain("autoRepay.scope === 1 ? 'Everything you owe, dearest first' : 'Income-backed credit and Boost only'");
+    expect(panel).toContain('`Clear $${autoRepay.clearNow.amount.toFixed(2)} now?`');
+    // Offered with auto-clear on too: a USDC deposit never auto-clears (option 1).
+    expect(autoHook).toContain('clearNow: owedCents && owedCents > 0');
+    expect(panel).toContain('USDC deposits stay yours: one tap clears from them.');
+    // The one-tap clear is a Repay the member signs: their own wallet, not the settler.
+    expect(autoHook).toContain('void repay(owedCents / 100)');
+    expect(panel).toContain('Card spending from Savings');
+    expect(calls).toContain("functionName: 'setSavingsDrawAllowance', args: [args.units]");
+  });
+
+  test('onboarding signs AutoClear on, and the server submits it', () => {
+    const onboarding = read('pages/auth/OnboardingRoute.tsx');
+    const signing = read('lib/autoClearSigning.ts');
+    expect(onboarding).toContain('await signAutoClearOn(address)');
+    expect(signing.indexOf('switchMismatch(')).toBeLessThan(signing.indexOf('await signTypedData('));
+    expect(signing).toContain('submitAutoClear(member, { on: true, scope');
+  });
+});
+
+describe('carry is repaid too, first', () => {
+  test('what is owed includes carry, and "This clears" lists it first', () => {
+    expect(dialog).toContain('const outstanding = creditUsed(credit) + carry;');
+    expect(dialog).toContain('repayAllocation(credit, capped - carryApplied)');
+    expect(dialog).toContain('<span>Carry</span>');
+  });
+
+  test('clearing everything clears it to the unit — no fraction of a cent of carry left behind', () => {
+    expect(hook).toContain('const owed = Math.ceil(Number(owedUnits) / 10_000) / 100;');
+    expect(hook).toContain('...(clearsAll ? { units: owedUnits } : {}),');
+    expect(calls).toContain('const amt = args.units ?? parseUnits(args.amount, 6);');
+  });
+});
+
+describe('pay a term plan', () => {
+  const hook = readFileSync(new URL('./useCreditRepay.ts', import.meta.url), 'utf8');
+  const calls = readFileSync(new URL('../lib/sendCalls.ts', import.meta.url), 'utf8');
+
+  test('names the plan, and approves StableCredit (which pulls the USDC), not TermIssuer', () => {
+    expect(calls).toMatch(/export async function scPayPlan[\s\S]{0,900}approve', args: \[c\.stableCredit, args\.units\][\s\S]{0,300}functionName: 'payPlan'/);
+  });
+
+  test('paying off reads what is owed on chain and approves a cent over; payPlan caps it', () => {
+    expect(hook).toContain("functionName: 'owedOn',");
+    expect(hook).toContain('payoff || asked >= owedUnits ? owedUnits + 10_000n : asked');
+  });
+});
+
+describe('re-split a term plan', () => {
+  const hook = readFileSync(new URL('./useCreditRepay.ts', import.meta.url), 'utf8');
+  const calls = readFileSync(new URL('../lib/sendCalls.ts', import.meta.url), 'utf8');
+  const home = readFileSync(new URL('../pages/app/HomePage.tsx', import.meta.url), 'utf8');
+
+  test('signed by the member, on chain, through the step-up batch', () => {
+    expect(calls).toMatch(/export async function scSetSplit[\s\S]{0,500}runBatch\([\s\S]{0,200}functionName: 'setSplit'/);
+    expect(hook).toContain('await scSetSplit({');
+  });
+
+  test('a live plan saves to chain; only the preview holds a split locally', () => {
+    expect(home).toMatch(/if \(onSetSplit && livePlan\) \{[\s\S]{0,260}if \(result\.error \|\| result\.needsSignature\) return result;[\s\S]{0,40}\} else \{\s*setSplits/);
+  });
+
+  test('Phase 2: a split that costs more is read and signed first, then submitted by the server', () => {
+    // Asked before any transaction; the wallet's own setSplit is only for one that needs no signature.
+    expect(hook.indexOf('await prepareResplit(')).toBeLessThan(hook.indexOf('await scSetSplit({'));
+    expect(hook).toContain('lines: resplitDisclosureFor(typedData, remaining, installmentLength)');
+    const sign = hook.slice(hook.indexOf('sign: async () => {'));
+    expect(sign.indexOf('await signResplit(')).toBeLessThan(sign.indexOf('await submitResplit('));
+    const dialog = readFileSync(new URL('../components/clear/SplitPlanDialog.tsx', import.meta.url), 'utf8');
+    expect(dialog).toContain('toSign.lines.map(');
+    expect(dialog).toContain("'Sign and use this split'");
+  });
+
+  test('live, Clears from is a fact, not a picker with nothing behind it', () => {
+    expect(home).toContain("clearsFromNote={onPayPlan ? 'Bank deposits' : undefined}");
+  });
+});

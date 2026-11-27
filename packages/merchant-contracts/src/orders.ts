@@ -1,0 +1,332 @@
+import { z } from 'zod';
+import { BusinessDate, Cents, Id, IdempotencyKey, NonNegativeCents, PositiveCents, ShopId, Timestamp } from './common';
+import { TaxKind } from './catalog';
+import { ClaimCode, OrderCustomer } from './rewards';
+
+/**
+ * Orders, their lines and their one discount; tenders and refunds.
+ *
+ * An order's figures are the server's: the app sends lines and a discount request, and gets back
+ * the subtotal, discount, tax and total. Fees, tax and discount limits are never taken from the
+ * client (principle 7).
+ */
+
+export const ORDER_STATUSES = ['open', 'paying', 'paid', 'voided', 'refunded', 'partly_refunded'] as const;
+export const OrderStatus = z.enum(ORDER_STATUSES);
+export type OrderStatus = z.infer<typeof OrderStatus>;
+
+/** How the order leaves: a table's, to go, or a delivery app's (bag labels print for the last two). */
+export const SERVICE_TYPES = ['dine_in', 'to_go', 'delivery'] as const;
+export const ServiceType = z.enum(SERVICE_TYPES);
+export type ServiceType = z.infer<typeof ServiceType>;
+
+/**
+ * Where an order was raised: the counter's tablet, a Point's bill, a phone at `/p/:code`, a shop's
+ * website through the modal, or a payment link. Online and link orders have no staff member; every
+ * other kind has one (the database holds it to that).
+ */
+export const ORDER_SOURCES = ['counter', 'point', 'phone', 'online', 'link'] as const;
+export const OrderSource = z.enum(ORDER_SOURCES);
+export type OrderSource = z.infer<typeof OrderSource>;
+export const sourceHasStaff = (source: OrderSource) => source !== 'online' && source !== 'link';
+
+export const ChosenOption = z.object({
+  groupId: Id,
+  optionId: Id,
+  /** A snapshot: the name and price as they were when the line was added. */
+  name: z.string(),
+  deltaCents: Cents,
+});
+export type ChosenOption = z.infer<typeof ChosenOption>;
+
+export const OrderLine = z.object({
+  id: Id,
+  /** Null for a quick sale: a one-off amount, with a note and a tax kind, and no stock. */
+  itemId: Id.nullable(),
+  name: z.string().min(1),
+  note: z.string().nullable(),
+  quantity: z.number().int().min(1),
+  /** Price with the chosen options. */
+  unitCents: NonNegativeCents,
+  options: z.array(ChosenOption),
+  lineCents: NonNegativeCents,
+  /** This line's share of the order's discount; tax is worked out after it. */
+  discountCents: NonNegativeCents,
+  taxKind: TaxKind,
+  taxCents: NonNegativeCents,
+});
+export type OrderLine = z.infer<typeof OrderLine>;
+
+/** What the app sends: which item, how many, which options; or a quick sale. */
+export const LineInput = z.union([
+  z.object({
+    itemId: Id,
+    quantity: z.number().int().min(1),
+    optionIds: z.array(Id),
+  }),
+  z.object({
+    itemId: z.null(),
+    name: z.string().min(1).max(80),
+    note: z.string().max(200).nullable(),
+    amountCents: PositiveCents,
+    taxKind: TaxKind,
+  }),
+]);
+export type LineInput = z.infer<typeof LineInput>;
+
+export const OrderDiscount = z.object({
+  /** A code, a manual percent or amount, or a reward the customer's points pay for. */
+  kind: z.enum(['code', 'manual', 'reward']),
+  codeId: Id.nullable(),
+  /** "FALL10 · 10% off", "15% · Returning customer" */
+  label: z.string(),
+  amountCents: NonNegativeCents,
+  reason: z.string().nullable(),
+  /** Set when the discount was over the applier's limit and someone approved it with a PIN. */
+  approvedBy: Id.nullable(),
+  /** A reward: which one, and the points that come off when the order is paid. */
+  rewardId: Id.nullable().optional(),
+  points: z.number().int().min(1).nullable().optional(),
+});
+export type OrderDiscount = z.infer<typeof OrderDiscount>;
+
+/**
+ * One per order: a code, a manual percent or amount, or a reward, so a reward and a code never
+ * stack. A reward is the added customer's (`reward`), or a counter code they claimed in their app
+ * (`claim`), which also adds them to the order when nobody is on it yet.
+ */
+export const DiscountRequest = z.union([
+  z.object({ kind: z.literal('code'), code: z.string().min(1) }),
+  z.object({ kind: z.literal('reward'), rewardId: Id }),
+  z.object({ kind: z.literal('claim'), code: ClaimCode }),
+  z.object({
+    kind: z.literal('manual'),
+    percent: z.number().int().min(1).max(100).nullable(),
+    amountCents: PositiveCents.nullable(),
+    reason: z.string().min(1).max(200),
+    /** Over the applier's limit: a manager's or owner's PIN. */
+    approverPin: z.string().regex(/^\d{4}$/).nullable(),
+  }),
+]);
+export type DiscountRequest = z.infer<typeof DiscountRequest>;
+
+export const Order = z.object({
+  id: Id,
+  shop: ShopId,
+  /** A number and a name for call-outs, where the shop uses them. */
+  number: z.number().int().min(1).nullable(),
+  name: z.string().nullable(),
+  /** Staff id. Null only for an online or link order, which nobody at the shop raised. */
+  raisedBy: Id.nullable(),
+  customer: z.string().nullable(),
+  status: OrderStatus,
+  lines: z.array(OrderLine),
+  discount: OrderDiscount.nullable(),
+  subtotalCents: NonNegativeCents,
+  discountCents: NonNegativeCents,
+  taxCents: NonNegativeCents,
+  /**
+   * subtotal − discount + tax. Tips ride on tenders, and are summed here for display. With tax
+   * included in prices, the total is what the prices say and the subtotal is what's left before tax.
+   */
+  totalCents: NonNegativeCents,
+  taxIncluded: z.boolean(),
+  /** Where the tax came from: the shop's Stripe Tax, the rate for its address, or none yet. */
+  taxSource: z.enum(['stripe', 'address_rate', 'none']),
+  tipCents: NonNegativeCents,
+  /** What the tenders have not yet covered. */
+  remainingCents: NonNegativeCents,
+  businessDate: BusinessDate,
+  createdAt: Timestamp,
+  /**
+   * Terminal additions (optional so older responses still parse). The table whose tab this is; how
+   * it leaves, and which delivery app ("DoorDash"); when Order ready called it and when it was
+   * picked up; and whether it was rung up offline, when its tax is the tablet's (below).
+   */
+  tableId: Id.nullable().optional(),
+  serviceType: ServiceType.nullable().optional(),
+  deliveryPartner: z.string().nullable().optional(),
+  calledAt: Timestamp.nullable().optional(),
+  pickedUpAt: Timestamp.nullable().optional(),
+  offline: z.boolean().optional(),
+  /**
+   * Rewards: the member added at the cart, by their code or by phone. `customer` above stays the
+   * free-text name it always was.
+   */
+  member: OrderCustomer.nullable().optional(),
+  /**
+   * Pay with Clear additions. Where it was raised (counter when absent); the website's origin
+   * ("https://micasatacos.com") or the link's slug; and false for a test payment, which Charges marks
+   * Test and which never reaches the books, stock, tax, payouts or statements.
+   */
+  source: OrderSource.optional(),
+  sourceDetail: z.string().nullable().optional(),
+  livemode: z.boolean().optional(),
+});
+export type Order = z.infer<typeof Order>;
+
+/**
+ * Raising an order. The server works out the figures, except for an order rung up offline: a cash
+ * sale the tablet queued while the connection was down. Its tax and total are what the tablet
+ * worked out from the last catalogue and rate it had, because the customer has already paid that
+ * and had their change. The idempotency key makes the queue's retries one order.
+ */
+export const CreateOrder = z.object({
+  lines: z.array(LineInput),
+  customer: z.string().nullable(),
+  name: z.string().trim().max(40).nullable().optional(),
+  tableId: Id.nullable().optional(),
+  serviceType: ServiceType.nullable().optional(),
+  deliveryPartner: z.string().trim().max(40).nullable().optional(),
+  idempotencyKey: IdempotencyKey.optional(),
+  offline: z
+    .object({ createdAt: Timestamp, subtotalCents: NonNegativeCents, taxCents: NonNegativeCents, totalCents: NonNegativeCents })
+    .optional(),
+});
+export type CreateOrder = z.infer<typeof CreateOrder>;
+
+export const TENDER_METHODS = ['clear', 'card', 'cash'] as const;
+export const TenderMethod = z.enum(TENDER_METHODS);
+export type TenderMethod = z.infer<typeof TenderMethod>;
+
+export const TENDER_STATUSES = [
+  'pending',
+  'authorised',
+  'approved',
+  'declined',
+  'captured',
+  'cancelled',
+  'refunded',
+  'partly_refunded',
+] as const;
+export const TenderStatus = z.enum(TENDER_STATUSES);
+export type TenderStatus = z.infer<typeof TenderStatus>;
+
+export const Tender = z.object({
+  id: Id,
+  orderId: Id,
+  method: TenderMethod,
+  /** What this tender pays toward the order. */
+  amountCents: PositiveCents,
+  /** Added to this tender, on top of the amount. */
+  tipCents: NonNegativeCents,
+  status: TenderStatus,
+  refundedCents: NonNegativeCents,
+  /** Card: "visa", "4242". */
+  cardBrand: z.string().nullable(),
+  cardLast4: z.string().nullable(),
+  readerId: Id.nullable(),
+  /** Clear: the charge code the member approves. */
+  clearChargeCode: z.string().nullable(),
+  /** Cash: handed over, and change given. */
+  handedOverCents: NonNegativeCents.nullable(),
+  changeCents: NonNegativeCents.nullable(),
+  createdAt: Timestamp,
+});
+export type Tender = z.infer<typeof Tender>;
+
+/** An order with its tenders: a card, cash or split sale on the Charges list, or opened. */
+export const OrderWithTenders = Order.extend({ tenders: z.array(Tender) });
+export type OrderWithTenders = z.infer<typeof OrderWithTenders>;
+
+export const CreateCashTender = z.object({
+  amountCents: PositiveCents,
+  tipCents: NonNegativeCents,
+  handedOverCents: PositiveCents,
+  idempotencyKey: IdempotencyKey,
+  /** Queued offline: when the cash was taken, by the tablet's clock. The tender joins that drawer session. */
+  clientCreatedAt: Timestamp.optional(),
+});
+
+export const CreateClearTender = z.object({
+  amountCents: PositiveCents,
+  tipCents: NonNegativeCents,
+  idempotencyKey: IdempotencyKey,
+});
+
+/**
+ * Send a waiting Clear charge to someone, rather than have them scan the tablet's code: to a member
+ * whose own code was scanned (their wallet; the charge lands in their app, with a text), or as a
+ * text with the link to a phone number.
+ */
+export const SendClearCharge = z.discriminatedUnion('to', [
+  z.object({ to: z.literal('member'), wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'That isn’t a member’s code') }),
+  z.object({ to: z.literal('phone'), phone: z.string().trim().min(7).max(24) }),
+  /** The member added at the cart: to their app, a text and an email at once, with nothing to scan. */
+  z.object({ to: z.literal('customer') }),
+]);
+/** Where it went, as the screen says it: "their Clear app", "(909) 555-0177". */
+export const ClearChargeSent = z.object({ to: z.enum(['member', 'phone', 'customer']), label: z.string() });
+export type ClearChargeSent = z.infer<typeof ClearChargeSent>;
+
+export const RefundItem = z.object({
+  orderLineId: Id,
+  quantity: z.number().int().min(1),
+  /** Goods come back: back on the shelf, or not (damaged). Labour can't come back. */
+  backInStock: z.boolean(),
+});
+
+export const Refund = z.object({
+  id: Id,
+  tenderId: Id,
+  amountCents: PositiveCents,
+  items: z.array(RefundItem),
+  reason: z.string().nullable(),
+  requestedBy: Id,
+  approvedBy: Id.nullable(),
+  status: z.enum(['requested', 'approved', 'declined', 'succeeded', 'failed']),
+  createdAt: Timestamp,
+});
+export type Refund = z.infer<typeof Refund>;
+
+export const RequestRefund = z.object({
+  tenderId: Id,
+  amountCents: PositiveCents,
+  items: z.array(RefundItem),
+  reason: z.string().max(200).nullable(),
+  idempotencyKey: IdempotencyKey,
+});
+
+/**
+ * A receipt: what the customer is sent (by text or email, as a link) and what prints. Built from
+ * the order when it's read, so a later refund shows. Card numbers never appear, only brand and last
+ * four.
+ */
+export const Receipt = z.object({
+  shop: z.object({ name: z.string(), address: z.string().nullable() }),
+  orderNumber: z.number().int().nullable(),
+  businessDate: BusinessDate,
+  issuedAt: Timestamp,
+  lines: z.array(
+    z.object({ name: z.string(), quantity: z.number().int(), options: z.array(z.string()), note: z.string().nullable(), lineCents: Cents, discountCents: NonNegativeCents }),
+  ),
+  discount: z.object({ label: z.string(), amountCents: NonNegativeCents }).nullable(),
+  subtotalCents: Cents,
+  discountCents: NonNegativeCents,
+  taxCents: NonNegativeCents,
+  taxIncluded: z.boolean(),
+  tipCents: NonNegativeCents,
+  totalCents: Cents,
+  tenders: z.array(
+    z.object({
+      method: TenderMethod,
+      amountCents: Cents,
+      tipCents: NonNegativeCents,
+      /** "Visa ending 4242" */
+      card: z.string().nullable(),
+      changeCents: NonNegativeCents.nullable(),
+      status: TenderStatus,
+    }),
+  ),
+  refundedCents: NonNegativeCents,
+  /** "Table 12, back patio", for a table's tab. */
+  table: z.string().nullable().optional(),
+  /**
+   * The receipt's own code, for the sticker's QR: `useclear.org/r/<code>`. Random, never the order
+   * number, and the same for good once made.
+   */
+  code: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{10}$/).nullable().optional(),
+});
+export type Receipt = z.infer<typeof Receipt>;
+
+export const SendReceipt = z.object({ by: z.enum(['text', 'email', 'none']), to: z.string().trim().max(200).nullable() });

@@ -1,0 +1,161 @@
+# Type checking, tests and the Hardhat suite for pull requests.
+#
+# Vercel only produces the sites (`build:vercel`); this is what keeps a type error out of `dev`.
+# Make the `ci` job a required check on `dev` (and `main`): it always reports, and it fails if any
+# job that had to run failed.
+#
+# Path filtering happens in the `changes` job rather than in `on.pull_request.paths`. A workflow
+# filtered out by `paths` never reports, and a required check that never reports blocks the PR
+# forever; a skipped job inside a workflow that ran counts as passed.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.filter.outputs.apps }}
+      api: ${{ steps.filter.outputs.api }}
+      docs: ${{ steps.filter.outputs.docs }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - id: filter
+        # The checkout is GitHub's merge of the PR into its base, so the first parent is the base.
+        run: |
+          git diff --name-only HEAD^1 HEAD > changed.txt
+          match() { grep -qE "$1" changed.txt && echo true || echo false; }
+          root='^(package\.json|package-lock\.json|\.github/workflows/ci\.yml)$'
+          {
+            # apps/api counts: the member tests read API source. docs/ counts: the docs site is built from it.
+            content='^(docs|apps/member/public/docs|deployments/base|deployments/base-sepolia)/'
+            echo "apps=$(match "^(apps/(member|merchant|api|rewards|pay|command|docs)|packages)/|^(turbo\.json|tsconfig\.json|\.npmrc)$|$root|$content")"
+            echo "api=$(match '^apps/api/')"
+            echo "docs=$(match "$content")"
+            # and Build's code fingerprints: what each deployed contract compiles to (scripts/command/code-fingerprints.mjs)
+            echo "contracts=$(match "^(contracts|test|deploy|deployments/base-sepolia)/|^hardhat\.config\.ts$|^scripts/command/code-fingerprints\.mjs$|^scripts/ci/test-shard\.mjs$|^packages/command-types/src/chain/code\.json$|$root")"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  apps:
+    name: Apps (typecheck, test)
+    needs: changes
+    if: needs.changes.outputs.apps == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # turbo --affected compares with the base branch, so it needs the history to find it.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+      # Only the workspaces: the root package is the Hardhat toolchain, which no app or package uses.
+      - run: npm ci --workspaces --no-audit --no-fund
+      - run: npx turbo run typecheck test --affected
+        env:
+          # turbo reads GITHUB_BASE_REF as a local branch (`dev`), which the checkout doesn't
+          # have, and then runs everything.
+          TURBO_SCM_BASE: origin/${{ github.base_ref }}
+      - name: Member tests (they read apps/api source, which turbo can't see)
+        if: needs.changes.outputs.api == 'true'
+        run: npx turbo run test --filter=@clear/member
+      - name: Docs site tests (they read docs/, which turbo can't see)
+        if: needs.changes.outputs.docs == 'true'
+        run: npx turbo run test --filter=@clear/docs
+      - name: Lint (advisory until the existing errors are fixed)
+        continue-on-error: true
+        run: npx turbo run lint --affected
+        env:
+          TURBO_SCM_BASE: origin/${{ github.base_ref }}
+
+  contracts:
+    name: Contracts (hardhat test ${{ matrix.shard }}/4)
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    # The suite is split into four parallel shards by file size (scripts/ci/test-shard.mjs), so it
+    # takes about a quarter of the time. Each shard compiles on its own; the solc cache is shared.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: solc-${{ hashFiles('hardhat.config.ts') }}
+      - run: npm ci --no-audit --no-fund
+      # Every test file is in exactly one shard: the same discovery as a bare `hardhat test`.
+      - run: node scripts/ci/test-shard.mjs --check 4
+      - run: npx hardhat test $(node scripts/ci/test-shard.mjs ${{ matrix.shard }} 4)
+
+  fingerprints:
+    name: Contracts (code fingerprints)
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: solc-${{ hashFiles('hardhat.config.ts') }}
+      - run: npm ci --no-audit --no-fund
+      # Build compares each deployed contract with what dev compiles: the fingerprints must be this source's,
+      # as deployed. `hardhat test` keeps revert strings (hardhat.config.ts); a deploy's compile strips them
+      - run: npx hardhat compile
+      - run: node scripts/command/code-fingerprints.mjs --check
+
+  docs:
+    name: Docs (links)
+    runs-on: ubuntu-latest
+    # Cheap enough to run on every PR: a moved file breaks links in markdown nobody touched.
+    steps:
+      - uses: actions/checkout@v7
+      - run: node scripts/check-doc-links.mjs
+      # docs/protocol/contracts is generated from deployments/: fail if a deployment moved and the
+      # reference didn't.
+      - run: node scripts/docs/contract-reference.mjs --check
+
+  ci:
+    name: ci
+    needs: [changes, apps, contracts, fingerprints, docs]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job that had to run passed
+        run: |
+          echo "changes=${{ needs.changes.result }} apps=${{ needs.apps.result }} contracts=${{ needs.contracts.result }} fingerprints=${{ needs.fingerprints.result }} docs=${{ needs.docs.result }}"
+          case "${{ needs.changes.result }} ${{ needs.apps.result }} ${{ needs.contracts.result }} ${{ needs.fingerprints.result }} ${{ needs.docs.result }}" in
+            *failure*|*cancelled*) exit 1 ;;
+          esac

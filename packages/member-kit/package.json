@@ -1,0 +1,41 @@
+{
+  "name": "@clear/member-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "What the Clear app and the rewards app both draw: Clear's tokens and components, sign-in and onboarding steps, the onboarding submit chain, and paying a shop.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./brand/anatomy": "./src/brand/anatomy.tsx",
+    "./brand/icons": "./src/brand/icons.tsx",
+    "./brand/Lockup": "./src/brand/Lockup.tsx",
+    "./auth/AuthShell": "./src/auth/AuthShell.tsx",
+    "./auth/PinBox": "./src/auth/PinBox.tsx",
+    "./onboarding/OnboardingFlow": "./src/onboarding/OnboardingFlow.tsx",
+    "./onboarding/BankLinkStep": "./src/onboarding/BankLinkStep.tsx",
+    "./onboarding/submit": "./src/onboarding/submit.ts",
+    "./pay/payShopCalls": "./src/pay/payShopCalls.ts",
+    "./styles/clear-tokens.css": "./src/styles/clear-tokens.css",
+    "./styles/clear-components.css": "./src/styles/clear-components.css"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clear/domain": "*",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1",
+    "viem": "^2.33.2"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "typescript": "~5.8.3"
+  }
+}

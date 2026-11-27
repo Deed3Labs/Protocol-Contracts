@@ -1,0 +1,24 @@
+{
+  "name": "@clear/capacitor-socket",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clear's raw-socket plugin: bytes to a Wi-Fi printer's port 9100, and finding printers on the network by Bonjour.",
+  "license": "UNLICENSED",
+  "files": [
+    "Package.swift",
+    "ios/Sources",
+    "android/build.gradle",
+    "android/src/main"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "description": "fundingStatus.ts is also run by the Hardhat CLI scripts/check_payout_funding.ts, whose ts-node loads it with require(). apps/api is \"type\": \"module\", which ts-node refuses to require; this folder is marked CommonJS so it can. Bun and tsc read the ES module syntax either way. Keep fundingStatus.ts free of imports.",
+  "type": "commonjs"
+}

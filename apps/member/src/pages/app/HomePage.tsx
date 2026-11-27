@@ -1,0 +1,394 @@
+import type { SplitOutcome } from '@/hooks/useCreditRepay';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import BalanceBlock from '@/components/clear/BalanceBlock';
+import QuickActions from '@/components/clear/QuickActions';
+import CycleCard from '@/components/clear/CycleCard';
+import TaskStrip, { SetupPanel } from '@/components/clear/TaskStrip';
+import ClearCreditCard from '@/components/clear/ClearCreditCard';
+import CashAccountCard from '@/components/clear/CashAccountCard';
+import SavingsSummaryCard from '@/components/clear/SavingsSummaryCard';
+import RecentActivityCard from '@/components/clear/RecentActivityCard';
+import LimitBreakdown from '@/components/clear/LimitBreakdown';
+import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
+import RepayDialog from '@/components/clear/RepayDialog';
+import TermPlansCard from '@/components/clear/TermPlansCard';
+import SplitPlanDialog from '@/components/clear/SplitPlanDialog';
+import TermPlanDialog from '@/components/clear/TermPlanDialog';
+import PaymentAccountDialog from '@/components/clear/PaymentAccountDialog';
+import TermLimitDialog from '@/components/clear/TermLimitDialog';
+import AddBoostDialog from '@/components/clear/AddBoostDialog';
+import ConnectedMoveMoney from '@/components/clear/ConnectedMoveMoney';
+import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
+import AddMoneyDialog from '@/components/clear/AddMoneyDialog';
+import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
+import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
+import { useIsDesktop } from '@/lib/useIsDesktop';
+import YourShopsCell from '@/components/clear/YourShopsCell';
+import type { YourShop } from '@/utils/apiClient';
+import type { AccountDetailsSource } from '@/lib/accountDetails';
+import { boostCapLine, standingNotice, type CycleStanding } from '@/lib/cycleStanding';
+import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, type HomeData } from '@/lib/clearModel';
+
+/**
+ * Home.
+ *
+ * Hero on paper, then blocks: **the cycle, the temporary slot, and the standing accounts as one
+ * slab.** The temporary slot is absent when it has nothing to say, never present and empty.
+ *
+ * Desktop puts the quick actions beside the hero and lays the slab in two columns — Credit over Term
+ * plans, Spendable over Savings — with Recent activity full width beneath, because a growing list
+ * never sits beside something short. The columns have equal cell counts, so they share the grid and
+ * their rules line up across the seam. The phone stacks the slab in one column, Spendable first, and
+ * leaves the quick actions to the nav's action button.
+ *
+ * Day one has no cycle and nothing on the slab: the hero, Getting set up, and Savings.
+ */
+export default function HomePage({
+  data = HOME_DAY_ONE,
+  pending = false,
+  onRepay,
+  onRepayFromSavings,
+  onPayPlan,
+  onSetSplit,
+  onPayBack,
+  savingsFree,
+  yourShops = [],
+  accountDetails,
+  onSignInAgain,
+  standing,
+}: {
+  /**
+   * The chain's record of the member's cycles (Phase 2b): a missed cycle or a cure notice is said in
+   * the cycle card's footer, and the Boost cap under the credit card's tiers. Nothing above Home.
+   */
+  standing?: CycleStanding | null;
+  /** Sign out and send a code (Spendable's full number, for a member without Face ID). Absent in the preview harness. */
+  onSignInAgain?: () => void;
+  /** Shops whose rewards they've joined (rewards spec, section 6): a list and links, once there's one. */
+  yourShops?: YourShop[];
+  /** Where Spendable's account details are read from. The API unless the preview harness hands in fixtures. */
+  accountDetails?: AccountDetailsSource;
+  data?: HomeData;
+  /** Nothing known yet: the populated layout with placeholder figures, never the day-one layout. */
+  pending?: boolean;
+  /** Repays card debt on chain. Absent in the preview harness. */
+  onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
+  onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
+  /** Pays one term plan on chain. Absent in the preview harness. */
+  onPayPlan?: (
+    planId: number,
+    amount: number,
+    payoff: boolean,
+    fromSavings?: boolean,
+    onStep?: (step: number) => void,
+  ) => Promise<{ repaid?: number; error?: string }>;
+  /** Pays back what a term default wrote off; clearing it restores term plans. */
+  onPayBack?: (amount: number, remaining: number) => Promise<{ repaid?: number; error?: string }>;
+  /** Savings not pledged against drawn credit: what a plan may be paid from. */
+  savingsFree?: number;
+  /** Re-splits a plan on chain. Absent in the preview harness, where a split is only held here. */
+  onSetSplit?: (planId: number, installments: number) => Promise<SplitOutcome>;
+}) {
+  const navigate = useNavigate();
+  const desktop = useIsDesktop();
+  const [params, setParams] = useSearchParams();
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [boostOpen, setBoostOpen] = useState(false);
+  const [addSavingsOpen, setAddSavingsOpen] = useState(false);
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [repayOpen, setRepayOpen] = useState(false);
+  const [payAccountOpen, setPayAccountOpen] = useState(false);
+  const [termLimitOpen, setTermLimitOpen] = useState(false);
+  // Edits made in the term-plan modals, held here so Save has something to change. The placeholder
+  // data is static; these are what a backend would persist.
+  const [planId, setPlanId] = useState<string | null>(null);
+  // A live plan opens on paying it; Change split goes one step further in.
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splits, setSplits] = useState<Record<string, number>>({});
+  const [clearsFromId, setClearsFromId] = useState(data.termPlans.clearsFromId);
+  const [selected, setSelected] = useState<ActivityRow | null>(null);
+
+  // Nothing has ever landed in the account: no cycle running, no savings, no cash.
+  // Pending is not day one: a member whose figures have not arrived is shown the page they will get,
+  // with placeholders, not the brand-new-account layout it would then jump away from.
+  const dayOne =
+    !pending && creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
+  const boost = addableTier(data.credit);
+
+  // Deep links: add money from the nav's quick actions, the limit breakdown from a bond on Earn, and
+  // repaying from a pool withdrawal that would leave the limit short.
+  useEffect(() => {
+    const action = params.get('do');
+    if (action === 'add-money') setAddMoneyOpen(true);
+    else if (action === 'limit-breakdown') setBreakdownOpen(true);
+    else if (action === 'repay') setRepayOpen(true);
+    else return;
+    params.delete('do');
+    setParams(params, { replace: true });
+  }, [params, setParams]);
+
+  // A saved split reschedules the plan: same balance, new per-cycle figure, fresh count of cycles.
+  const termPlansData = {
+    ...data.termPlans,
+    clearsFromId,
+    plans: data.termPlans.plans.map((p) => {
+      const split = splits[p.id];
+      return split && p.balance !== undefined
+        ? { ...p, splitInto: split, perCycle: p.balance / split, cyclesLeft: split }
+        : p;
+    }),
+  };
+  const plan = termPlansData.plans.find((p) => p.id === planId) ?? null;
+  // Read from chain: it knows what it owes, and its split and payments go on chain. A placeholder
+  // plan (the preview harness) is shown the same sheet with its balance standing in for what's owed.
+  const livePlan = plan?.owed !== undefined;
+  const sheetPlan = plan && !livePlan ? { ...plan, owed: plan.balance ?? 0, nextPayment: plan.perCycle } : plan;
+
+  // A setup step opens the surface that completes it.
+  const onTask = (id: string) => {
+    if (id === 'deposit') setAddMoneyOpen(true);
+    else if (id === 'direct-deposit') setAccountOpen(true);
+    else if (id === 'card') navigate('/card');
+  };
+
+  const termPlans = (panel?: boolean) => (
+    <TermPlansCard
+      data={termPlansData}
+      panel={panel}
+      onPlan={(p) => {
+        // Every plan opens on paying it; Change split is one step further in.
+        setPlanId(p.id);
+        setSplitOpen(false);
+      }}
+      onLimit={() => setTermLimitOpen(true)}
+      // Live, there is no account to pick: plans are paid from bank deposits as they arrive, and
+      // nothing yet pulls from a linked account. The preview keeps the picker the design shows.
+      onClearsFrom={onPayPlan ? undefined : () => setPayAccountOpen(true)}
+      clearsFromNote={onPayPlan ? 'Bank deposits' : undefined}
+    />
+  );
+
+  // Money comes in from a linked bank, so that's what Add money opens.
+  const quickActions = (
+    <QuickActions
+      actions={[
+        { label: 'Add money', onSelect: () => setAddMoneyOpen(true) },
+        { label: 'Send', onSelect: () => navigate('/send') },
+        { label: 'Save', onSelect: () => setAddSavingsOpen(true) },
+        { label: 'Pay', onSelect: () => navigate('/card') },
+      ]}
+    />
+  );
+
+  const hero = desktop ? (
+    <div className="mb-s3 grid grid-cols-[minmax(0,1fr)_300px] items-end gap-s4">
+      <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />
+      {quickActions}
+    </div>
+  ) : (
+    <div className="mb-s3">
+      <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />
+    </div>
+  );
+
+  const modals = (
+    <>
+      <TermLimitDialog data={termPlansData} open={termLimitOpen} onOpenChange={setTermLimitOpen} onPayBack={onPayBack} />
+      <PaymentAccountDialog
+        accounts={termPlansData.accounts}
+        selectedId={clearsFromId}
+        open={payAccountOpen}
+        onOpenChange={setPayAccountOpen}
+        onSave={(id) => {
+          setClearsFromId(id);
+          setPayAccountOpen(false);
+        }}
+        onLink={() => {
+          setPayAccountOpen(false);
+          setLinkOpen(true);
+        }}
+      />
+      {sheetPlan && (
+        <TermPlanDialog
+          plan={sheetPlan}
+          account={data.cashAccount}
+          open={plan !== null && !splitOpen}
+          onOpenChange={(o) => !o && setPlanId(null)}
+          onPay={onPayPlan && livePlan ? (amount, payoff, fromSavings, onStep) => onPayPlan(Number(sheetPlan.id), amount, payoff, fromSavings, onStep) : undefined}
+          savingsFree={livePlan ? savingsFree : 0}
+          onChangeSplit={() => setSplitOpen(true)}
+        />
+      )}
+      {plan && (
+        <SplitPlanDialog
+          plan={plan}
+          options={termPlansData.splitOptions}
+          ratePerCycle={plan.ratePerCycle ?? 0.02}
+          doneBy={(splitInto) => `${splitInto} cycle${splitInto === 1 ? '' : 's'} from now`}
+          onSave={async (splitInto) => {
+            // On chain for a live plan; the chain read that follows is the new schedule.
+            if (onSetSplit && livePlan) {
+              const result = await onSetSplit(Number(plan.id), splitInto);
+              // Phase 2: a split that costs more waits for the member to read and sign new terms.
+              if (result.error || result.needsSignature) return result;
+            } else {
+              setSplits((s) => ({ ...s, [plan.id]: splitInto }));
+            }
+            setSplitOpen(false);
+            setPlanId(null);
+            return { ok: true };
+          }}
+          open={plan !== null && splitOpen}
+          // Closing it, or Back, returns to the plan's sheet it was opened from.
+          onOpenChange={(o) => !o && setSplitOpen(false)}
+          onBack={() => setSplitOpen(false)}
+        />
+      )}
+      <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
+      {/* Its From leg is the Clears from picker, so the account it pulls from is the one plans use. */}
+      <AddMoneyDialog
+        open={addMoneyOpen}
+        onOpenChange={setAddMoneyOpen}
+        account={termPlansData.accounts.find((a) => a.id === clearsFromId) ?? termPlansData.accounts[0]}
+        readyToAllocate={data.cashAccount.readyToAllocate}
+        firstDeposit={!data.tasks.find((t) => t.id === 'deposit')?.done}
+        onPickAccount={() => setPayAccountOpen(true)}
+      />
+      {/* Reads its own numbers from Lithic when it opens: nothing on Home holds them. */}
+      <AccountDetailsDialog
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        source={accountDetails}
+        onSignInAgain={onSignInAgain}
+        onSetUpFaceId={() => navigate('/settings/security')}
+      />
+      {/* Savings deposit is the same surface Savings uses; the credit limit it quotes comes from this
+          page's own tiers so the two can't disagree. */}
+      <ConnectedMoveMoney
+        data={{ ...SAVINGS_DAY_ONE, savings: data.savings, creditLimitToday: creditLimit(data.credit) }}
+        open={addSavingsOpen}
+        onOpenChange={setAddSavingsOpen}
+      />
+    </>
+  );
+
+  // Its own full-width row under the grid, so the grid's pairs of cells stay paired.
+  const shopsCell = yourShops.length ? (
+    <div className="c-slab c-one">
+      <YourShopsCell shops={yourShops} />
+    </div>
+  ) : null;
+
+  if (dayOne) {
+    // A member who joined at a counter already has a plan, and it is why they are here, so the shelf
+    // sits between setup and savings. A member who signed up directly has an empty shelf, and it
+    // stays off Home until there is something on it.
+    const fromCounter = activePlans(data.termPlans).length > 0;
+
+    return (
+      <>
+        {hero}
+        <div className="c-home">
+          <SetupPanel tasks={data.tasks} onAction={onTask} onAddMoney={() => setAddMoneyOpen(true)} />
+          {fromCounter && termPlans(true)}
+          <SavingsSummaryCard savings={data.savings} emptyState />
+          {shopsCell}
+        </div>
+        {modals}
+      </>
+    );
+  }
+
+  const cycle = (
+    <CycleCard
+      cycle={data.cycle}
+      credit={data.credit}
+      expectedDeposit={data.cashAccount.nextDepositEstimate}
+      depositOn={data.cashAccount.nextDepositOn}
+      onRepay={() => setRepayOpen(true)}
+      onTopOff={() => setAddSavingsOpen(true)}
+      notice={standingNotice(standing)}
+    />
+  );
+  const credit = (
+    <ClearCreditCard
+      credit={data.credit}
+      boostNote={boostCapLine(standing)}
+      onViewBreakdown={() => setBreakdownOpen(true)}
+      onAddBoost={() => setBoostOpen(true)}
+    />
+  );
+  // Back to cash opens the same surface the cycle's Repay does: one modal, and which title it wears
+  // depends on the balance, not on which button was pressed.
+  const cash = (
+    <CashAccountCard
+      account={data.cashAccount}
+      onDetails={() => setAccountOpen(true)}
+      onAllocateSavings={() => setAddSavingsOpen(true)}
+      onAllocateEarn={() => navigate('/earn')}
+      onBackToCash={() => setRepayOpen(true)}
+    />
+  );
+  const savings = <SavingsSummaryCard savings={data.savings} />;
+  const activity = <RecentActivityCard rows={data.recent} onSelect={setSelected} />;
+
+  return (
+    <>
+      {hero}
+      <div className="c-home">
+        {cycle}
+        {/* Setup steps come from the day-one fixture until real figures say otherwise: not while pending. */}
+        {!pending && <TaskStrip tasks={data.tasks} onAction={onTask} limit={desktop ? undefined : 1} />}
+        {desktop ? (
+          /* Both columns hold two cells, so they go straight into the shared grid: one grid row per
+             pair means every divider meets its neighbour. Nest only when the cell counts differ. */
+          <div className="c-slab">
+            {credit}
+            {cash}
+            {termPlans()}
+            {savings}
+            {activity}
+          </div>
+        ) : (
+          <div className="c-slab c-one">
+            {cash}
+            {credit}
+            {termPlans()}
+            {savings}
+            {activity}
+          </div>
+        )}
+        {shopsCell}
+      </div>
+
+      {modals}
+      {/* Add from the breakdown hands off to the same surface as the cell's own button, so there's one
+          place the decision gets made. */}
+      <LimitBreakdown
+        backing={data.backing}
+        open={breakdownOpen}
+        onOpenChange={setBreakdownOpen}
+        onAdd={() => {
+          setBreakdownOpen(false);
+          setBoostOpen(true);
+        }}
+      />
+      {boost && <AddBoostDialog credit={data.credit} tier={boost} open={boostOpen} onOpenChange={setBoostOpen} />}
+      <RepayDialog
+        credit={data.credit}
+        account={data.cashAccount}
+        cycle={data.cycle}
+        open={repayOpen}
+        onOpenChange={setRepayOpen}
+        onRepay={onRepay}
+        onRepayFromSavings={onRepayFromSavings}
+      />
+      {selected && (
+        <TransactionDetailDialog row={selected} open={selected !== null} onOpenChange={(o) => !o && setSelected(null)} />
+      )}
+    </>
+  );
+}

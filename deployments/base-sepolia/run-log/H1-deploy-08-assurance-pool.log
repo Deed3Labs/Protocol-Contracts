@@ -1,0 +1,16 @@
++ AssuranceTimelock deployed to 0xE77F3C4B94Fa25A021f3Ef8d0E5D06F4Ea057C6b
++ AssurancePool deployed to 0x3c334D3AeD134191B7Ad0744a23978D71357BB15
+  ClearUSDUpgradeable listed as CLRUSD
+  ESADepositVault listed as ESA_VAULT
+  CollateralRegistry listed as PLEDGE
+  Liquidator listed as LIQUIDATOR
+  LendingPool listed as LENDING_POOL
+  BondVault listed as BOND_VAULT
+  PayoutPool listed as PAYOUT_POOL
+  ClearCredit listed as LEDGER
+  ClaimEscrow listed as CLAIM_ESCROW
+
+AssurancePool deployed and governed by the Assurance timelock. Next, for two signers and the board Safe
+(scripts/signing_plan.ts writes each step): setPayer (Clear Lending's fees wallet: fee, recovery, interchange),
+  setPayer (co-op treasury: board allocation), setLendingCoAddresses, setAssuranceDisbursementAddress,
+  setExposureSources (CollateralRegistry).

@@ -1,0 +1,25 @@
++ MerchantRegistry deployed to 0x8f4C6f9472359BF749c12C840c4269341a423c1b
++ PayoutPool deployed to 0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861
+= LendingPool already at 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23
+= BondVault already at 0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855
+  BurnerBondFactory 0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA kept on record as BurnerBondFactoryPre2f
++ BurnerBondFactory deployed to 0xf36dE3553509BAafB835bC37c97f529Adf42a96a
++ Liquidator deployed to 0x621784117C037b3D20AF54e04589818e919e33f3
+
+Wiring:
+  AccessManager operator -> Liquidator 0x621784117C037b3D20AF54e04589818e919e33f3
+  CLRUSD LIQUIDATOR_ROLE -> Liquidator 0x621784117C037b3D20AF54e04589818e919e33f3
+  CLRUSD LIQUIDATOR_ROLE revoked from the retired Liquidator 0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593
+  CLRUSD encumbrance source -> CollateralRegistry 0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A
+  CollateralRegistry operator -> Liquidator
+  LendingPool encumbrance -> CollateralRegistry
+  ledger -> PayoutPool
+  ledger -> MerchantRegistry
+  PayoutPool REDEEMER_ROLE -> co-op treasury
+  PayoutPoolPreAudit yield-pool leg (decision 17) -> off (setLenders, its reserve unchanged)
+  PayoutPoolPreAudit bond-vault leg (C1, decision 3) -> off
+
+Bonds and pool deployed.
+
+Bond collections are created per token with factory.createCollection(); none exist yet.
+A BondValuer is deployed per collection, since it reads one collection's present values.

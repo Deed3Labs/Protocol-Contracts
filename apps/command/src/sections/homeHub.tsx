@@ -1,0 +1,1589 @@
+// @ts-nocheck: reads the sections' untyped data (src/sections/data.tsx), as the other section files do.
+import { Fragment } from 'react';
+import { LIVE, REAL } from '../live/env';
+import { feedList } from '../live/feeds';
+import { fig } from '../live/figures';
+import { loadSection, needsData } from '../live/sections';
+import { css, html } from '../runtime/dom';
+import { ic, int, money } from './core';
+import { buildLive } from './buildLive';
+import { ALERTS0, DEADLINES, ENT, FUNNEL, MON, NEED, S, W_ICON, vars } from './data';
+import { fmLive } from './fmLive';
+import { growthLive } from './growthLive';
+import { HOME_DEMO, HOME_QV } from './homeData';
+import { moneyLive } from './moneyLive';
+import { demoSettle, settleNeed, settleTile } from './settleCard';
+import { finish, go, render, toast, vLevel, vRO } from './shell';
+
+/*
+ * Home (design/command-center-ui, the HOME module): a brief and four vitals, what needs you beside the
+ * heads-up, a pulse for each section, and a timeline of the week behind and the month ahead. Drawn in
+ * light DOM, styled by command.css (the redesign's main sheet, h-*).
+ *
+ * Its figures come from a model: the reference's (homeData.tsx) in the prototype and the preview, and
+ * live, what the API sends (liveModel). Where the API doesn't have a figure yet, live shows it as not
+ * real yet (the hatch) rather than a demo number. Live, a waiting item opens the app's own approval flow
+ * (data-open); the review panel here is the prototype's walkthrough.
+ */
+
+const HS = { qf: 'all', cur: null, busy: false, lastW: 0, ro: null, back: null };
+const DAY = 864e5;
+const ND = 37,
+  TI = 7;
+const MO = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WDS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const LANES = ['Growth', 'Members', 'Merchants', 'Money', 'Contracts', 'Governance'];
+const STL = { ok: 'Ready', un: 'Drafting', bad: 'Not started' };
+
+/** How a waiting item reads on the queue: the sample's wording, or a live item's own. */
+function qv(w) {
+  const v = HOME_QV[w.id];
+  if (v && !w.live) return v;
+  const n = NEED[w.id] ?? {};
+  return { t: w.title, m: n.meta ?? w.figSub ?? '', a: w.fig ?? '', btn: n.verb ?? 'Open', ct: ['plain', w.tag ?? 'Two-person'], by: 'Someone', s: 'Not now', go: 'home' };
+}
+const queue = () => S.waiting.slice().sort((a, b) => (NEED[a.id]?.order ?? 99) - (NEED[b.id]?.order ?? 99));
+const shown = () => queue().filter((w) => HS.qf === 'all' || (HS.qf === 'approve' ? w.mode === 'approve' : w.mode !== 'approve'));
+
+/* ── the model: the reference's figures, or live ones ─────────────────── */
+
+const dateKey = (t) => new Date(t).toISOString().slice(0, 10);
+/** "Wed 21 Oct · 16:04 · Testnet", now. */
+const whenNow = () => {
+  const d = new Date();
+  return `${WDS[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]} · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · Testnet`;
+};
+
+function demoModel() {
+  const D = HOME_DEMO;
+  const has = (id) => S.waiting.some((w) => w.id === id);
+  const notes = [];
+  if (has('payout'))
+    notes.push({
+      w: 3,
+      t: vRO() ? (
+        'Rosa’s held payout is due tomorrow'
+      ) : (
+        <>
+          <button type="button" className="h-blu" data-hrev="payout">
+            Rosa’s held payout
+          </button>
+          {' is due tomorrow'}
+        </>
+      ),
+    });
+  notes.push({
+    w: 3,
+    t: (
+      <button type="button" className="h-red" data-go="money">
+        Plaid is 3 hours behind
+      </button>
+    ),
+  });
+  notes.push({
+    w: 2,
+    t: (
+      <>
+        {'the '}
+        <button type="button" data-vpane="votes">
+          member vote
+        </button>
+        {' closes in 8 days'}
+      </>
+    ),
+    T: (
+      <>
+        {'The '}
+        <button type="button" data-vpane="votes">
+          member vote
+        </button>
+        {' closes in 8 days'}
+      </>
+    ),
+  });
+  notes.push({ w: 1, t: `${D.stuck} members are stuck before funding` });
+  return {
+    when: D.when,
+    notes,
+    feeds: D.feeds.map(([n, ok]) => ({ n, ok: !!ok, why: ok ? 'synced' : '3 hours behind' })),
+    feedBad: D.feedBad,
+    money: { free: D.freeToSpend, operating: D.operating, payout: D.payoutFunding, reserve: '1:1' },
+    heads: [...settleHead(), ...D.heads],
+    tiles: D,
+    start: D.start,
+    today: D.today,
+    past: D.past,
+    due: D.due,
+    rails: D.rails,
+    railTo: D.railTo,
+    runs: D.runs,
+  };
+}
+
+/**
+ * Live, the same shape from what the API sends Home: the feeds' health, the stored alerts, the member
+ * counts, the funnel and the compliance deadlines. Money's, Build's and Governance's figures aren't in
+ * Home's payload yet (docs/ui-redesign-plan.md, gaps): they show as not real yet.
+ */
+function liveModel() {
+  const now = new Date(),
+    start = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - TI * DAY;
+  const feeds = feedList().map((f) => ({ n: f.name, ok: f.health === 'synced', why: f.health === 'synced' ? 'synced' : f.health === 'behind' ? 'behind' : f.health === 'failing' ? 'not reached' : 'not synced yet' }));
+  const bad = feeds.filter((f) => !f.ok);
+  const notes = [];
+  const first = queue()[0];
+  if (first)
+    notes.push({
+      w: 3,
+      t: (
+        <>
+          <button type="button" className="h-blu" data-open={first.id}>
+            {first.title}
+          </button>
+          {' is waiting on you'}
+        </>
+      ),
+    });
+  if (bad.length)
+    notes.push({
+      w: 3,
+      t: (
+        <button type="button" className="h-red" data-go="money">
+          {bad.length === 1 ? `${bad[0].n} is ${bad[0].why}` : `${bad.length} feeds aren’t synced`}
+        </button>
+      ),
+    });
+  const high = ALERTS0.filter((a) => a.sev === 'absent');
+  if (high.length) notes.push({ w: 2, t: high.length === 1 ? high[0].t : `${high.length} alerts are high` });
+  const m = vars.memberSummary;
+  if (m?.opened) notes.push({ w: 1, t: `${int(m.opened)} member${m.opened === 1 ? ' is' : 's are'} stuck before funding` });
+  if (!notes.length) notes.push({ w: 0, t: 'every feed is synced and nothing is late' });
+  const dl = DEADLINES.map(([title, entity, , days, status]) => [
+    dateKey(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) + days * DAY),
+    title,
+    title,
+    entity,
+    status === 'ready' ? 'ok' : status === 'draft' ? 'un' : 'bad',
+    'Governance',
+    '',
+    ['vpane', 'calendar'],
+  ]);
+  return {
+    when: whenNow(),
+    notes,
+    feeds,
+    feedBad: bad.length ? (bad.length === 1 ? `${bad[0].n} is ${bad[0].why}` : `${bad.length} feeds aren’t synced`) : '',
+    money: liveVitals(),
+    heads: [...settleHead(), ...liveHeads(), ...ALERTS0.map((a) => ({ sv: a.sev, t: a.t, age: a.age, m: a.area, go: a.go, own: a.fix === 'resync' && a.progress ? ['resync', 'Re-syncing', Math.round((a.progress[0] / a.progress[1]) * 100), `${a.progress[0]}/${a.progress[1]}`] : null }))],
+    tiles: null,
+    start,
+    today: dateKey(now),
+    past: livePast(),
+    due: [...dl, ...liveDue(now)].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
+    rails: [],
+    railTo: '',
+    runs: [],
+  };
+}
+
+const model = () => (REAL ? liveModel() : demoModel());
+
+/* ── the header ───────────────────────────────────────────────────────── */
+
+function brief(M) {
+  const n = M.notes
+    .slice()
+    .sort((a, b) => b.w - a.w)
+    .slice(0, 3);
+  const cap = (x) => (x.T ? x.T : typeof x.t === 'string' ? x.t[0].toUpperCase() + x.t.slice(1) : x.t);
+  return (
+    <>
+      {n.map((x, i) => {
+        const t = i === 0 ? cap(x) : x.t,
+          last = i === n.length - 1;
+        // a note that ends on a link keeps its comma with it, so no line starts with a comma (the reference's withComma)
+        const ends = t && typeof t === 'object' && t.type === 'button';
+        return (
+          <Fragment key={i}>
+            {last ? t : ends ? <span className="h-nw">{t},</span> : <>{t},</>}
+            {last ? '' : i === n.length - 2 ? ' and ' : ' '}
+          </Fragment>
+        );
+      })}
+      {'. '}
+      <span className="q">{S.waiting.length ? 'Everything else is moving.' : 'Nothing else needs you.'}</span>
+    </>
+  );
+}
+const cents = (v) => {
+  const [d, c] = money(v).split('.');
+  return (
+    <span>
+      {d}
+      <span className="ct">.{c}</span>
+    </span>
+  );
+};
+/** A vital the API doesn't send Home yet: no figure, and the bar hatched. */
+const notYet = (
+  <>
+    <span className="h-sc-v">—</span>
+    <span className="h-mb">
+      <span className="hroom" style={css('left:0;right:0')} />
+    </span>
+  </>
+);
+function header(M) {
+  const bad = M.feeds.filter((f) => !f.ok).length;
+  return (
+    <header className="h-hdr">
+      <span className="h-when">
+        <span className="h-dot" aria-hidden="true" />
+        {M.when}
+      </span>
+      <p className="h-brief">{brief(M)}</p>
+      <div className="h-strip s5">
+        <button type="button" className="h-sc" data-go="money">
+          <span className="h-lbl">Feeds</span>
+          <span className="h-sc-v">
+            {M.feeds.length - bad} <small>of {M.feeds.length}</small>
+          </span>
+          <span className="h-fd">
+            {M.feeds.map((f) => (
+              <i key={f.n} className={f.ok ? '' : 'bad'} title={`${f.n} · ${f.why}`} />
+            ))}
+          </span>
+          <span className={`h-sc-s ${bad ? 'bad' : ''}`}>{bad ? M.feedBad : M.feeds.length ? 'All synced' : 'Not synced yet'}</span>
+        </button>
+        <button type="button" className="h-sc" data-npane="reserves">
+          <span className="h-lbl">Reserve</span>
+          {M.money ? (
+            <>
+              <span className="h-sc-v">{M.money.reserve ?? '—'}</span>
+              <span className="h-mb">
+                <i style={css(`width:${M.money.backed ?? 100}%;background:var(--settled)`)} />
+              </span>
+            </>
+          ) : (
+            notYet
+          )}
+          <span className="h-sc-s">{M.money ? (M.money.reserveS ?? 'Member savings fully backed') : 'Opens Money'}</span>
+        </button>
+        <button type="button" className="h-sc" data-npane="overview">
+          <span className="h-lbl">Free to spend</span>
+          {M.money ? (
+            <>
+              <span className="h-sc-v">{cents(M.money.free)}</span>
+              <span className="h-mb">
+                <i style={css(`width:${M.money.operating ? ((Math.max(0, M.money.free) / M.money.operating) * 100).toFixed(1) : 0}%`)} />
+              </span>
+            </>
+          ) : (
+            notYet
+          )}
+          <span className="h-sc-s">{M.money ? `Of ${money(M.money.operating)} operating cash` : 'Opens Money'}</span>
+        </button>
+        <button type="button" className="h-sc" data-npane="overview">
+            <span className="h-lbl">Payout funding</span>
+            {M.money?.payout != null ? (
+              <>
+                <span className="h-sc-v">{cents(M.money.payout.v)}</span>
+                <span className="h-mb">
+                  <i style={css(`width:${M.money.payout.w}%`)} />
+                  <span className="hroom" style={css(`left:${M.money.payout.w}%;right:0`)} />
+                </span>
+              </>
+            ) : (
+              notYet
+            )}
+            <span className="h-sc-s">{M.money?.payout != null ? M.money.payout.s : 'Opens Money'}</span>
+          </button>
+        {/* card settlement (decision 54): the verdict, the small bar, the cut-off and what's due; opens Money's card */}
+        {settleTile(homeSettle(), { cls: 'h-sc', lblCls: 'h-lbl', valCls: 'h-sc-v', subCls: 'h-sc-s', attrs: { 'data-npane': 'overview' } })}
+      </div>
+    </header>
+  );
+}
+
+/* ── needs you and heads-up ───────────────────────────────────────────── */
+
+function qRow(w) {
+  const v = qv(w),
+    ext = w.mode !== 'approve';
+  // live, the app's own approval flow; in the prototype, the reference's review panel
+  const open = REAL || w.live ? { 'data-open': w.id } : { 'data-hrev': w.id };
+  return (
+    <div key={w.id} className={`h-qr${w.urgent ? ' urgent' : ''}${HS.cur === w.id ? ' sel' : ''}`} {...open}>
+      <span className="h-qi">{ic(W_ICON[w.id])}</span>
+      <span className="h-qt">
+        <b>{v.t}</b>
+        <span>{v.m}</span>
+      </span>
+      <span className="h-qa h-fig">
+        {v.a}
+        {v.u ? <small>{v.u}</small> : ''}
+      </span>
+      <button type="button" className={`h-btn${ext ? ' ext' : ''}`} {...open}>
+        {v.btn}
+        {ext ? ic('out') : ''}
+      </button>
+    </div>
+  );
+}
+function needsCell() {
+  const q = queue(),
+    ap = q.filter((w) => w.mode === 'approve').length,
+    sg = q.length - ap,
+    list = shown();
+  if (HS.qf !== 'all' && !list.length) HS.qf = 'all';
+  const pills = q.length ? (
+    <div className="h-qf" role="group" aria-label="Filter">
+      {[
+        ['all', 'All'],
+        ['approve', `Approve · ${ap}`],
+        ['sign', `Sign · ${sg}`],
+      ]
+        .filter(([k], i) => !i || (k === 'approve' ? ap : sg))
+        .map(([k, t]) => (
+          <button key={k} type="button" data-hqf={k} aria-pressed={String(HS.qf === k)}>
+            {t}
+          </button>
+        ))}
+    </div>
+  ) : (
+    ''
+  );
+  const body = q.length ? (
+    shown().map(qRow)
+  ) : (
+    <div className="h-qempty">
+      <b>Nothing needs you.</b>
+      <span className="small quiet">Approvals and signatures land here first.</span>
+    </div>
+  );
+  return (
+    <section className="h-cell h-s8">
+      <div className="h-hd">
+        <h2>Needs you</h2>
+        <span className="h-lbl h-num">{q.length}</span>
+        <div className="h-r">{pills}</div>
+      </div>
+      <div className="h-q">{body}</div>
+      <div className="h-rule">
+        {ic('team')}
+        Two-person rule: whoever proposes can’t approve.
+      </div>
+    </section>
+  );
+}
+/** What's already being done about an alert. */
+function own(o) {
+  if (!o) return '';
+  if (o[0] === 'resync')
+    return (
+      <div className="h-own">
+        <span>{o[1]}</span>
+        <span className="pg">
+          <i>
+            <b style={css(`width:${o[2]}%`)} />
+          </i>
+          {o[3]}
+        </span>
+      </div>
+    );
+  if (o[0] === 'settle')
+    return (
+      <div className="h-own">
+        <span>{o[1]}</span>
+        <button type="button" className="lnk" data-npane="overview">
+          {o[2]}
+        </button>
+      </div>
+    );
+  if (o[0] === 'cap')
+    return S.waiting.some((w) => w.id === 'chain') ? (
+      <div className="h-own">
+        <span>Fix is waiting on you</span>
+        <button type="button" className="lnk" data-hrev="chain">
+          Review ↑
+        </button>
+      </div>
+    ) : (
+      <div className="h-own done">
+        <span>Fix is with the multisig</span>
+      </div>
+    );
+  return (
+    <div className="h-own">
+      <span>{o[1]}</span>
+      <button type="button" className="lnk" data-go="field" data-fp="today">
+        See the route →
+      </button>
+    </div>
+  );
+}
+function headsCell(M) {
+  const rows = M.heads;
+  return (
+    <section className="h-cell h-s4 h-heads">
+      <div className="h-hd">
+        <h2>Heads-up</h2>
+        <span className="h-lbl h-num">{rows.length}</span>
+        <div className="h-r">
+          <span className="h-lbl">{rows.length ? (rows.every((r) => r.own) ? 'All have an owner' : 'Not all have an owner') : 'All clear'}</span>
+        </div>
+      </div>
+      <div className="h-al">
+        {rows.length ? (
+          rows.map((r, i) => (
+            <div key={i} className="h-alr">
+              <div className="h-al-m">
+                <button type="button" className="h-al-t" data-go={r.go}>
+                  <i className="sv" style={css(`background:var(--${r.sev ?? r.sv})`)} />
+                  <b>{r.t}</b>
+                  <span className="age">{r.age}</span>
+                </button>
+                <span className="m">{r.m}</span>
+              </div>
+              {own(r.own)}
+            </div>
+          ))
+        ) : (
+          <div className="h-qempty">
+            <b>Nothing is wrong.</b>
+            <span className="small quiet">Every feed is synced.</span>
+          </div>
+        )}
+      </div>
+      <button type="button" className="h-foot" data-hgo="alerts">
+        {'Alert history '}
+        <span aria-hidden="true">→</span>
+      </button>
+    </section>
+  );
+}
+
+/* ── the section pulse ────────────────────────────────────────────────── */
+
+/** The funnel's ribbon: each step's height from its count, joined by curves. */
+function funnelViz(F) {
+  const w = 100,
+    mid = 21,
+    top0 = F[0][1] || 1,
+    hh = (v) => 5 + 37 * Math.pow(v / top0, 0.25);
+  let top = '',
+    bot = '';
+  F.forEach(([, v], i) => {
+    const h = hh(v),
+      x1 = i * w + (i < 5 ? 66 : w),
+      t = mid - h / 2,
+      b = mid + h / 2;
+    top += `${i ? '' : 'M0 ' + t}L${x1} ${t}`;
+    if (i < 5) {
+      const h2 = hh(F[i + 1][1]);
+      top += `C${x1 + 18} ${t} ${(i + 1) * w - 16} ${mid - h2 / 2} ${(i + 1) * w} ${mid - h2 / 2}`;
+    }
+    let seg = `L${x1} ${b}`;
+    if (i < 5) {
+      const h2 = hh(F[i + 1][1]);
+      seg = `L${(i + 1) * w} ${mid + h2 / 2}C${(i + 1) * w - 16} ${mid + h2 / 2} ${x1 + 18} ${b} ${x1} ${b}`;
+    }
+    bot = seg + bot;
+  });
+  const hl = hh(F[5][1]);
+  return (
+    <div className="h-gf">
+      <svg viewBox="0 0 600 42" preserveAspectRatio="none" aria-hidden="true">
+        <path className="fa" d={`${top}L600 ${mid + hl / 2}${bot.replace(/^L600 [\d.]+/, '')}L0 ${mid + hh(top0) / 2}Z`} />
+        <rect className="fb" x="500" y={mid - hl / 2} width="100" height={hl} />
+      </svg>
+      <div className="h-gf-l">
+        {F.map(([n, v]) => (
+          <span key={n}>
+            <b>{int(v)}</b>
+            <s>{n}</s>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+/**
+ * The co-op's entities as a small tree, the same as Governance → Entities: the Foundation outside it, the
+ * co-op over its four subsidiaries, Holdings over the Manager and Clear Building Co., and the Manager over
+ * the two companies it runs. Each box is a card (a name line, a footer rule, a status square) in its
+ * entity's status, from Governance's data.
+ */
+function treeViz() {
+  const W = 60,
+    H = 20,
+    X = [43, 128, 214, 299],
+    CO = 171,
+    Y = [12, 40, 68, 96],
+    // the Manager under Holdings, Clear Building Co. beside it; the Manager's two companies under it
+    R3 = [214, 128],
+    R4 = [181, 247];
+  const st = Object.fromEntries(ENT.map((e) => [e[0], e[3]]));
+  const cls = (id) => ({ formed: '', forming: 'ing' })[st[id]] ?? 'pl';
+  // id, x, y, the name line's length
+  const at = [
+    ['fdn', X[0], Y[0], 34],
+    ['coop', CO, Y[0], 26],
+    ['labs', X[0], Y[1], 32],
+    ['fin', X[1], Y[1], 38],
+    ['hold', X[2], Y[1], 40],
+    ['dt', X[3], Y[1], 36],
+    ['mgr', R3[0], Y[2], 38],
+    ['lsub', R3[1], Y[2], 26],
+    ['prop', R4[0], Y[3], 28],
+    ['lend', R4[1], Y[3], 32],
+  ].filter(([id]) => id in st || !Object.keys(st).length);
+  const ln = (k, d, c = 'h-ln') => <path key={k} className={c} d={d} />;
+  return (
+    <svg className="h-gt" width="100%" height="100" viewBox="0 0 342 124" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs>
+        <pattern id="hgt-h" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <path d="M0 0V4" style={css('stroke:var(--line);stroke-width:1')} />
+        </pattern>
+      </defs>
+      <text x={X[0]} y="7" textAnchor="middle">
+        Outside
+      </text>
+      <text x={CO} y="7" textAnchor="middle">
+        Members
+      </text>
+      {ln('l1', `M${CO} ${Y[0] + H}V${Y[1] - 5}M${X[0]} ${Y[1] - 5}H${X[3]}` + X.map((x) => `M${x} ${Y[1] - 5}V${Y[1]}`).join(''))}
+      {ln('l2', `M${X[2]} ${Y[1] + H}V${Y[2]}M${X[2]} ${Y[2] - 4}H${R3[1]}V${Y[2]}`)}
+      {ln('d1', `M${X[0] - 18} ${Y[0] + H}V${Y[1]}`, 'dt')}
+      {ln('d2', `M${R3[0]} ${Y[2] + H}V${Y[3] - 4}M${R4[0]} ${Y[3] - 4}H${R4[1]}M${R4[0]} ${Y[3] - 4}V${Y[3]}M${R4[1]} ${Y[3] - 4}V${Y[3]}`, 'dt')}
+      {at.map(([id, x, y, t]) => (
+        <g key={id} className={id === 'fdn' ? `out ${cls(id)}` : cls(id)}>
+          <rect className="bx" x={x - W / 2 + 0.5} y={y + 0.5} width={W - 1} height={H - 1} />
+          <path className="nm" d={`M${x - W / 2 + 6} ${y + 6.5}H${x - W / 2 + 6 + t}`} />
+          <path className="ft" d={`M${x - W / 2 + 1} ${y + 13.5}H${x + W / 2 - 1}`} />
+          <rect className="st" x={x - W / 2 + 5} y={y + 15} width="3" height="3" />
+        </g>
+      ))}
+    </svg>
+  );
+}
+const sw = (s) => <i style={css(s)} />;
+/** A tile whose figures Home's payload doesn't carry yet: hatched, and it still opens the section. */
+const hatched = (
+  <div className="h-units" style={css('grid-template-columns:repeat(15,1fr);gap:3px')}>
+    {Array.from({ length: 15 }, (_, i) => (
+      <i key={i} className="h-hatch" />
+    ))}
+  </div>
+);
+/*
+ * Live, the Growth, Merchants, Money and Build tiles draw from those pages' own sections (their datasets, as the
+ * pages build them), loaded beside Home's once each; until one arrives, or for someone who can't see the
+ * page, its tile is hatched and still opens it.
+ */
+const SIDE = ['growth', 'merchants', 'money', 'build'];
+const sideLoading = new Set();
+function sideLoad() {
+  if (!LIVE) return;
+  for (const r of SIDE) {
+    if (!needsData(r) || sideLoading.has(r) || vLevel(r) < 1) continue;
+    sideLoading.add(r);
+    loadSection(r).then(
+      () => {
+        sideLoading.delete(r);
+        if (S.route === 'home') render();
+      },
+      // left marked: a section it can't load isn't asked for again
+      () => undefined,
+    );
+  }
+}
+const loaded = (r) => !LIVE || !needsData(r);
+/** "$42.4k" */
+const kMoney = (v) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}k` : money(v));
+const signed = (v) => `${v < 0 ? '−' : '+'}${money(Math.abs(v))}`;
+/** The funnel's last 30 days, stage by stage, as Growth totals it (its sources, and invites on a row of their own). */
+function liveFunnel() {
+  if (!loaded('growth')) return null;
+  const T = growthLive().D.source.rows.reduce((a, r) => a.map((v, i) => v + (r.f[i] ?? 0)), [0, 0, 0, 0, 0, 0]);
+  return ['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent'].map((n, i) => [n, T[i]]);
+}
+/**
+ * Heads-up, live, from what the jobs and feeds record (nothing stores alerts for Home): a feed behind or not reached,
+ * the payout top-ups stopped or waiting on CL Operating's owners, and the settlement funding desk asking for a person.
+ */
+function liveHeads() {
+  const out = [];
+  feedList()
+    .filter((f) => f.health === 'behind' || f.health === 'failing')
+    .forEach((f) => out.push({ sv: f.health === 'failing' ? 'absent' : 'underway', t: `${f.name} ${f.health === 'failing' ? 'isn’t reached' : 'is behind'}`, age: '—', m: 'Settings · Connections', go: 'settings', own: null }));
+  const T = vars.payoutTopUps;
+  if (T?.halted) out.push({ sv: 'absent', t: 'Payout top-ups stopped', age: '—', m: `Money · after top-up #${T.halted.id}: ${T.halted.error}`, go: 'money', own: null });
+  else if (T?.needsHuman) out.push({ sv: 'underway', t: 'A top-up waits on CL Operating', age: '—', m: `Money · ${money(T.needsHuman.remainder)} is past the spending limit`, go: 'money', own: null });
+  const SF = vars.settlementFunding;
+  if (SF?.needsHuman) out.push({ sv: 'underway', t: 'Card settlement funding needs a person', age: '—', m: 'Money · Pools → Yield pool', go: 'money', own: null });
+  return out;
+}
+/** Card settlement as Home has it: Money's section, live (once loaded); the reference's demo otherwise. */
+const SETTLE_DEMO_NOW = new Date(2026, 9, 21, 16, 4).getTime();
+const settleNow = () => (REAL ? Date.now() : SETTLE_DEMO_NOW);
+export function homeSettle() {
+  return REAL ? (loaded('money') ? vars.settlementFunding ?? null : null) : demoSettle(SETTLE_DEMO_NOW);
+}
+/** Heads-up's card settlement row, the same words as Money's Needs you; none when it's Covered. */
+function settleHead() {
+  const n = settleNeed(homeSettle(), settleNow());
+  return n ? [{ sv: n.sev, t: n.title, age: n.age, m: `Money · ${n.when}`, go: 'money', own: ['settle', n.owner, n.action] }] : [];
+}
+/** The audit log's areas, as Home's pages are named and where each one opens. */
+const PAST_AREA = { members: ['Members', 'members'], growth: ['Growth', 'growth'], field: ['Field', 'field'], merchants: ['Merchants', 'merchants'], money: ['Money', 'money'], shop: ['Shop', 'shop'], contracts: ['Build', 'contracts'], governance: ['Governance', 'governance'] };
+/** The week behind, live: what people did here, from the app's own log (the API sends it from See). */
+function livePast() {
+  return (vars.homePast ?? []).map((l) => {
+    const [area, go] = PAST_AREA[l.area] ?? ['Records', 'records'];
+    const d = new Date(l.at);
+    return [dateKey(l.at), `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, l.detail ? `${l.action} · ${l.detail}` : l.action, l.who, area, go];
+  });
+}
+/** The month ahead beyond the filings, live: the PayoutPool's payouts by day and the bonds that mature, from Money. */
+function liveDue(now) {
+  if (!loaded('money')) return [];
+  const { FLOWS, BONDS } = moneyLive();
+  const day0 = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const byDay = new Map();
+  FLOWS.filter((f) => f[1] === 'out').forEach((f) => {
+    const x = byDay.get(f[0]) ?? { v: 0, n: 0 };
+    byDay.set(f[0], { v: x.v + f[2], n: x.n + 1 });
+  });
+  const pays = [...byDay].map(([d, x]) => [dateKey(day0 + d * DAY), 'Payouts clear', 'Payouts clear', `${money(x.v)} to ${x.n} claim${x.n === 1 ? '' : 's'}`, 'm', 'Money', '', ['xpane', 'payouts']]);
+  const bonds = BONDS.filter((b) => b[4] >= 0 && b[4] <= 30).map((b) => [dateKey(day0 + b[4] * DAY), 'Bond matures', `${b[0]} matures`, money(b[1]), 'm', 'Money', '', ['go', 'money']]);
+  return [...pays, ...bonds];
+}
+/** The header's three money vitals, as Money's header and Overview work them out. */
+function liveVitals() {
+  if (!loaded('money')) return null;
+  const { M, ASIDE } = moneyLive();
+  const r = fig('money.reserve');
+  // "1 : 1": what backs the members' savings, against what they hold
+  const [a, b] = String(r?.ratio ?? '').split(':').map(Number);
+  const backed = r && b ? Math.min(100, (a / b) * 100) : 0;
+  const used = M.unsecured + M.room ? (M.unsecured / (M.unsecured + M.room)) * 100 : 100;
+  /* payout funding, as the keeper (payoutFunding/fundingStatus.ts) grades it: Red when claims due within two business
+     days are short (12.10), Amber when the PayoutPool holds less than what's due within 30 days (decision 49) */
+  const due30 = M.due30,
+    short2 = vars.payoutDueSoon?.short ?? 0;
+  const payout =
+    due30 == null
+      ? { v: M.payout, w: 0, s: 'What’s due in 30 days isn’t read yet' }
+      : {
+          v: M.payout,
+          w: due30 ? Math.min(100, (M.payout / due30) * 100).toFixed(1) : 100,
+          s: short2 > 0 ? `Red · ${money(short2)} short within 2 business days` : M.payout < due30 ? `Amber · ${money(due30 - M.payout)} under 30 days due · nothing is late` : due30 ? `Green · ${money(due30)} due in 30 days` : 'Green · nothing due in 30 days',
+        };
+  return {
+    reserve: r?.ratio ?? null,
+    backed,
+    reserveS: !r ? 'The reserve isn’t read yet' : backed >= 100 ? 'Member savings fully backed' : `Member savings reserved ${r.ratio}`,
+    free: M.cash - ASIDE.reduce((t, x) => t + x[1], 0),
+    operating: M.cash,
+    credit: M.room,
+    creditUsed: used.toFixed(1),
+    payout,
+  };
+}
+/** Partner shops: transacting, signing, signed and idle (Merchants' own list). */
+function liveShops() {
+  if (!loaded('merchants')) return null;
+  const P = fmLive().MS.filter((m) => ['transacting', 'signing', 'signed'].includes(m.stage));
+  const n = (st) => P.filter((m) => m.stage === st).length;
+  const cities = new Set(P.map((m) => m.city).filter(Boolean)).size;
+  return { live: n('transacting'), signing: n('signing'), of: P.length, s: `partner shops transacting${cities ? ` · ${cities} ${cities === 1 ? 'city' : 'cities'}` : ''}` };
+}
+/** What's held, by whose it is, and this week's change (Money's accounts). */
+function liveMoney() {
+  if (!loaded('money')) return null;
+  const GR = [
+    ['members', 'Members’'],
+    ['coop', 'Co-op’s'],
+    ['set', 'Set aside', 1],
+  ];
+  // id, name, what, group, source, balance, weeks, colour, weeks it really has
+  const A = GR.flatMap(([g]) => moneyLive().ACCTS.filter((a) => a[3] === g));
+  if (!A.length) return null;
+  const held = A.reduce((t, a) => t + a[5], 0);
+  const wk = (a) => (a[8] >= 2 ? a[5] - a[6][a[6].length - 2] : 0);
+  const moved = A.reduce((t, a) => t + wk(a), 0);
+  const top = A.reduce((b, a) => (Math.abs(wk(a)) > Math.abs(b ? wk(b) : 0) ? a : b), null);
+  const lc = (n) => (/^[A-Z][a-z]/.test(n) ? n[0].toLowerCase() + n.slice(1) : n);
+  return {
+    held,
+    s: `held across ${A.length} ${A.length === 1 ? 'account' : 'accounts'}${moved ? ` · ${signed(moved)} this week` : ''}`,
+    groups: GR.map(([g, n, rt]) => {
+      const v = A.filter((a) => a[3] === g).reduce((t, a) => t + a[5], 0);
+      return [n, kMoney(v), held ? (v / held) * 100 : 1, rt];
+    }),
+    parts: A.map((a) => [held ? a[5] : 1, a[7]]),
+    names: A.map((a) => a[1]).join(' · '),
+    key: top ? `Biggest mover: ${lc(top[1])}, ${signed(wk(top))} this week` : 'Nothing moved this week',
+  };
+}
+/** The map's contracts by group ("37 of 41"): live, pending in the Ops Safe, waiting on you, not deployed (Build's map). */
+function liveBuild() {
+  if (!loaded('build')) return null;
+  const B = buildLive();
+  if (!B.CTR.length) return null;
+  const pend = {};
+  for (const c of B.CHANGES) if (c.st === 'safe' && c.contract && !c.block) pend[c.contract] = c.need === B.me ? 'w' : (pend[c.contract] ?? 'c');
+  const cls = (c) => (c[4] !== 'live' ? 'x' : (pend[c[0]] ?? ''));
+  // as Build's map draws them (brief update 2): its controls and rules, the credit layers, the deeds; off the map isn't counted
+  const LAY = ['Access', 'Issue', 'Tokens', 'Pools', 'Earn'];
+  const groups = [['Rules', B.CTR.filter((c) => c[9] === 'p').map(cls)], ...LAY.map((n, i) => [n, B.CTR.filter((c) => c[9] === 'c' && c[3] === i).map(cls)]), ['Deeds', B.CTR.filter((c) => c[9] === 'd').map(cls)]].filter((g) => g[1].length);
+  const flight = B.CHANGES.filter((c) => c.contract && c.st !== 'shipped').length;
+  return {
+    f: B.deployed,
+    of: B.onMap,
+    s: `live${B.chain.network ? ` on ${B.chain.network}` : ''} · ${flight ? `${flight} ${flight === 1 ? 'change' : 'changes'} in flight` : 'nothing in flight'}`,
+    groups,
+  };
+}
+function tiles(M) {
+  const D = M.tiles;
+  const F = (D ? null : liveFunnel()) ?? FUNNEL.map(([n, v]) => [{ Activated: 'Active', 'First spend': 'Spent' }[n] || n, v]);
+  // the step that loses the most, of those with anyone in them
+  const STEP = ['visit → join', 'join → invite', 'invite → open', 'open → active', 'active → spend'];
+  const drop = F.length >= 6 ? STEP.map((t, i) => [t, F[i][1] ? F[i + 1][1] / F[i][1] : null]).filter((x) => x[1] != null).sort((a, b) => a[1] - b[1])[0] : null;
+  const joined = F[1]?.[1] ?? 0,
+    spent = F[5]?.[1] ?? 0;
+  const m = vars.memberSummary ?? {};
+  const units = [];
+  if (D) for (let b = 0; b < 12; b++) for (let i = 0; i < 25; i++) units.push(i < D.members.active[b] ? 'h-u-a' : i < D.members.active[b] + D.members.opened[b] ? 'h-u-o' : 'h-u-n');
+  else {
+    const inv = m.invited ?? 0,
+      act = m.active ?? 0,
+      op = m.opened ?? 0;
+    for (let i = 0; i < Math.max(inv, 1); i++) units.push(i < act ? 'h-u-a' : i < act + op ? 'h-u-o' : 'h-u-n');
+  }
+  const shops = D ? D.merchants : liveShops();
+  const mo = D ? null : liveMoney();
+  const bd = D ? null : liveBuild();
+  const formed = ENT.filter((e) => e[3] === 'formed').length;
+  return [
+    {
+      go: 'growth',
+      n: 'Growth',
+      f: D ? D.growth.f : int(joined),
+      s: D ? D.growth.s : `joined in 30 days · ${int(spent)} made a first spend`,
+      viz: F.length >= 6 ? funnelViz(F) : hatched,
+      key: <span>{D ? D.growth.key : drop ? `Biggest drop is ${drop[0]}, ${(drop[1] * 100).toFixed(1)}%` : 'Nothing measured yet'}</span>,
+    },
+    {
+      go: 'members',
+      n: 'Members',
+      chip: (D ? D.members.stuck : m.opened) ? ['under', `${D ? D.members.stuck : m.opened} stuck`] : null,
+      f: D ? D.members.f : int(m.active ?? 0),
+      fs: ' active',
+      s: D ? D.members.s : `of ${int(m.invited ?? 0)} invited`,
+      viz: (
+        <div className="h-units" style={css(`grid-template-columns:repeat(${D ? 50 : Math.min(50, Math.max(10, units.length))},1fr)`)}>
+          {units.map((c, i) => (
+            <i key={i} className={c} />
+          ))}
+        </div>
+      ),
+      key: (
+        <>
+          <span>
+            <i className="h-u-a" />
+            Active
+          </span>
+          <span>
+            <i className="h-u-o" />
+            {'Opened, not funded '}
+            <b>{D ? D.members.stuck : (m.opened ?? 0)}</b>
+          </span>
+          <span>
+            <i className="h-u-n" />
+            Not opened
+          </span>
+        </>
+      ),
+    },
+    {
+      go: 'merchants',
+      n: 'Merchants',
+      f: shops ? String(shops.live) : '—',
+      fs: shops ? ` of ${shops.of}` : '',
+      s: shops ? shops.s : 'Opens Merchants',
+      viz: shops ? (
+        <div className="h-units" style={css('grid-template-columns:repeat(15,1fr);gap:3px')}>
+          {Array.from({ length: Math.max(shops.of, 1) }, (_, i) => (
+            <i key={i} className={i < shops.live ? 'h-u-a' : i < shops.live + shops.signing ? 'h-hatch' : 'h-u-n'} />
+          ))}
+        </div>
+      ) : (
+        hatched
+      ),
+      key: (
+        <>
+          <span>
+            <i className="h-u-a" />
+            Transacting
+          </span>
+          <span>
+            <i className="h-hatch" />
+            Signing
+          </span>
+          <span>
+            <i className="h-u-n" />
+            Signed, idle
+          </span>
+        </>
+      ),
+    },
+    {
+      go: 'money',
+      n: 'Money',
+      f: D ? money(D.money.held) : mo ? money(mo.held) : '—',
+      s: D ? D.money.s : mo ? mo.s : 'Opens Money',
+      viz: D || mo ? (
+        <>
+          <div className="h-mz">
+            {(D ? D.money : mo).groups.map(([n, v, flex, rt, title]) =>
+              title ? (
+                <div key={n} className="h-mz-g" style={css(`flex:${flex}`)} title={title} />
+              ) : (
+                <div key={n} className={`h-mz-g${rt ? ' h-rt' : ''}`} style={css(`flex:${flex}`)}>
+                  <span>{n}</span>
+                  <b>{v}</b>
+                  <i />
+                </div>
+              ),
+            )}
+          </div>
+          <div className="h-comp" title={(D ? D.money : mo).names}>
+            {(D ? D.money : mo).parts.map(([flex, bg], i) => (
+              <Fragment key={i}>{sw(`flex:${flex};background:${bg}`)}</Fragment>
+            ))}
+          </div>
+        </>
+      ) : (
+        hatched
+      ),
+      key: <span>{D ? D.money.key : mo ? mo.key : 'Not in Home’s figures yet'}</span>,
+    },
+    {
+      go: 'build',
+      n: 'Build',
+      chip: !vRO() && S.waiting.some((w) => w.id === 'chain') ? ['live', '1 on you'] : null,
+      f: D ? D.build.f : bd ? String(bd.f) : '—',
+      fs: D ? ` of ${D.build.of}` : bd ? ` of ${bd.of}` : '',
+      s: D ? D.build.s : bd ? bd.s : 'Opens Build',
+      viz: D || bd ? (
+        <div className="h-pc">
+          {(D ? D.build : bd).groups.map(([n, a], i) => (
+            <div key={n} className={`h-pc-c ${n === 'Deeds' ? 'h-dd' : ''}`}>
+              <div className="h-pc-s">
+                {a.map((c, j) => (
+                  <i key={j} className={c} />
+                ))}
+              </div>
+              <s>{n}</s>
+            </div>
+          ))}
+        </div>
+      ) : (
+        hatched
+      ),
+      key: (
+        <>
+          <span>
+            {sw('box-shadow:inset 0 0 0 2px var(--live)')}
+            On you
+          </span>
+          <span>
+            {sw('box-shadow:inset 0 0 0 2px var(--underway)')}
+            Pending
+          </span>
+          <span>
+            <i className="h-hatch" />
+            Not funded
+          </span>
+          <span>
+            {sw('outline:1px dashed var(--fg-50);outline-offset:-1px')}
+            Not deployed
+          </span>
+        </>
+      ),
+    },
+    {
+      go: 'governance',
+      n: 'Governance',
+      chip: D ? ['under', D.governance.due] : DEADLINES.length ? ['under', `${DEADLINES.length} due`] : null,
+      f: ENT.length ? String(formed) : '—',
+      fs: ENT.length ? ` of ${ENT.length}` : '',
+      s: D ? D.governance.s : ENT.length ? 'entities formed' : 'Opens Governance',
+      viz: ENT.length ? treeViz() : hatched,
+      key: (
+        <>
+          <span>
+            {sw('background:var(--fg)')}
+            Formed
+          </span>
+          <span>
+            {sw('background:var(--underway)')}
+            Forming
+          </span>
+          <span>
+            {sw('background:repeating-linear-gradient(45deg,var(--fg-50) 0 1px,transparent 1px 3px);outline:1px solid var(--line);outline-offset:-1px')}
+            Planned
+          </span>
+          <span>
+            {sw('outline:1px dashed var(--fg);outline-offset:-1px')}
+            Ownerless
+          </span>
+        </>
+      ),
+    },
+  ];
+}
+const pulse = (M) => (
+  <div className="h-bento">
+    {tiles(M).map((t) => (
+      <button key={t.go} type="button" className="h-cell h-s4 h-pt" data-go={t.go} aria-label={`${t.n}: open the section`}>
+        <span className="h-pt-in">
+          <span className="h-pt-h">
+            {ic(t.go)}
+            <b>{t.n}</b>
+            {t.chip ? <span className={`h-chip ${t.chip[0]}`}>{t.chip[1]}</span> : ''}
+          </span>
+          <span className="h-pt-f">
+            <span className="h-fig">
+              {t.f}
+              {t.fs ? <small>{t.fs}</small> : ''}
+            </span>
+            <span>{t.s}</span>
+          </span>
+          <span className="h-viz">{t.viz}</span>
+          <span className="h-vk">{t.key}</span>
+        </span>
+      </button>
+    ))}
+  </div>
+);
+
+/* ── the timeline: 7 days back, 30 ahead ──────────────────────────────── */
+
+let TL = null;
+const dayAt = (i) => new Date(TL.start + i * DAY);
+const idxOf = (d) => {
+  const [y, m, dd] = d.split('-').map(Number);
+  return Math.round((Date.UTC(y, m - 1, dd) - TL.start) / DAY);
+};
+const fmt3 = (d) => {
+  const x = dayAt(idxOf(d));
+  return [x.getUTCDate(), MON[x.getUTCMonth()].toUpperCase(), WDS[x.getUTCDay()]];
+};
+let _cv = null;
+const tw = (t, mono) => {
+  _cv ??= document.createElement('canvas').getContext('2d');
+  _cv.font = mono ? "500 10px 'IBM Plex Mono', monospace" : "600 12px 'Instrument Sans', system-ui, sans-serif";
+  return _cv.measureText(mono ? t.toUpperCase() : t).width + (mono ? t.length * 0.4 : 0);
+};
+/** The grid of days and a lane per section, laid out for the width it has: drawn after the page, and again when it resizes. */
+function drawTimeline(force) {
+  const host = document.getElementById('h-ax');
+  if (!host || !TL) return;
+  const LAB = 92,
+    W = host.clientWidth - LAB;
+  if (W <= 0 || (W === HS.lastW && !force && host.firstChild)) return;
+  HS.lastW = W;
+  const cw = W / ND,
+    cx = (i) => (i + 0.5) * cw,
+    ix = idxOf;
+  const days = [],
+    mo = [],
+    cols = [<i key="cp" className="h-cp" style={css(`width:${TI * cw}px`)} />, <i key="ct" className="h-cto" style={css(`left:${TI * cw}px;width:${cw}px`)} />];
+  for (let i = 0; i < ND; i++) {
+    const d = dayAt(i),
+      wd = d.getUTCDay();
+    days.push(
+      <span key={i} className={`h-tg-d ${i < TI ? 'past' : ''} ${i === TI ? 'today' : ''} ${wd === 0 || wd === 6 ? 'we' : ''}`}>
+        {d.getUTCDate()}
+      </span>,
+    );
+    if (d.getUTCDate() === 1 || i === 0) {
+      mo.push(
+        <span key={i} style={css(`left:${i * cw}px`)}>
+          {MO[d.getUTCMonth()]}
+        </span>,
+      );
+      if (i) cols.push(<i key={'m' + i} className="h-cm" style={css(`left:${i * cw}px`)} />);
+    } else if (wd === 1) cols.push(<i key={'w' + i} className="h-cw" style={css(`left:${i * cw}px`)} />);
+  }
+  const { past: PAST, due: DUE, rails: RUN } = TL;
+  const lane = (name) => {
+    const items = [],
+      byDay = {};
+    const h = [];
+    PAST.forEach((p, i) => {
+      if (p[4] === name) (byDay[ix(p[0])] = byDay[ix(p[0])] || []).push(i);
+    });
+    Object.entries(byDay).forEach(([d, ids]) => {
+      const x = cx(+d);
+      items.push(x);
+      h.push(
+        <i key={'e' + d} className={`h-tg-sq ${ids.length > 1 ? 'n' : ''}`} data-hk={ids.map((i) => 'e' + i).join(',')} style={css(`left:${x}px`)} title={ids.map((i) => PAST[i][2]).join(' · ')}>
+          {ids.length > 1 ? ids.length : ''}
+        </i>,
+      );
+    });
+    const dues = DUE.map((p, j) => [p, j]).filter(([p]) => p[5] === name);
+    dues.forEach(([p, j]) => {
+      const x = cx(ix(p[0]));
+      items.push(x);
+      h.push(<i key={'d' + j} className={`h-tg-due ${p[4]}`} data-hk={`d${j}`} style={css(`left:${x}px`)} title={p[2]} />);
+    });
+    const occ = items.map((x) => [x - 7, x + 7]);
+    const free = (a, b) => a >= 0 && b <= W && !occ.some(([p, q]) => a < q + 3 && b > p - 3);
+    const lbls = [];
+    RUN.filter((r) => r[4] === name).forEach((r) => {
+      const a = ix(r[0]),
+        b = r[1] ? ix(r[1]) : ND - 1,
+        x0 = a * cw + 3,
+        x1 = r[1] ? (b + 1) * cw - 3 : W - 2;
+      h.push(<i key={'r' + r[5]} className={`h-tg-rail ${r[6]} ${r[1] ? 'cap' : 'open'}`} data-hk={r[5]} style={css(`left:${x0}px;width:${x1 - x0}px`)} />);
+      lbls.push({ x: Math.max(x0, (TI + 1) * cw + 2), rightOnly: 1, b: r[2], st: r[3] + (r[1] ? '' : TL.railTo), cls: r[6], k: r[5] });
+    });
+    dues.forEach(([p, j]) => {
+      if (RUN.some((r) => r[5] === 'd' + j)) return;
+      lbls.push({ x: cx(ix(p[0])), b: p[1], tiny: p[6], st: STL[p[4]], cls: p[4], k: 'd' + j });
+    });
+    lbls
+      .sort((a, b) => a.x - b.x)
+      .forEach((l) => {
+        const wT = tw(l.b, 0) + 12,
+          wF = wT + (l.st ? tw(l.st, 1) + 6 : 0),
+          wS = l.tiny ? tw(l.tiny, 0) + 12 : 0;
+        const tries = l.rightOnly
+          ? [
+              ['r', wF, 1],
+              ['r', wT, 0],
+            ]
+          : [
+              ['r', wF, 1],
+              ['r', wT, 0],
+              ['l', wF, 1],
+              ['l', wT, 0],
+            ].concat(
+              l.tiny
+                ? [
+                    ['r', wS, 0, 1],
+                    ['l', wS, 0, 1],
+                  ]
+                : [],
+            );
+        let pick = null;
+        for (const [sd, w, st, sm] of tries) {
+          const A = sd === 'r' ? l.x + (l.rightOnly ? 0 : 12) : l.x - 12 - w,
+            B = A + w;
+          if (free(A, B)) {
+            pick = [A, B, st, sm];
+            break;
+          }
+        }
+        if (!pick) return;
+        const [A, B, st, sm] = pick;
+        occ.push([A, B]);
+        h.push(
+          <span key={'l' + l.k} className={`h-tg-lb ${l.cls || ''}`} data-hk={l.k} style={css(`left:${A}px;width:${B - A}px`)} title={l.b}>
+            <b>{sm ? l.tiny : l.b}</b>
+            {st && l.st ? <span>{l.st}</span> : ''}
+          </span>,
+        );
+      });
+    return (
+      <div key={name} className="h-tg-row h-tg-lane">
+        <span className="h-lbl">{name}</span>
+        <div className="h-tg-tr">{h}</div>
+      </div>
+    );
+  };
+  html(
+    host,
+    <div className="h-tg">
+      <div className="h-tg-cols">{cols}</div>
+      <div className="h-tg-row h-tg-mo">
+        <div />
+        <div className="h-tg-tr">{mo}</div>
+      </div>
+      <div className="h-tg-row h-tg-days">
+        <div />
+        <div className="h-tg-tr" style={css(`grid-template-columns:repeat(${ND},1fr)`)}>
+          {days}
+        </div>
+      </div>
+      {LANES.map(lane)}
+    </div>,
+  );
+}
+const segs = (n, on, g = 0) => (
+  <div className="h-segs" aria-hidden="true">
+    {Array.from({ length: n }, (_, i) => (
+      <i key={i} className={i < on ? 'on' : i < on + g ? 'on g' : ''} />
+    ))}
+  </div>
+);
+/** A link's data attribute from the model: ['vpane', 'votes'] is data-vpane="votes". */
+const dattr = ([k, v]) => ({ [`data-${k}`]: v });
+function timeline(M) {
+  TL = { start: M.start, past: M.past, due: M.due, rails: M.rails, railTo: M.railTo };
+  const evRow = (p) => (
+    <button key={p[2]} type="button" className="h-ev" data-hk={`e${M.past.indexOf(p)}`} data-go={p[5]} {...(p[6] ? { 'data-fp': p[6] } : {})}>
+      <span className="w">{p[1] || fmt3(p[0])[2]}</span>
+      <span>
+        <b>{p[2]}</b>
+        <span className="s">{p[3]}</span>
+      </span>
+    </button>
+  );
+  const td = M.past.filter((p) => p[0] === M.today),
+    more = M.past.length - td.length;
+  const due = M.due.map((p, j) => {
+    const [dd, mm] = fmt3(p[0]),
+      n = idxOf(p[0]) - TI;
+    return (
+      <button key={j} type="button" className="h-dt" data-hk={`d${j}`} {...dattr(p[7])}>
+        <span className={`d ${p[4] === 'ok' ? 'k' : ''}`}>
+          {dd}
+          <small>{mm}</small>
+        </span>
+        <span>
+          <b>{p[2]}</b>
+          <span className="s">
+            {'In '}
+            {n}
+            {' days · '}
+            {p[3]}
+          </span>
+        </span>
+        {STL[p[4]] ? <span className={`h-chip ${p[4] === 'ok' ? 'ok' : p[4] === 'un' ? 'under' : 'bad'}`}>{STL[p[4]]}</span> : ''}
+      </button>
+    );
+  });
+  const empty = (t) => (
+    <div className="h-qempty">
+      <span className="small quiet">{t}</span>
+    </div>
+  );
+  return (
+    <div className="h-bento h-tl">
+      <section className="h-cell h-s12">
+        <div className="h-hd">
+          <h2>Timeline</h2>
+          <div className="h-r">
+            <span className="h-tl-key">
+              <span>
+                <i style={css('background:var(--fg)')} />
+                Happened
+              </span>
+              <span>
+                <i style={css('height:2px;width:14px;background:var(--fg)')} />
+                Running
+              </span>
+              <span>
+                <i style={css('background:var(--settled)')} />
+                <i style={css('box-shadow:inset 0 0 0 2px var(--underway)')} />
+                <i style={css('box-shadow:inset 0 0 0 2px var(--absent)')} />
+                Due · ready, drafting, not started
+              </span>
+            </span>
+          </div>
+        </div>
+        <div className="h-tx">
+          <div className="h-tx-in" id="h-ax" />
+        </div>
+        <div className="h-tl-cols">
+          <div className="h-tl-col">
+            <span className="h-lbl">Happened today</span>
+            {td.length ? td.map(evRow) : empty('Nothing logged today yet.')}
+            {more ? (
+              <button type="button" className="h-ev-more" data-rpane="log">
+                {more}
+                {' more this week in the activity log '}
+                <span aria-hidden="true">→</span>
+              </button>
+            ) : (
+              ''
+            )}
+          </div>
+          <div className="h-tl-col">
+            <span className="h-lbl">
+              {'Running · '}
+              {M.runs.length}
+            </span>
+            {M.runs.length
+              ? M.runs.map(([k, t, v, [n, on, g], s, a]) => (
+                  <button key={k} type="button" className="h-run" data-hk={k} {...dattr(a)}>
+                    <span className="h-run-t">
+                      <b>{t}</b>
+                      <span className="h-num">{v}</span>
+                    </span>
+                    {segs(n, on, g)}
+                    <span className="s">{s}</span>
+                  </button>
+                ))
+              : empty('Nothing running now.')}
+          </div>
+          <div className="h-tl-col">
+            <span className="h-lbl">Coming up</span>
+            {due.length ? due : empty('Nothing due in the next month.')}
+          </div>
+        </div>
+        <div className="h-ft" style={css('grid-template-columns:repeat(3,1fr)')}>
+          <button type="button" data-rpane="log">
+            {'Activity log '}
+            <span aria-hidden="true">→</span>
+          </button>
+          <button type="button" data-go="records">
+            {'All running work '}
+            <span aria-hidden="true">→</span>
+          </button>
+          <button type="button" data-vpane="calendar">
+            {'Compliance calendar '}
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ── the review panel: the prototype's walkthrough of a sample item ──── */
+
+function root() {
+  let r = document.getElementById('hRoot');
+  if (!r) {
+    r = document.createElement('div');
+    r.id = 'hRoot';
+    const scrim = document.createElement('div');
+    scrim.className = 'h-scrim';
+    scrim.dataset.hclose = '';
+    const aside = document.createElement('aside');
+    aside.className = 'h-panel';
+    aside.setAttribute('role', 'dialog');
+    aside.setAttribute('aria-modal', 'true');
+    aside.setAttribute('aria-label', 'Review');
+    aside.tabIndex = -1;
+    r.append(scrim, aside);
+    document.body.appendChild(r);
+  }
+  return r;
+}
+const panelEl = () => root().querySelector('.h-panel');
+function openP(id) {
+  const w = S.waiting.find((x) => x.id === id);
+  if (!w || vRO()) return;
+  if (!document.body.classList.contains('h-pn')) HS.back = document.activeElement;
+  HS.cur = id;
+  HS.busy = false;
+  const v = qv(w),
+    ext = w.mode !== 'approve',
+    list = queue(),
+    n = list.findIndex((x) => x.id === id);
+  document.querySelectorAll('.h-qr').forEach((r) => r.classList.toggle('sel', r.dataset.hrev === id));
+  html(
+    panelEl(),
+    <>
+      <div className="h-pn-hd">
+        <span className="h-lbl">{w.kind}</span>
+        <span className={`h-chip ${v.ct[0]}`}>{v.ct[1]}</span>
+        <button type="button" className="x" data-hclose="" aria-label="Close">
+          {ic('close', 'sm')}
+        </button>
+      </div>
+      <div className="h-pn-b">
+        <div>
+          <h3>{v.t}</h3>
+        </div>
+        <div className="h-fig" style={css('font-size:44px;line-height:1')}>
+          {v.a}
+          {v.u ? (
+            <span className="quiet" style={css('font-size:19px;font-weight:400')}>
+              {' '}
+              {v.u}
+            </span>
+          ) : (
+            ''
+          )}
+        </div>
+        <div className="h-led">
+          {(w.ledger ?? []).map(([k, val, t]) => (
+            <div key={k} className={t ? 'h-tot' : ''}>
+              <span>{k}</span>
+              <b>{val}</b>
+            </div>
+          ))}
+        </div>
+        <div className="h-who2">
+          <div>
+            <span className="h-lbl">Proposed by</span>
+            <b>{v.by}</b>
+          </div>
+          <div>
+            <span className="h-lbl">Needs</span>
+            <b>You</b>
+          </div>
+        </div>
+        {ext ? (
+          <p className="small quiet" style={css('margin:0')}>
+            {'This opens in '}
+            {v.tool}. It shows as done here once that tool reports back.
+          </p>
+        ) : (
+          ''
+        )}
+      </div>
+      <div className="h-pn-ft">
+        <span className="nx">
+          {n + 1}
+          {' of '}
+          {list.length}
+          {' · '}
+          <span className="h-kbd">J</span> <span className="h-kbd">K</span>
+        </span>
+        <button type="button" className="h-btn" data-hsec={id}>
+          {v.s}
+        </button>
+        <button type="button" className="h-btn p" data-hgo-step={id}>
+          {w.primary}
+          {ext ? ic('out') : ''}
+        </button>
+      </div>
+    </>,
+  );
+  document.body.classList.add('h-pn');
+  requestAnimationFrame(() => (panelEl().querySelector('[data-hgo-step]') as HTMLElement | null)?.focus());
+}
+function closeP() {
+  if (HS.busy) return;
+  document.body.classList.remove('h-pn');
+  HS.cur = null;
+  document.querySelectorAll('.h-qr.sel').forEach((r) => r.classList.remove('sel'));
+  if (HS.back && document.contains(HS.back)) HS.back.focus();
+}
+function runP(id) {
+  const w = S.waiting.find((x) => x.id === id);
+  if (!w) return;
+  HS.busy = true;
+  const v = qv(w),
+    approve = w.mode === 'approve';
+  let i = 0,
+    done = false;
+  const draw = () => {
+    const left = S.waiting.length - 1;
+    html(
+      panelEl(),
+      <>
+        <div className="h-pn-hd">
+          <span className="h-lbl">{done ? (approve ? 'Done' : 'Handed off') : approve ? 'Working' : 'Handing off'}</span>
+          {done ? <span className="h-chip ok">{approve ? 'Approved' : 'Sent'}</span> : <span className={`h-chip ${v.ct[0]}`}>{v.ct[1]}</span>}
+          <button type="button" className="x" data-hclose="" aria-label="Close" disabled={!done}>
+            {ic('close', 'sm')}
+          </button>
+        </div>
+        <div className="h-pn-b">
+          <div>
+            <h3>{v.t}</h3>
+          </div>
+          <div className="h-steps" aria-live="polite">
+            {w.steps.map((s, k) => (
+              <div key={k} className={`h-step ${k < i ? 'done' : k === i ? 'h-now' : ''}`}>
+                <span className="h-mk">{k < i ? ic('check') : k === i ? <span className="h-dot" /> : <span className="h-sq" />}</span>
+                <span>{s}</span>
+              </div>
+            ))}
+          </div>
+          {done ? (
+            <div className="h-done">
+              <h3>{w.done[0]}</h3>
+              <p>{w.done[1]}</p>
+            </div>
+          ) : (
+            ''
+          )}
+        </div>
+        <div className="h-pn-ft">
+          {done ? (
+            <>
+              <span className="nx">{left ? `${left} left` : 'Queue clear'}</span>
+              <button type="button" className="h-btn p" data-hfinish={id}>
+                {left ? 'Next' : 'Done'}
+              </button>
+            </>
+          ) : (
+            ''
+          )}
+        </div>
+      </>,
+    );
+  };
+  draw();
+  const t = setInterval(() => {
+    i++;
+    if (i < w.steps.length) return draw();
+    clearInterval(t);
+    done = true;
+    HS.busy = false;
+    draw();
+    (panelEl().querySelector('.h-pn-ft button') as HTMLElement | null)?.focus();
+  }, 750);
+}
+function finishP(id) {
+  const list = queue(),
+    i = list.findIndex((x) => x.id === id),
+    next = list.filter((x) => x.id !== id)[Math.min(i, list.length - 2)];
+  // logs the update, drops it from what's waiting, draws again
+  finish(id);
+  if (next) openP(next.id);
+  else {
+    HS.busy = false;
+    closeP();
+  }
+}
+function sendBack(id) {
+  const w = S.waiting.find((x) => x.id === id),
+    v = qv(w);
+  if (!w) return;
+  // "Not now" for things signed elsewhere
+  if (w.mode !== 'approve') return closeP();
+  const at = S.waiting.indexOf(w);
+  S.waiting = S.waiting.filter((x) => x.id !== id);
+  const up = { what: `Sent ${v.back} back to ${v.by}`, by: 'You', when: 'Just now', go: v.go, fp: v.fp, mine: true };
+  S.updates.unshift(up);
+  closeP();
+  render();
+  toast(`Sent back to ${v.by}`, {
+    label: 'Undo',
+    fn: () => {
+      S.waiting.splice(at, 0, w);
+      S.updates = S.updates.filter((u) => u !== up);
+      render();
+    },
+  });
+}
+function step(d) {
+  const list = queue();
+  if (!list.length) return;
+  const i = list.findIndex((x) => x.id === HS.cur);
+  openP(list[(i + d + list.length) % list.length].id);
+}
+
+/** Home's own clicks, keys and hovers: the queue filter, the review panel, and the timeline's highlights. */
+export function homeListeners() {
+  document.addEventListener('click', (e) => {
+    const t = (e.target as Element).closest?.('[data-hrev],[data-hclose],[data-hqf],[data-hgo-step],[data-hfinish],[data-hsec],[data-hgo]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.hclose !== undefined) return closeP();
+    if (t.dataset.hgoStep) return runP(t.dataset.hgoStep);
+    if (t.dataset.hfinish) return finishP(t.dataset.hfinish);
+    if (t.dataset.hsec) return sendBack(t.dataset.hsec);
+    if (t.dataset.hqf) {
+      HS.qf = t.dataset.hqf;
+      return render();
+    }
+    if (t.dataset.hgo === 'alerts') {
+      S.ibx.f = 'alerts';
+      return go('waiting');
+    }
+    if (t.dataset.hrev) {
+      e.stopPropagation();
+      return openP(t.dataset.hrev);
+    }
+  });
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (!document.body.classList.contains('h-pn') || document.querySelector('.modal')) return;
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        return closeP();
+      }
+      if (HS.busy || /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) return;
+      if (e.key === 'j' || e.key === 'J') {
+        e.preventDefault();
+        step(1);
+      }
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        step(-1);
+      }
+    },
+    true,
+  );
+  document.addEventListener('mouseover', (e) => {
+    if (S.route !== 'home') return;
+    const tl = (e.target as Element).closest?.('.h-tl');
+    const t = tl && (e.target as Element).closest('[data-hk]');
+    const ks = t ? (t as HTMLElement).dataset.hk.split(',') : [];
+    document.querySelectorAll('.h-tl [data-hk]').forEach((x) => x.classList.toggle('on', ks.length > 0 && (x as HTMLElement).dataset.hk.split(',').some((k) => ks.includes(k))));
+  });
+}
+
+/** Home, drawn into #main. */
+export function homeHub() {
+  const ro = vRO();
+  if (!ro && HS.cur && !S.waiting.some((w) => w.id === HS.cur) && !HS.busy) {
+    HS.cur = null;
+    document.body.classList.remove('h-pn');
+  }
+  const M = model();
+  sideLoad();
+  return (
+    // live, h-live: Home's empty cells hatched and its Timeline columns' bands (command.css), as the other pages have them; the preview stays the reference's
+    <div className={REAL ? 'h-home h-live' : 'h-home'}>
+      {header(M)}
+      {ro ? (
+        ''
+      ) : (
+        <section className="h-band">
+          <div className="h-bento">
+            {needsCell()}
+            {headsCell(M)}
+          </div>
+        </section>
+      )}
+      <section className="h-band">{pulse(M)}</section>
+      <section className="h-band">{timeline(M)}</section>
+    </div>
+  );
+}
+/** After Home is drawn (or another page is): the timeline, and a watch on its width. */
+export function homeMount() {
+  if (S.route !== 'home') {
+    if (HS.ro) {
+      HS.ro.disconnect();
+      HS.ro = null;
+    }
+    if (!HS.busy) {
+      document.body.classList.remove('h-pn');
+      HS.cur = null;
+    }
+    return;
+  }
+  HS.lastW = 0;
+  drawTimeline(true);
+  // its labels are measured on a canvas: measured again once the faces they use have loaded
+  if (document.fonts?.load)
+    void Promise.all([document.fonts.load("500 10px 'IBM Plex Mono'"), document.fonts.load("600 12px 'Instrument Sans'")])
+      .then(() => {
+        HS.lastW = 0;
+        drawTimeline(true);
+      })
+      .catch(() => undefined);
+  if (HS.ro) HS.ro.disconnect();
+  const host = document.getElementById('h-ax');
+  if (host && typeof ResizeObserver !== 'undefined') {
+    HS.ro = new ResizeObserver(() => requestAnimationFrame(() => drawTimeline()));
+    HS.ro.observe(host);
+  }
+}

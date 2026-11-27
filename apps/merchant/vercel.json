@@ -1,0 +1,32 @@
+{
+  "installCommand": "cd ../.. && npm install --workspace=@clear/merchant --no-audit --no-fund",
+  "buildCommand": "cd ../.. && npx turbo run build:vercel --filter=@clear/merchant",
+  "outputDirectory": "dist",
+  "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/merchant",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ]
+}

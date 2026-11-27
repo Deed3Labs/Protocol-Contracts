@@ -1,0 +1,72 @@
+/*
+ * The phone pages, from the terminal reference's phone rules (the tm-* classes, sections 11 and 12),
+ * with its tokens. Light, as drawn. The drawn address bar (tm-url) is the browser's own, so it isn't
+ * built. Nothing else of the app's CSS comes here.
+ */
+:root {
+  color-scheme: light;
+  --paper: #dfe3de;
+  --paper-2: #e9ece7;
+  --ink: #16211d;
+  --ink-13: #c5cac5;
+  --ink-28: #a7ada8;
+  --ink-50: #5a635f;
+  --settled: #0e6b4e;
+  --font-display: 'Bricolage Grotesque', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-text: 'Instrument Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --s2: 16px;
+  --s3: 24px;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-text);
+  -webkit-text-size-adjust: 100%;
+}
+.tm-page {
+  max-width: 440px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom));
+}
+.tm-grow { flex: 1 0 auto }
+
+.tm-pbody { padding: var(--s2) }
+.tm-pfoot { margin: 0 var(--s2); border-top: 1px solid var(--ink-13); padding-top: 10px; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-50) }
+.tm-shop { font-family: var(--font-display); font-weight: 800; font-size: 24px; letter-spacing: -.03em; margin: 0 }
+.tm-mono { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-50); margin: 4px 0 12px }
+.tm-cat { font-family: var(--font-display); font-weight: 600; font-size: 17px; margin: 14px 0 2px }
+.tm-prow { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ink-13); font-size: 14px; font-variant-numeric: tabular-nums }
+.tm-prow.mute { color: var(--ink-50) }
+.tm-ptotal { display: flex; justify-content: space-between; align-items: baseline; border-top: 2px solid var(--ink); margin-top: 10px; padding-top: 8px }
+.tm-ptotal b { font-family: var(--font-display); font-weight: 800; font-size: 30px; letter-spacing: -.03em }
+.tm-pbtn { display: block; width: 100%; height: 46px; border-radius: 999px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); font: 600 15px var(--font-text); margin-top: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent }
+.tm-pbtn.ink { background: var(--ink); color: var(--paper) }
+.tm-pbtn:disabled { opacity: .5; cursor: default }
+.tm-pbtn:focus-visible,
+.tm-seg button:focus-visible,
+.tm-in:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px }
+.tm-psub { font-size: 12.5px; color: var(--ink-50); text-align: center; margin: 6px 0 0 }
+.tm-psub.tm-c { text-align: center }
+.tm-psub.tm-gap { margin-top: 16px }
+.tm-psub.tm-fine { font-size: 11px; margin-top: 12px }
+.tm-psub.tm-err { color: var(--ink); margin-top: 12px }
+.tm-ok { display: flex; justify-content: center; margin-top: 10px }
+.tm-ok span { width: 56px; height: 56px; border-radius: 50%; border: 2px solid var(--settled); color: var(--settled); display: flex; align-items: center; justify-content: center; font-size: 26px }
+.tm-big { font-family: var(--font-display); font-weight: 800; font-size: 40px; text-align: center; margin: 6px 0 0; letter-spacing: -.03em }
+.tm-lbl { display: block; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-50); margin: 14px 0 6px }
+/* 16px, not the drawn 15: anything smaller and iOS zooms into the field. */
+.tm-in { display: block; width: 100%; border: 1px solid var(--ink-28); border-radius: 0; background: transparent; color: var(--ink); padding: 11px 12px; font: 16px var(--font-text); appearance: none }
+.tm-seg { display: flex; border: 1px solid var(--ink); border-radius: 999px; padding: 3px; gap: 2px }
+.tm-seg button { flex: 1; text-align: center; font: 600 13.5px var(--font-text); padding: 7px 0; border-radius: 999px; border: 0; background: transparent; color: var(--ink); cursor: pointer }
+.tm-seg button.on { background: var(--ink); color: var(--paper) }

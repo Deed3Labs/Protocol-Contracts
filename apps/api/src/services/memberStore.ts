@@ -1,0 +1,3601 @@
+import crypto from 'crypto';
+import { normalizeHandle, rejectHandle, rejectHandleChange } from './handles.js';
+import { verifyMessage } from 'ethers';
+import type { Pool } from 'pg';
+import { getPostgresPool } from '../config/postgres.js';
+import {
+  decryptMemberPrivateData,
+  encryptMemberPrivateData,
+  isMemberPrivateDataEncryptionConfigured,
+} from '../utils/memberPrivateDataEncryption.js';
+import { plaidTokenStore } from './plaidTokenStore.js';
+
+export type MemberStatus =
+  | 'ONBOARDING'
+  | 'BASIC_ACTIVE'
+  | 'VERIFICATION_ELIGIBLE'
+  | 'VERIFICATION_PENDING'
+  | 'VERIFIED'
+  | 'RESTRICTED';
+
+export type MemberVerificationStatus =
+  | 'NOT_STARTED'
+  | 'ELIGIBLE'
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'RESTRICTED';
+
+export type MemberMembershipStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+export type MemberMembershipPlan = 'YEARLY' | 'LIFETIME' | null;
+export type OnboardingDraftStatus = 'in_progress' | 'submitted' | 'complete';
+export type MemberWalletKind = 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+export type MemberWalletStatus = 'ACTIVE' | 'REMOVED';
+export type MemberSocialVisibility = 'PUBLIC' | 'PRIVATE';
+export type MemberSocialStatus = 'CONNECTED' | 'PENDING' | 'REMOVED';
+
+export interface MemberRecord {
+  id: number;
+  authSubject: string;
+  primaryWallet: string;
+  reownProfileUuid: string | null;
+  status: MemberStatus;
+  verificationStatus: MemberVerificationStatus;
+  membershipPlan: MemberMembershipPlan;
+  membershipStatus: MemberMembershipStatus;
+  residencyCountry: string | null;
+  settlementCurrency: string | null;
+  membershipRegistryMemberId: number | null;
+  membershipChainId: number | null;
+  membershipTxHash: string | null;
+  membershipSyncedAt: Date | null;
+  membershipMetadataHash: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastAuthenticatedAt: Date;
+}
+
+export interface MemberPublicProfile {
+  username: string | null;
+  displayName: string | null;
+  bio: string | null;
+  timezone: string | null;
+  locale: string | null;
+  avatarUrl: string | null;
+  notificationsOptIn: boolean;
+  updatedAt: Date;
+}
+
+export interface MemberPrivateProfile {
+  legalName: string | null;
+  email: string | null;
+  phone: string | null;
+  cityRegion: string | null;
+  /*
+   * Where post goes. Private for the same reason the legal name is: it identifies a member at their
+   * door, and the card issuer is the only other party that ever sees it.
+   *
+   * Kept as the pieces a shipping label needs rather than one string, because that is what an issuer
+   * asks for — a free-text address cannot be split back apart reliably.
+   */
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressCity: string | null;
+  addressState: string | null;
+  addressPostalCode: string | null;
+}
+
+export interface MemberProfileView {
+  publicProfile: MemberPublicProfile;
+  privateProfile: MemberPrivateProfile | null;
+  privateProfileExists: boolean;
+  privateProfileLocked: boolean;
+}
+
+export interface MemberOnboardingRecord {
+  currentStep: string;
+  accessTrack: string;
+  accountMethod: string;
+  identityModeSelected: string;
+  referralSource: string | null;
+  inviteCode: string | null;
+  incomeSource: string | null;
+  reasons: string[];
+  goalsNote: string | null;
+  recoveryMethod: string | null;
+  cardWaitlist: boolean;
+  localPools: boolean;
+  draftStatus: OnboardingDraftStatus;
+  submittedAt: Date | null;
+  completedAt: Date | null;
+  updatedAt: Date;
+}
+
+export interface MemberSecuritySettings {
+  signatureLock: boolean;
+  sessionReview: boolean;
+  biometricAccess: boolean;
+  socialDiscovery: boolean;
+  transferAlerts: boolean;
+  /**
+   * Back the credit line with Savings and Earn without asking each time: the app signs the pledge
+   * for what the member holds in the background (Phase 4b, L-I). On unless the member turns it off.
+   * Bonds are never pledged this way; their Maturity Instruction is shown and signed on its own.
+   */
+  autoPledge: boolean;
+  updatedAt: Date;
+}
+
+export interface MemberTermsSummaryItem {
+  documentType: string;
+  documentVersion: string;
+  acceptedAt: Date;
+}
+
+export interface MemberVerificationSummary {
+  status: MemberVerificationStatus;
+  provider: string | null;
+  verificationLevel: string | null;
+  providerCustomerId: string | null;
+  providerCaseId: string | null;
+  requirements: unknown;
+  resultSummary: unknown;
+  submittedAt: Date | null;
+  decidedAt: Date | null;
+  updatedAt: Date | null;
+}
+
+export interface MemberWalletRecord {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  description: string | null;
+  kind: MemberWalletKind;
+  status: MemberWalletStatus;
+  isPrimary: boolean;
+  verifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MemberSocialAccountRecord {
+  id: number;
+  platform: string;
+  handle: string;
+  visibility: MemberSocialVisibility;
+  status: MemberSocialStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MemberWalletLinkChallenge {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  description: string | null;
+  kind: MemberWalletKind;
+  message: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+export interface MemberWalletLinkHandoff {
+  token: string;
+  label: string | null;
+  description: string | null;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+export interface MemberCapabilities {
+  canEditProfile: boolean;
+  canJoinWaitlists: boolean;
+  canStartVerification: boolean;
+  canUsePlaid: boolean;
+  canUseBridge: boolean;
+  canAccessDirectDeposit: boolean;
+  canAccessCard: boolean;
+  canUseRegulatedTransfers: boolean;
+  /**
+   * Pay a shop from the Clear balance, and add money (rewards spec, "Two levels"): once onboarding is
+   * submitted and the member isn't restricted. Paying over time also needs a credit line.
+   */
+  canPayWithClear: boolean;
+}
+
+export interface MemberAccountCenter {
+  member: MemberRecord;
+  profile: MemberProfileView;
+  onboarding: MemberOnboardingRecord;
+  security: MemberSecuritySettings;
+  verification: MemberVerificationSummary;
+  wallets: MemberWalletRecord[];
+  socialAccounts: MemberSocialAccountRecord[];
+  capabilities: MemberCapabilities;
+  terms: MemberTermsSummaryItem[];
+}
+
+export interface BootstrapMemberInput {
+  authSubject: string;
+  primaryWallet: string;
+  reownProfileUuid?: string | null;
+  email?: string | null;
+  phone?: string | null; // account phone (login identity), for identity matching
+  walletAddresses?: (string | null | undefined)[] | null; // ALL verified addresses, for identity matching
+}
+
+export interface ResolveMemberAuthInput {
+  authSubject?: string | null;
+  profileUuid?: string | null;
+  walletAddress?: string | null;
+  walletAddresses?: (string | null | undefined)[] | null; // ALL verified addresses (smart + linked)
+  email?: string | null;
+  phone?: string | null; // account phone (login identity)
+}
+
+export interface UpdateOnboardingInput {
+  currentStep?: string | null;
+  accessTrack?: string | null;
+  accountMethod?: string | null;
+  identityModeSelected?: string | null;
+  referralSource?: string | null;
+  inviteCode?: string | null;
+  incomeSource?: string | null;
+  reasons?: string[] | null;
+  goalsNote?: string | null;
+  recoveryMethod?: string | null;
+  cardWaitlist?: boolean;
+  localPools?: boolean;
+  residencyCountry?: string | null;
+  settlementCurrency?: string | null;
+  membershipPlan?: MemberMembershipPlan;
+}
+
+export interface UpdateProfileInput {
+  username?: string | null;
+  displayName?: string | null;
+  bio?: string | null;
+  timezone?: string | null;
+  locale?: string | null;
+  avatarUrl?: string | null;
+  notificationsOptIn?: boolean;
+  residencyCountry?: string | null;
+  settlementCurrency?: string | null;
+  legalName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  cityRegion?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressPostalCode?: string | null;
+}
+
+export interface UpdateSecuritySettingsInput {
+  signatureLock?: boolean;
+  sessionReview?: boolean;
+  biometricAccess?: boolean;
+  socialDiscovery?: boolean;
+  transferAlerts?: boolean;
+  autoPledge?: boolean;
+}
+
+export interface UpsertMemberWalletInput {
+  label?: string | null;
+  description?: string | null;
+  walletAddress: string;
+  kind?: MemberWalletKind | null;
+  status?: MemberWalletStatus | null;
+}
+
+export interface UpdateMemberWalletInput {
+  label?: string | null;
+  description?: string | null;
+  walletAddress?: string | null;
+  kind?: MemberWalletKind | null;
+  status?: MemberWalletStatus | null;
+}
+
+export interface UpsertMemberSocialAccountInput {
+  platform: string;
+  handle: string;
+  visibility?: MemberSocialVisibility | null;
+  status?: MemberSocialStatus | null;
+}
+
+export interface UpdateMemberSocialAccountInput {
+  platform?: string | null;
+  handle?: string | null;
+  visibility?: MemberSocialVisibility | null;
+  status?: MemberSocialStatus | null;
+}
+
+export interface UpdateMemberMembershipStateInput {
+  membershipPlan?: MemberMembershipPlan;
+  membershipStatus?: MemberMembershipStatus;
+  membershipRegistryMemberId?: number | null;
+  membershipChainId?: number | null;
+  membershipTxHash?: string | null;
+  membershipSyncedAt?: Date | null;
+  membershipMetadataHash?: string | null;
+}
+
+export interface CreateMemberWalletLinkChallengeInput {
+  walletAddress: string;
+  label?: string | null;
+  description?: string | null;
+  kind?: MemberWalletKind | null;
+}
+
+export interface CreateMemberWalletLinkHandoffInput {
+  label?: string | null;
+  description?: string | null;
+}
+
+export interface AcceptTermsInput {
+  documentType: string;
+  documentVersion: string;
+  walletAddress: string;
+  ipHash?: string | null;
+  userAgent?: string | null;
+}
+
+const TABLE_MEMBERS = 'members';
+const TABLE_HANDLE_HISTORY = 'member_handle_history';
+const TABLE_PROFILE_PUBLIC = 'member_profile_public';
+const TABLE_PROFILE_PRIVATE = 'member_profile_private';
+const TABLE_ONBOARDING = 'member_onboarding';
+const TABLE_TERMS = 'member_terms_acceptances';
+const TABLE_SECURITY = 'member_security_settings';
+/**
+ * Background pledging of Savings and Earn, on by default. Added to tables made before it existed;
+ * every member already on file starts with it on, as a new member does.
+ */
+export const SECURITY_AUTO_PLEDGE_COLUMN = `ALTER TABLE ${TABLE_SECURITY} ADD COLUMN IF NOT EXISTS auto_pledge BOOLEAN NOT NULL DEFAULT TRUE`;
+const TABLE_VERIFICATIONS = 'member_verifications';
+const TABLE_WALLETS = 'member_wallets';
+const TABLE_WALLET_LINK_CHALLENGES = 'member_wallet_link_challenges';
+const TABLE_WALLET_LINK_HANDOFFS = 'member_wallet_link_handoffs';
+const TABLE_SOCIALS = 'member_social_accounts';
+const DEFAULT_MAX_ATTEMPTS = 3;
+const WALLET_LINK_CHALLENGE_TTL_MS = 10 * 60 * 1000;
+const WALLET_LINK_HANDOFF_TTL_MS = 30 * 60 * 1000;
+
+type MemberDbRow = {
+  id: string | number;
+  auth_subject: string;
+  primary_wallet: string;
+  reown_profile_uuid: string | null;
+  reown_email_hash: string | null;
+  status: MemberStatus;
+  verification_status: MemberVerificationStatus;
+  membership_plan: MemberMembershipPlan;
+  membership_status: MemberMembershipStatus;
+  residency_country: string | null;
+  settlement_currency: string | null;
+  membership_registry_member_id: string | number | null;
+  membership_chain_id: string | number | null;
+  membership_tx_hash: string | null;
+  membership_synced_at: Date | string | null;
+  membership_metadata_hash: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  last_authenticated_at: Date | string;
+};
+
+type MemberPublicProfileDbRow = {
+  member_id: string | number;
+  username: string | null;
+  display_name: string | null;
+  bio: string | null;
+  timezone: string | null;
+  locale: string | null;
+  avatar_url: string | null;
+  notifications_opt_in: boolean;
+  updated_at: Date | string;
+};
+
+type MemberPrivateProfileDbRow = {
+  member_id: string | number;
+  payload_ciphertext: Buffer;
+  payload_iv: Buffer;
+  payload_auth_tag: Buffer;
+  wrapped_data_key_ciphertext: Buffer;
+  wrapped_data_key_iv: Buffer;
+  wrapped_data_key_auth_tag: Buffer;
+  key_version: string;
+  email_hash: string | null;
+  phone_hash: string | null;
+  updated_at: Date | string;
+};
+
+type MemberOnboardingDbRow = {
+  member_id: string | number;
+  current_step: string;
+  access_track: string;
+  account_method: string;
+  identity_mode_selected: string;
+  referral_source: string | null;
+  invite_code: string | null;
+  income_source: string | null;
+  reasons: unknown;
+  goals_note: string | null;
+  recovery_method: string | null;
+  card_waitlist: boolean;
+  local_pools: boolean;
+  draft_status: OnboardingDraftStatus;
+  submitted_at: Date | string | null;
+  completed_at: Date | string | null;
+  updated_at: Date | string;
+};
+
+type MemberTermsDbRow = {
+  document_type: string;
+  document_version: string;
+  accepted_at: Date | string;
+};
+
+type MemberSecurityDbRow = {
+  member_id: string | number;
+  signature_lock: boolean;
+  session_review: boolean;
+  biometric_access: boolean;
+  social_discovery: boolean;
+  transfer_alerts: boolean;
+  /** Absent on a row read before the column was added; null never, but read as on either way. */
+  auto_pledge?: boolean | null;
+  updated_at: Date | string;
+};
+
+type MemberVerificationDbRow = {
+  status: string;
+  provider: string | null;
+  verification_level: string | null;
+  provider_customer_id: string | null;
+  provider_case_id: string | null;
+  requirements: unknown;
+  result_summary: unknown;
+  submitted_at: Date | string | null;
+  decided_at: Date | string | null;
+  updated_at: Date | string | null;
+};
+
+type MemberWalletDbRow = {
+  id: string | number;
+  member_id: string | number;
+  wallet_address: string;
+  label: string | null;
+  description: string | null;
+  kind: MemberWalletKind;
+  status: MemberWalletStatus;
+  is_primary: boolean;
+  auth_alias_enabled: boolean;
+  verified_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+type MemberSocialDbRow = {
+  id: string | number;
+  member_id: string | number;
+  platform: string;
+  handle: string;
+  visibility: MemberSocialVisibility;
+  status: MemberSocialStatus;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+type MemberWalletLinkChallengeDbRow = {
+  id: string | number;
+  member_id: string | number;
+  wallet_address: string;
+  label: string | null;
+  description: string | null;
+  kind: MemberWalletKind;
+  nonce: string;
+  message: string;
+  expires_at: Date | string;
+  consumed_at: Date | string | null;
+  created_at: Date | string;
+};
+
+type MemberWalletLinkHandoffDbRow = {
+  id: string | number;
+  member_id: string | number;
+  token_hash: string;
+  label: string | null;
+  description: string | null;
+  expires_at: Date | string;
+  consumed_at: Date | string | null;
+  created_at: Date | string;
+};
+
+function normalizeWalletAddress(walletAddress: string): string {
+  return walletAddress.trim().toLowerCase();
+}
+
+function normalizeOptionalString(value: string | null | undefined, maxLength: number): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLength);
+}
+
+/**
+ * Normalises a handle, and refuses one that must not be claimed.
+ *
+ * The rules live in `handles.ts` and are enforced here rather than at a route, because a route is
+ * one way in and this is the only one they all pass through. Lowercasing alone let anybody claim
+ * @clear, @support or a two-character handle through an ordinary profile update.
+ *
+ * Throws rather than returning null: somebody who typed @clear should be told why they cannot have
+ * it, not have it silently discarded and their handle cleared.
+ */
+function normalizeUsername(value: string | null | undefined): string | null | undefined {
+  const normalized = normalizeOptionalString(value, 32);
+  if (normalized == null) return normalized;
+
+  const rejection = rejectHandle(normalized);
+  if (rejection) throw new Error(`Handle is not available: ${rejection}`);
+  return normalizeHandle(normalized);
+}
+
+function resolvePatchedString(
+  patchValue: string | null | undefined,
+  currentValue: string | null,
+  maxLength: number
+): string | null {
+  if (patchValue === undefined) return currentValue;
+  return normalizeOptionalString(patchValue, maxLength) ?? null;
+}
+
+function resolvePatchedUsername(
+  patchValue: string | null | undefined,
+  currentValue: string | null
+): string | null {
+  if (patchValue === undefined) return currentValue;
+  return normalizeUsername(patchValue) ?? null;
+}
+
+function resolvePatchedEmail(
+  patchValue: string | null | undefined,
+  currentValue: string | null
+): string | null {
+  if (patchValue === undefined) return currentValue;
+  return normalizeOptionalEmail(patchValue) ?? null;
+}
+
+function resolvePatchedPhone(
+  patchValue: string | null | undefined,
+  currentValue: string | null
+): string | null {
+  if (patchValue === undefined) return currentValue;
+  return normalizeOptionalPhone(patchValue) ?? null;
+}
+
+function resolvePatchedArray(
+  patchValue: string[] | null | undefined,
+  currentValue: string[]
+): string[] {
+  if (patchValue === undefined) return currentValue;
+  return (patchValue ?? []).map((entry) => entry.trim()).filter(Boolean).slice(0, 12);
+}
+
+function normalizeOptionalCountry(value: string | null | undefined): string | null | undefined {
+  const normalized = normalizeOptionalString(value, 120);
+  if (normalized == null) return normalized;
+  return normalized.length <= 3 ? normalized.toUpperCase() : normalized;
+}
+
+function normalizeOptionalCurrency(value: string | null | undefined): string | null | undefined {
+  const normalized = normalizeOptionalString(value, 12);
+  if (normalized == null) return normalized;
+  return normalized.toUpperCase();
+}
+
+function normalizeOptionalEmail(value: string | null | undefined): string | null | undefined {
+  const normalized = normalizeOptionalString(value, 320);
+  if (normalized == null) return normalized;
+  return normalized.toLowerCase();
+}
+
+function normalizeOptionalPhone(value: string | null | undefined): string | null | undefined {
+  const normalized = normalizeOptionalString(value, 32);
+  if (normalized == null) return normalized;
+  return normalized.replace(/\s+/g, '');
+}
+
+function normalizeMembershipPlan(value: MemberMembershipPlan | string | undefined): MemberMembershipPlan | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'YEARLY' || normalized === 'LIFETIME') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeWalletKind(value: MemberWalletKind | string | null | undefined): MemberWalletKind {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  switch (normalized) {
+    case 'HARDWARE':
+    case 'SMART':
+    case 'EMBEDDED':
+      return normalized;
+    case 'PRIMARY':
+    default:
+      return 'PRIMARY';
+  }
+}
+
+function normalizeWalletStatus(value: MemberWalletStatus | string | null | undefined): MemberWalletStatus {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  return normalized === 'REMOVED' ? 'REMOVED' : 'ACTIVE';
+}
+
+function buildWalletLinkMessage(input: {
+  memberId: number;
+  walletAddress: string;
+  nonce: string;
+  issuedAt: Date;
+  expiresAt: Date;
+}): string {
+  return [
+    'Clear wallet link request',
+    '',
+    `Member ID: ${input.memberId}`,
+    `Wallet: ${input.walletAddress}`,
+    `Nonce: ${input.nonce}`,
+    `Issued At: ${input.issuedAt.toISOString()}`,
+    `Expires At: ${input.expiresAt.toISOString()}`,
+    '',
+    'Only sign this message if you started linking this wallet from your Clear account settings.',
+  ].join('\n');
+}
+
+function buildWalletLinkHandoffMessage(input: {
+  memberId: number;
+  walletAddress: string;
+  handoffId: number;
+  tokenHash: string;
+  expiresAt: Date;
+}): string {
+  return [
+    'Clear wallet link handoff',
+    '',
+    `Member ID: ${input.memberId}`,
+    `Wallet: ${input.walletAddress}`,
+    `Handoff ID: ${input.handoffId}`,
+    `Token Fingerprint: ${input.tokenHash.slice(0, 16)}`,
+    `Expires At: ${input.expiresAt.toISOString()}`,
+    '',
+    'Only sign this message if you started a wallet-link handoff from your Clear account settings.',
+  ].join('\n');
+}
+
+function normalizeSocialVisibility(value: MemberSocialVisibility | string | null | undefined): MemberSocialVisibility {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  return normalized === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC';
+}
+
+function normalizeSocialStatus(value: MemberSocialStatus | string | null | undefined): MemberSocialStatus {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  if (normalized === 'PENDING' || normalized === 'REMOVED') {
+    return normalized;
+  }
+  return 'CONNECTED';
+}
+
+function parseNumericId(value: string | number | null | undefined): number | null {
+  if (value == null) return null;
+  return typeof value === 'number' ? value : parseInt(value, 10);
+}
+
+function parseDate(value: Date | string | null | undefined): Date | null {
+  if (value == null) return null;
+  return value instanceof Date ? value : new Date(value);
+}
+
+function sha256Hex(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function encryptionContext(memberId: number): string {
+  return `member:${memberId}`;
+}
+
+function isRetryablePostgresError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  if (!code) return false;
+
+  return [
+    '40001',
+    '40P01',
+    '55P03',
+    '53300',
+    '57P03',
+    '08000',
+    '08001',
+    '08003',
+    '08006',
+  ].includes(code);
+}
+
+function backoffMs(attempt: number): number {
+  return Math.pow(2, attempt) * 100;
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts: number = DEFAULT_MAX_ATTEMPTS): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryablePostgresError(error) || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, backoffMs(attempt)));
+    }
+  }
+
+  throw lastError;
+}
+
+function mapMember(row: MemberDbRow): MemberRecord {
+  return {
+    id: parseNumericId(row.id) ?? 0,
+    authSubject: row.auth_subject,
+    primaryWallet: row.primary_wallet,
+    reownProfileUuid: row.reown_profile_uuid,
+    status: row.status,
+    verificationStatus: row.verification_status,
+    membershipPlan: row.membership_plan,
+    membershipStatus: row.membership_status,
+    residencyCountry: row.residency_country,
+    settlementCurrency: row.settlement_currency,
+    membershipRegistryMemberId: parseNumericId(row.membership_registry_member_id),
+    membershipChainId: parseNumericId(row.membership_chain_id),
+    membershipTxHash: row.membership_tx_hash,
+    membershipSyncedAt: parseDate(row.membership_synced_at),
+    membershipMetadataHash: row.membership_metadata_hash,
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+    lastAuthenticatedAt: parseDate(row.last_authenticated_at) ?? new Date(0),
+  };
+}
+
+function defaultPublicProfile(): MemberPublicProfile {
+  return {
+    username: null,
+    displayName: null,
+    bio: null,
+    timezone: null,
+    locale: null,
+    avatarUrl: null,
+    notificationsOptIn: true,
+    updatedAt: new Date(0),
+  };
+}
+
+function mapPublicProfile(row: MemberPublicProfileDbRow | null): MemberPublicProfile {
+  if (!row) return defaultPublicProfile();
+  return {
+    username: row.username,
+    displayName: row.display_name,
+    bio: row.bio,
+    timezone: row.timezone,
+    locale: row.locale,
+    avatarUrl: row.avatar_url,
+    notificationsOptIn: row.notifications_opt_in,
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
+function defaultOnboarding(): MemberOnboardingRecord {
+  return {
+    currentStep: 'identity',
+    accessTrack: 'basic',
+    accountMethod: 'wallet',
+    identityModeSelected: 'pseudonymous',
+    referralSource: null,
+    inviteCode: null,
+    incomeSource: null,
+    reasons: [],
+    goalsNote: null,
+    recoveryMethod: null,
+    cardWaitlist: false,
+    localPools: false,
+    draftStatus: 'in_progress',
+    submittedAt: null,
+    completedAt: null,
+    updatedAt: new Date(0),
+  };
+}
+
+function mapReasons(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean);
+}
+
+function mapOnboarding(row: MemberOnboardingDbRow | null): MemberOnboardingRecord {
+  if (!row) return defaultOnboarding();
+  return {
+    currentStep: row.current_step,
+    accessTrack: row.access_track,
+    accountMethod: row.account_method,
+    identityModeSelected: row.identity_mode_selected,
+    referralSource: row.referral_source,
+    inviteCode: row.invite_code,
+    incomeSource: row.income_source,
+    reasons: mapReasons(row.reasons),
+    goalsNote: row.goals_note,
+    recoveryMethod: row.recovery_method,
+    cardWaitlist: row.card_waitlist,
+    localPools: row.local_pools,
+    draftStatus: row.draft_status,
+    submittedAt: parseDate(row.submitted_at),
+    completedAt: parseDate(row.completed_at),
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
+export function defaultSecurity(): MemberSecuritySettings {
+  return {
+    signatureLock: true,
+    sessionReview: true,
+    biometricAccess: true,
+    socialDiscovery: false,
+    transferAlerts: true,
+    autoPledge: true,
+    updatedAt: new Date(0),
+  };
+}
+
+export function mapSecurity(row: MemberSecurityDbRow | null): MemberSecuritySettings {
+  if (!row) return defaultSecurity();
+  return {
+    signatureLock: row.signature_lock,
+    sessionReview: row.session_review,
+    biometricAccess: row.biometric_access,
+    socialDiscovery: row.social_discovery,
+    transferAlerts: row.transfer_alerts,
+    // On by default: only an explicit false (the member's own choice) turns it off.
+    autoPledge: row.auto_pledge !== false,
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
+function mapTerms(rows: MemberTermsDbRow[]): MemberTermsSummaryItem[] {
+  return rows.map((row) => ({
+    documentType: row.document_type,
+    documentVersion: row.document_version,
+    acceptedAt: parseDate(row.accepted_at) ?? new Date(0),
+  }));
+}
+
+function mapVerification(
+  row: MemberVerificationDbRow | null,
+  member: MemberRecord
+): MemberVerificationSummary {
+  return {
+    status: row?.status as MemberVerificationStatus || member.verificationStatus,
+    provider: row?.provider ?? null,
+    verificationLevel: row?.verification_level ?? null,
+    providerCustomerId: row?.provider_customer_id ?? null,
+    providerCaseId: row?.provider_case_id ?? null,
+    requirements: row?.requirements ?? null,
+    resultSummary: row?.result_summary ?? null,
+    submittedAt: parseDate(row?.submitted_at),
+    decidedAt: parseDate(row?.decided_at),
+    updatedAt: parseDate(row?.updated_at),
+  };
+}
+
+function mapWallet(row: MemberWalletDbRow): MemberWalletRecord {
+  return {
+    id: parseNumericId(row.id) ?? 0,
+    walletAddress: row.wallet_address,
+    label: row.label,
+    description: row.description,
+    kind: row.kind,
+    status: row.status,
+    isPrimary: row.is_primary,
+    verifiedAt: parseDate(row.verified_at),
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
+function mapSocialAccount(row: MemberSocialDbRow): MemberSocialAccountRecord {
+  return {
+    id: parseNumericId(row.id) ?? 0,
+    platform: row.platform,
+    handle: row.handle,
+    visibility: row.visibility,
+    status: row.status,
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
+function mapWalletLinkChallenge(row: MemberWalletLinkChallengeDbRow): MemberWalletLinkChallenge {
+  return {
+    id: parseNumericId(row.id) ?? 0,
+    walletAddress: row.wallet_address,
+    label: row.label,
+    description: row.description,
+    kind: row.kind,
+    message: row.message,
+    expiresAt: parseDate(row.expires_at) ?? new Date(0),
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+  };
+}
+
+function mapWalletLinkHandoff(row: MemberWalletLinkHandoffDbRow, token: string): MemberWalletLinkHandoff {
+  return {
+    token,
+    label: row.label,
+    description: row.description,
+    expiresAt: parseDate(row.expires_at) ?? new Date(0),
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+  };
+}
+
+function deriveCapabilities(member: MemberRecord): MemberCapabilities {
+  const restricted =
+    member.status === 'RESTRICTED' || member.verificationStatus === 'RESTRICTED';
+  const verified =
+    member.status === 'VERIFIED' || member.verificationStatus === 'APPROVED';
+  const verificationPending =
+    member.status === 'VERIFICATION_PENDING' || member.verificationStatus === 'PENDING';
+  const verificationEligible =
+    member.status === 'VERIFICATION_ELIGIBLE'
+    || member.verificationStatus === 'ELIGIBLE'
+    || verified
+    || verificationPending;
+
+  return {
+    canEditProfile: !restricted,
+    canJoinWaitlists: !restricted,
+    canStartVerification: !restricted && verificationEligible && !verified && !verificationPending,
+    canUsePlaid: !restricted,
+    canUseBridge: verified,
+    canAccessDirectDeposit: verified,
+    canAccessCard: verified,
+    canUseRegulatedTransfers: verified,
+    canPayWithClear: !restricted && member.status !== 'ONBOARDING',
+  };
+}
+
+function deriveMemberState(input: {
+  member: MemberRecord;
+  onboarding: MemberOnboardingRecord;
+  privateProfile: MemberPrivateProfile | null;
+  terms: MemberTermsSummaryItem[];
+}): Pick<MemberRecord, 'status' | 'verificationStatus'> {
+  const { member, onboarding, privateProfile, terms } = input;
+  if (member.status === 'RESTRICTED' || member.verificationStatus === 'RESTRICTED') {
+    return { status: 'RESTRICTED', verificationStatus: 'RESTRICTED' };
+  }
+
+  if (member.verificationStatus === 'APPROVED' || member.status === 'VERIFIED') {
+    return { status: 'VERIFIED', verificationStatus: 'APPROVED' };
+  }
+
+  if (member.verificationStatus === 'PENDING' || member.status === 'VERIFICATION_PENDING') {
+    return { status: 'VERIFICATION_PENDING', verificationStatus: 'PENDING' };
+  }
+
+  const hasSubmittedOnboarding =
+    onboarding.draftStatus === 'submitted' || onboarding.draftStatus === 'complete';
+  const hasTerms = terms.length > 0;
+  const hasEligibilityProfile =
+    Boolean(privateProfile?.legalName)
+    && Boolean(privateProfile?.email)
+    && Boolean(member.residencyCountry);
+
+  if (hasSubmittedOnboarding && hasTerms && hasEligibilityProfile) {
+    return { status: 'VERIFICATION_ELIGIBLE', verificationStatus: 'ELIGIBLE' };
+  }
+
+  if (hasSubmittedOnboarding && hasTerms) {
+    return { status: 'BASIC_ACTIVE', verificationStatus: 'NOT_STARTED' };
+  }
+
+  return { status: 'ONBOARDING', verificationStatus: 'NOT_STARTED' };
+}
+
+export class MemberStore {
+  private schemaReadyPromise: Promise<void> | null = null;
+
+  isConfigured(): boolean {
+    return Boolean(getPostgresPool());
+  }
+
+  isPrivateDataEncryptionConfigured(): boolean {
+    return isMemberPrivateDataEncryptionConfigured();
+  }
+
+  async ensureReady(): Promise<void> {
+    if (!getPostgresPool()) {
+      throw new Error('Postgres is not configured. Set DATABASE_URL for member persistence.');
+    }
+
+    if (!this.schemaReadyPromise) {
+      this.schemaReadyPromise = this.ensureSchema();
+    }
+
+    return this.schemaReadyPromise;
+  }
+
+  /**
+   * Writes a handle for a member who has none.
+   *
+   * Only when the field is empty: a member who chose their own keeps it, and a bootstrap that runs
+   * again must not reroll a handle somebody has already shared. The WHERE clause does that rather
+   * than a read-then-write, so two concurrent bootstraps cannot both decide the field was free.
+   */
+  /** How many handle changes a member has made. The one generated at signup does not count. */
+  async handleChangeCount(memberId: number | string): Promise<number> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM ${TABLE_HANDLE_HISTORY}
+        WHERE member_id = $1 AND assigned = FALSE`,
+      [memberId],
+    );
+    return r.rows[0]?.n ?? 0;
+  }
+
+  /**
+   * Records a handle against a member, retiring whatever they held before.
+   *
+   * The old handle is marked released rather than deleted, and stays in the table, so nobody else
+   * can take it. A handle in a payments app is closer to an account number than a display name:
+   * somebody working from an old note who sends to @kai must not reach whoever claimed it next.
+   */
+  async recordHandle(memberId: number | string, handle: string, assigned: boolean): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    await pool.query(
+      `UPDATE ${TABLE_HANDLE_HISTORY} SET released_at = NOW()
+        WHERE member_id = $1 AND released_at IS NULL`,
+      [memberId],
+    );
+    await pool.query(
+      `INSERT INTO ${TABLE_HANDLE_HISTORY} (member_id, handle, assigned)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (lower(handle)) DO NOTHING`,
+      [memberId, normalizeHandle(handle), assigned],
+    );
+  }
+
+  /** Whether a handle has ever been held by anybody. Retired handles are never free again. */
+  async handleEverUsed(handle: string): Promise<boolean> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const r = await pool.query(
+      `SELECT 1 FROM ${TABLE_HANDLE_HISTORY} WHERE lower(handle) = $1 LIMIT 1`,
+      [normalizeHandle(handle)],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async setUsernameById(memberId: number | string, handle: string): Promise<boolean> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const result = await pool.query(
+      `UPDATE ${TABLE_PROFILE_PUBLIC}
+          SET username = $2, updated_at = NOW()
+        WHERE member_id = $1 AND (username IS NULL OR username = '')`,
+      [memberId, normalizeHandle(handle)],
+    );
+    const wrote = (result.rowCount ?? 0) > 0;
+    // Assigned, not chosen: the signup handle must not spend one of the member's changes.
+    if (wrote) await this.recordHandle(memberId, handle, true);
+    return wrote;
+  }
+
+  async bootstrapMember(input: BootstrapMemberInput): Promise<MemberAccountCenter> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const authSubject = input.authSubject.trim();
+    const primaryWallet = normalizeWalletAddress(input.primaryWallet);
+    const reownProfileUuid = normalizeOptionalString(input.reownProfileUuid ?? null, 255) ?? null;
+    const email = normalizeOptionalEmail(input.email ?? null) ?? null;
+    const reownEmailHash = email ? sha256Hex(email) : null;
+    const phone = normalizeOptionalPhone(input.phone ?? null) ?? null;
+    const reownPhoneHash = phone ? sha256Hex(phone) : null;
+
+    // Match an existing member by ANY verified identity (DID, any wallet, email, phone) so a pre-migration
+    // account is claimed instead of duplicated.
+    const existingMember = await this.resolveMemberByAuthInput({
+      authSubject,
+      profileUuid: reownProfileUuid,
+      walletAddress: primaryWallet,
+      walletAddresses: input.walletAddresses,
+      email,
+      phone,
+    });
+
+    if (existingMember) {
+      const nextAuthSubject = reownProfileUuid || existingMember.authSubject;
+      const result = await withRetry(async () => {
+        return pool.query<MemberDbRow>(
+          `
+          UPDATE ${TABLE_MEMBERS}
+          SET
+            auth_subject = $2,
+            reown_profile_uuid = COALESCE($3, reown_profile_uuid),
+            reown_email_hash = COALESCE($4, reown_email_hash),
+            reown_phone_hash = COALESCE($6, reown_phone_hash),
+            -- Re-align the primary to the canonical (smart) wallet so members who joined via an external
+            -- wallet pre-migration self-heal. syncPrimaryWallet then demotes the old primary in member_wallets.
+            primary_wallet = COALESCE($5, primary_wallet),
+            last_authenticated_at = NOW(),
+            updated_at = NOW()
+          WHERE id = $1
+          RETURNING *
+          `,
+          [existingMember.id, nextAuthSubject, reownProfileUuid, reownEmailHash, primaryWallet, reownPhoneHash]
+        );
+      });
+
+      const member = mapMember(result.rows[0]);
+      await this.ensureDefaultRows(member.id);
+      await this.syncPrimaryWallet(member);
+      await this.linkAuthenticatedWallet(member.id, primaryWallet);
+      await this.backfillPlaidOwnership(member);
+      await this.refreshDerivedState(member.id);
+      return this.getAccountCenterByAuthSubject(nextAuthSubject, { includeLockedPrivateProfile: true, requireMember: true });
+    }
+
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `
+        INSERT INTO ${TABLE_MEMBERS} (
+          auth_subject,
+          primary_wallet,
+          reown_profile_uuid,
+          reown_email_hash,
+          reown_phone_hash,
+          status,
+          verification_status,
+          membership_status,
+          last_authenticated_at
+        ) VALUES ($1, $2, $3, $4, $5, 'ONBOARDING', 'NOT_STARTED', 'NONE', NOW())
+        ON CONFLICT (auth_subject)
+        DO UPDATE SET
+          primary_wallet = EXCLUDED.primary_wallet,
+          reown_profile_uuid = COALESCE(EXCLUDED.reown_profile_uuid, ${TABLE_MEMBERS}.reown_profile_uuid),
+          reown_email_hash = COALESCE(EXCLUDED.reown_email_hash, ${TABLE_MEMBERS}.reown_email_hash),
+          reown_phone_hash = COALESCE(EXCLUDED.reown_phone_hash, ${TABLE_MEMBERS}.reown_phone_hash),
+          last_authenticated_at = NOW(),
+          updated_at = NOW()
+        RETURNING *
+        `,
+        [authSubject, primaryWallet, reownProfileUuid, reownEmailHash, reownPhoneHash]
+      );
+    });
+
+    const member = mapMember(result.rows[0]);
+    await this.ensureDefaultRows(member.id);
+    await this.syncPrimaryWallet(member);
+    await this.linkAuthenticatedWallet(member.id, primaryWallet);
+    await this.backfillPlaidOwnership(member);
+    await this.refreshDerivedState(member.id);
+    return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
+  }
+
+  async resolveCanonicalAuthSubject(input: ResolveMemberAuthInput): Promise<string | null> {
+    await this.ensureReady();
+    const member = await this.resolveMemberByAuthInput(input);
+    return member?.authSubject ?? null;
+  }
+
+  async getMemberByAuthSubject(authSubject: string): Promise<MemberRecord | null> {
+    await this.ensureReady();
+    return this.loadMemberByAuthSubject(authSubject.trim());
+  }
+
+  async getMemberById(memberId: number): Promise<MemberRecord | null> {
+    await this.ensureReady();
+    return this.loadMemberById(memberId);
+  }
+
+  async getCapabilitiesByAuthSubject(authSubject: string): Promise<MemberCapabilities | null> {
+    const member = await this.getMemberByAuthSubject(authSubject);
+    return member ? deriveCapabilities(member) : null;
+  }
+
+  async getOnboardingByAuthSubject(authSubject: string): Promise<MemberOnboardingRecord | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    const onboardingRow = await this.loadOnboardingRow(member.id);
+    return mapOnboarding(onboardingRow);
+  }
+
+  async updateOnboardingByAuthSubject(
+    authSubject: string,
+    patch: UpdateOnboardingInput
+  ): Promise<MemberOnboardingRecord> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    await this.ensureDefaultRows(member.id);
+    const current = mapOnboarding(await this.loadOnboardingRow(member.id));
+
+    const next = {
+      currentStep: resolvePatchedString(patch.currentStep, current.currentStep, 64) ?? 'identity',
+      accessTrack: resolvePatchedString(patch.accessTrack, current.accessTrack, 64) ?? 'basic',
+      accountMethod: resolvePatchedString(patch.accountMethod, current.accountMethod, 64) ?? 'wallet',
+      identityModeSelected:
+        resolvePatchedString(
+          patch.identityModeSelected,
+          current.identityModeSelected,
+          64
+        ) ?? 'pseudonymous',
+      referralSource: resolvePatchedString(patch.referralSource, current.referralSource, 128),
+      inviteCode: resolvePatchedString(patch.inviteCode, current.inviteCode, 128),
+      incomeSource: resolvePatchedString(patch.incomeSource, current.incomeSource, 128),
+      reasons: resolvePatchedArray(patch.reasons, current.reasons),
+      goalsNote: resolvePatchedString(patch.goalsNote, current.goalsNote, 1024),
+      recoveryMethod: resolvePatchedString(patch.recoveryMethod, current.recoveryMethod, 128),
+      cardWaitlist: patch.cardWaitlist ?? current.cardWaitlist,
+      localPools: patch.localPools ?? current.localPools,
+    };
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_ONBOARDING} (
+          member_id,
+          current_step,
+          access_track,
+          account_method,
+          identity_mode_selected,
+          referral_source,
+          invite_code,
+          income_source,
+          reasons,
+          goals_note,
+          recovery_method,
+          card_waitlist,
+          local_pools,
+          draft_status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14)
+        ON CONFLICT (member_id)
+        DO UPDATE SET
+          current_step = EXCLUDED.current_step,
+          access_track = EXCLUDED.access_track,
+          account_method = EXCLUDED.account_method,
+          identity_mode_selected = EXCLUDED.identity_mode_selected,
+          referral_source = EXCLUDED.referral_source,
+          invite_code = EXCLUDED.invite_code,
+          income_source = EXCLUDED.income_source,
+          reasons = EXCLUDED.reasons,
+          goals_note = EXCLUDED.goals_note,
+          recovery_method = EXCLUDED.recovery_method,
+          card_waitlist = EXCLUDED.card_waitlist,
+          local_pools = EXCLUDED.local_pools,
+          updated_at = NOW()
+        `,
+        [
+          member.id,
+          next.currentStep,
+          next.accessTrack,
+          next.accountMethod,
+          next.identityModeSelected,
+          next.referralSource,
+          next.inviteCode,
+          next.incomeSource,
+          JSON.stringify(next.reasons),
+          next.goalsNote,
+          next.recoveryMethod,
+          next.cardWaitlist,
+          next.localPools,
+          current.draftStatus,
+        ]
+      );
+    });
+
+    await this.updateMemberResidency(member.id, {
+      residencyCountry: normalizeOptionalCountry(patch.residencyCountry),
+      settlementCurrency: normalizeOptionalCurrency(patch.settlementCurrency),
+    });
+    await this.updateMembershipStateByMemberId(member.id, {
+      membershipPlan: normalizeMembershipPlan(patch.membershipPlan),
+    });
+    await this.refreshDerivedState(member.id);
+
+    return mapOnboarding(await this.loadOnboardingRow(member.id));
+  }
+
+  async submitOnboardingByAuthSubject(authSubject: string): Promise<MemberAccountCenter> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const pool = this.mustPool();
+    await this.ensureDefaultRows(member.id);
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_ONBOARDING}
+        SET
+          draft_status = 'submitted',
+          submitted_at = COALESCE(submitted_at, NOW()),
+          completed_at = COALESCE(completed_at, NOW()),
+          current_step = 'complete',
+          updated_at = NOW()
+        WHERE member_id = $1
+        `,
+        [member.id]
+      );
+    });
+
+    await this.refreshDerivedState(member.id);
+    return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
+  }
+
+  async getProfileByAuthSubject(
+    authSubject: string,
+    options: { includeLockedPrivateProfile?: boolean } = {}
+  ): Promise<MemberProfileView | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    return this.loadProfileView(member.id, Boolean(options.includeLockedPrivateProfile));
+  }
+
+  async updateProfileByAuthSubject(authSubject: string, patch: UpdateProfileInput): Promise<MemberProfileView> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    await this.ensureDefaultRows(member.id);
+    const currentPublic = mapPublicProfile(await this.loadPublicProfileRow(member.id));
+    const currentPrivateResult = await this.loadPrivateProfile(member.id, true);
+    const currentPrivate = currentPrivateResult.privateProfile;
+
+    // The handle is the one field on this profile that other members type at, so changing it is
+    // not the same kind of edit as changing a bio. Checked here rather than at the route because
+    // this is the path every profile write takes.
+    const nextUsername = resolvePatchedUsername(patch.username, currentPublic.username);
+    if (nextUsername && nextUsername !== currentPublic.username) {
+      const rejection = rejectHandleChange({
+        handle: nextUsername,
+        changesMade: await this.handleChangeCount(member.id),
+        everUsed: await this.handleEverUsed(nextUsername),
+      });
+      if (rejection) throw new Error(`Handle is not available: ${rejection}`);
+    }
+
+    const nextPublic = {
+      username: nextUsername,
+      displayName: resolvePatchedString(patch.displayName, currentPublic.displayName, 120),
+      bio: resolvePatchedString(patch.bio, currentPublic.bio, 512),
+      timezone: resolvePatchedString(patch.timezone, currentPublic.timezone, 64),
+      locale: resolvePatchedString(patch.locale, currentPublic.locale, 16),
+      avatarUrl: resolvePatchedString(patch.avatarUrl, currentPublic.avatarUrl, 2048),
+      notificationsOptIn: patch.notificationsOptIn ?? currentPublic.notificationsOptIn,
+    };
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_PROFILE_PUBLIC} (
+          member_id,
+          username,
+          display_name,
+          bio,
+          timezone,
+          locale,
+          avatar_url,
+          notifications_opt_in
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (member_id)
+        DO UPDATE SET
+          username = EXCLUDED.username,
+          display_name = EXCLUDED.display_name,
+          bio = EXCLUDED.bio,
+          timezone = EXCLUDED.timezone,
+          locale = EXCLUDED.locale,
+          avatar_url = EXCLUDED.avatar_url,
+          notifications_opt_in = EXCLUDED.notifications_opt_in,
+          updated_at = NOW()
+        `,
+        [
+          member.id,
+          nextPublic.username,
+          nextPublic.displayName,
+          nextPublic.bio,
+          nextPublic.timezone,
+          nextPublic.locale,
+          nextPublic.avatarUrl,
+          nextPublic.notificationsOptIn,
+        ]
+      );
+    });
+
+    // Recorded as chosen, which is what makes it count against the free allowance -- and what
+    // retires the handle they were holding, so nobody else can pick it up.
+    if (nextUsername && nextUsername !== currentPublic.username) {
+      await this.recordHandle(member.id, nextUsername, false);
+    }
+
+    const hasPrivatePatch =
+      patch.legalName !== undefined
+      || patch.email !== undefined
+      || patch.phone !== undefined
+      || patch.cityRegion !== undefined
+      || patch.addressLine1 !== undefined
+      || patch.addressLine2 !== undefined
+      || patch.addressCity !== undefined
+      || patch.addressState !== undefined
+      || patch.addressPostalCode !== undefined;
+
+    if (hasPrivatePatch) {
+      if (!this.isPrivateDataEncryptionConfigured()) {
+        throw new Error(
+          'Member private data encryption is not configured. Set MEMBER_PRIVATE_DATA_MASTER_KEY or MEMBER_PRIVATE_DATA_KEYRING_JSON.'
+        );
+      }
+
+      const nextPrivate: MemberPrivateProfile = {
+        legalName: resolvePatchedString(patch.legalName, currentPrivate?.legalName ?? null, 160),
+        email: resolvePatchedEmail(patch.email, currentPrivate?.email ?? null),
+        phone: resolvePatchedPhone(patch.phone, currentPrivate?.phone ?? null),
+        cityRegion: resolvePatchedString(patch.cityRegion, currentPrivate?.cityRegion ?? null, 160),
+        addressLine1: resolvePatchedString(patch.addressLine1, currentPrivate?.addressLine1 ?? null, 160),
+        addressLine2: resolvePatchedString(patch.addressLine2, currentPrivate?.addressLine2 ?? null, 160),
+        addressCity: resolvePatchedString(patch.addressCity, currentPrivate?.addressCity ?? null, 120),
+        addressState: resolvePatchedString(patch.addressState, currentPrivate?.addressState ?? null, 60),
+        addressPostalCode: resolvePatchedString(patch.addressPostalCode, currentPrivate?.addressPostalCode ?? null, 20),
+      };
+
+      const encrypted = encryptMemberPrivateData(
+        JSON.stringify(nextPrivate),
+        encryptionContext(member.id)
+      );
+      const emailHash = nextPrivate.email ? sha256Hex(nextPrivate.email) : null;
+      const phoneHash = nextPrivate.phone ? sha256Hex(nextPrivate.phone) : null;
+
+      await withRetry(async () => {
+        await pool.query(
+          `
+          INSERT INTO ${TABLE_PROFILE_PRIVATE} (
+            member_id,
+            payload_ciphertext,
+            payload_iv,
+            payload_auth_tag,
+            wrapped_data_key_ciphertext,
+            wrapped_data_key_iv,
+            wrapped_data_key_auth_tag,
+            key_version,
+            email_hash,
+            phone_hash
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          ON CONFLICT (member_id)
+          DO UPDATE SET
+            payload_ciphertext = EXCLUDED.payload_ciphertext,
+            payload_iv = EXCLUDED.payload_iv,
+            payload_auth_tag = EXCLUDED.payload_auth_tag,
+            wrapped_data_key_ciphertext = EXCLUDED.wrapped_data_key_ciphertext,
+            wrapped_data_key_iv = EXCLUDED.wrapped_data_key_iv,
+            wrapped_data_key_auth_tag = EXCLUDED.wrapped_data_key_auth_tag,
+            key_version = EXCLUDED.key_version,
+            email_hash = EXCLUDED.email_hash,
+            phone_hash = EXCLUDED.phone_hash,
+            updated_at = NOW()
+          `,
+          [
+            member.id,
+            encrypted.ciphertext,
+            encrypted.iv,
+            encrypted.authTag,
+            encrypted.wrappedKeyCiphertext,
+            encrypted.wrappedKeyIv,
+            encrypted.wrappedKeyAuthTag,
+            encrypted.keyVersion,
+            emailHash,
+            phoneHash,
+          ]
+        );
+      });
+    }
+
+    await this.updateMemberResidency(member.id, {
+      residencyCountry: normalizeOptionalCountry(patch.residencyCountry),
+      settlementCurrency: normalizeOptionalCurrency(patch.settlementCurrency),
+    });
+    await this.refreshDerivedState(member.id);
+
+    return (await this.loadProfileView(member.id, true));
+  }
+
+  async getSecurityByAuthSubject(authSubject: string): Promise<MemberSecuritySettings | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    return mapSecurity(await this.loadSecurityRow(member.id));
+  }
+
+  async updateSecurityByAuthSubject(
+    authSubject: string,
+    patch: UpdateSecuritySettingsInput
+  ): Promise<MemberSecuritySettings> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    await this.ensureDefaultRows(member.id);
+    const current = mapSecurity(await this.loadSecurityRow(member.id));
+    const next = {
+      signatureLock: patch.signatureLock ?? current.signatureLock,
+      sessionReview: patch.sessionReview ?? current.sessionReview,
+      biometricAccess: patch.biometricAccess ?? current.biometricAccess,
+      socialDiscovery: patch.socialDiscovery ?? current.socialDiscovery,
+      transferAlerts: patch.transferAlerts ?? current.transferAlerts,
+      autoPledge: patch.autoPledge ?? current.autoPledge,
+    };
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_SECURITY} (
+          member_id,
+          signature_lock,
+          session_review,
+          biometric_access,
+          social_discovery,
+          transfer_alerts,
+          auto_pledge
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (member_id)
+        DO UPDATE SET
+          signature_lock = EXCLUDED.signature_lock,
+          session_review = EXCLUDED.session_review,
+          biometric_access = EXCLUDED.biometric_access,
+          social_discovery = EXCLUDED.social_discovery,
+          transfer_alerts = EXCLUDED.transfer_alerts,
+          auto_pledge = EXCLUDED.auto_pledge,
+          updated_at = NOW()
+        `,
+        [
+          member.id,
+          next.signatureLock,
+          next.sessionReview,
+          next.biometricAccess,
+          next.socialDiscovery,
+          next.transferAlerts,
+          next.autoPledge,
+        ]
+      );
+    });
+
+    return mapSecurity(await this.loadSecurityRow(member.id));
+  }
+
+  async listWalletsByAuthSubject(authSubject: string): Promise<MemberWalletRecord[] | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    await this.syncPrimaryWallet(member);
+    return this.loadWallets(member.id);
+  }
+
+  async addWalletByAuthSubject(authSubject: string, input: UpsertMemberWalletInput): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const walletAddress = normalizeWalletAddress(input.walletAddress);
+    const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
+    const kind = normalizeWalletKind(input.kind);
+    const status = normalizeWalletStatus(input.status);
+    const pool = this.mustPool();
+    const existingWallet = await this.loadWalletRowByAddress(walletAddress);
+    if (existingWallet && parseNumericId(existingWallet.member_id) !== member.id) {
+      throw new Error('Wallet is already linked to another account');
+    }
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_WALLETS} (
+          member_id,
+          wallet_address,
+          label,
+          description,
+          kind,
+          status,
+          is_primary,
+          auth_alias_enabled,
+          verified_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,FALSE,FALSE,NULL)
+        ON CONFLICT (wallet_address)
+        DO UPDATE SET
+          label = EXCLUDED.label,
+          description = EXCLUDED.description,
+          kind = EXCLUDED.kind,
+          status = EXCLUDED.status,
+          updated_at = NOW()
+        `,
+        [member.id, walletAddress, label, description, kind, status]
+      );
+    });
+
+    await this.syncPrimaryWallet(member);
+    return this.loadWallets(member.id);
+  }
+
+  async updateWalletByAuthSubject(
+    authSubject: string,
+    walletId: number,
+    patch: UpdateMemberWalletInput
+  ): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const current = await this.loadWalletById(member.id, walletId);
+    if (!current) {
+      throw new Error('Member wallet not found');
+    }
+    if (current.isPrimary && patch.walletAddress && normalizeWalletAddress(patch.walletAddress) !== current.walletAddress) {
+      throw new Error('Primary wallet address cannot be changed');
+    }
+
+    const nextWalletAddress = patch.walletAddress
+      ? normalizeWalletAddress(patch.walletAddress)
+      : current.walletAddress;
+    const nextLabel = patch.label === undefined
+      ? current.label
+      : normalizeOptionalString(patch.label, 120) ?? null;
+    const nextDescription = patch.description === undefined
+      ? current.description
+      : normalizeOptionalString(patch.description, 280) ?? null;
+    const nextKind = patch.kind === undefined ? current.kind : normalizeWalletKind(patch.kind);
+    const nextStatus = patch.status === undefined ? current.status : normalizeWalletStatus(patch.status);
+    const walletAddressChanged = nextWalletAddress !== current.walletAddress;
+    if (walletAddressChanged) {
+      const existingWallet = await this.loadWalletRowByAddress(nextWalletAddress);
+      if (existingWallet) {
+        const existingMemberId = parseNumericId(existingWallet.member_id);
+        const existingWalletId = parseNumericId(existingWallet.id);
+        if (existingMemberId !== member.id) {
+          throw new Error('Wallet is already linked to another account');
+        }
+        if (existingWalletId !== walletId) {
+          throw new Error('Wallet is already linked to this account');
+        }
+      }
+    }
+    const pool = this.mustPool();
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLETS}
+        SET
+          wallet_address = $3,
+          label = $4,
+          description = $5,
+          kind = $6,
+          status = $7,
+          auth_alias_enabled = CASE WHEN $8 THEN FALSE ELSE auth_alias_enabled END,
+          verified_at = CASE WHEN $8 THEN NULL ELSE verified_at END,
+          updated_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [
+          walletId,
+          member.id,
+          nextWalletAddress,
+          nextLabel,
+          nextDescription,
+          nextKind,
+          nextStatus,
+          walletAddressChanged,
+        ]
+      );
+    });
+
+    await this.syncPrimaryWallet(member);
+    return this.loadWallets(member.id);
+  }
+
+  async removeWalletByAuthSubject(authSubject: string, walletId: number): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const current = await this.loadWalletById(member.id, walletId);
+    if (!current) {
+      throw new Error('Member wallet not found');
+    }
+    if (current.isPrimary) {
+      throw new Error('Primary wallet cannot be removed');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `DELETE FROM ${TABLE_WALLETS} WHERE id = $1 AND member_id = $2`,
+        [walletId, member.id]
+      );
+    });
+
+    return this.loadWallets(member.id);
+  }
+
+  async createWalletLinkHandoffByAuthSubject(
+    authSubject: string,
+    input: CreateMemberWalletLinkHandoffInput
+  ): Promise<MemberWalletLinkHandoff> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
+    if (!label) {
+      throw new Error('Wallet label is required');
+    }
+
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + WALLET_LINK_HANDOFF_TTL_MS);
+    const token = crypto.randomBytes(24).toString('hex');
+    const tokenHash = sha256Hex(token);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletLinkHandoffDbRow>(
+        `
+        INSERT INTO ${TABLE_WALLET_LINK_HANDOFFS} (
+          member_id,
+          token_hash,
+          label,
+          description,
+          expires_at
+        ) VALUES ($1,$2,$3,$4,$5)
+        RETURNING *
+        `,
+        [member.id, tokenHash, label, description, expiresAt]
+      );
+    });
+
+    return mapWalletLinkHandoff(result.rows[0], token);
+  }
+
+  async prepareWalletLinkHandoff(
+    token: string,
+    walletAddress: string
+  ): Promise<{ message: string; handoff: Omit<MemberWalletLinkHandoff, 'token'> }> {
+    await this.ensureReady();
+    const normalizedToken = normalizeOptionalString(token, 255);
+    if (!normalizedToken) {
+      throw new Error('Wallet link handoff token is required');
+    }
+
+    const handoff = await this.loadWalletLinkHandoffByToken(normalizedToken);
+    if (!handoff) {
+      throw new Error('Wallet link handoff not found');
+    }
+    if (handoff.consumed_at) {
+      throw new Error('Wallet link handoff has already been used');
+    }
+
+    const expiresAt = parseDate(handoff.expires_at);
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      throw new Error('Wallet link handoff has expired');
+    }
+
+    const message = buildWalletLinkHandoffMessage({
+      memberId: parseNumericId(handoff.member_id) ?? 0,
+      walletAddress: normalizeWalletAddress(walletAddress),
+      handoffId: parseNumericId(handoff.id) ?? 0,
+      tokenHash: handoff.token_hash,
+      expiresAt,
+    });
+
+    return {
+      message,
+      handoff: {
+        label: handoff.label,
+        description: handoff.description,
+        expiresAt,
+        createdAt: parseDate(handoff.created_at) ?? new Date(0),
+      },
+    };
+  }
+
+  async completeWalletLinkHandoff(
+    token: string,
+    walletAddress: string,
+    signature: string,
+    kind?: MemberWalletKind | null
+  ): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const normalizedToken = normalizeOptionalString(token, 255);
+    if (!normalizedToken) {
+      throw new Error('Wallet link handoff token is required');
+    }
+
+    const normalizedWallet = normalizeWalletAddress(walletAddress);
+    const handoff = await this.loadWalletLinkHandoffByToken(normalizedToken);
+    if (!handoff) {
+      throw new Error('Wallet link handoff not found');
+    }
+    if (handoff.consumed_at) {
+      throw new Error('Wallet link handoff has already been used');
+    }
+
+    const expiresAt = parseDate(handoff.expires_at);
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      throw new Error('Wallet link handoff has expired');
+    }
+
+    const memberId = parseNumericId(handoff.member_id);
+    const handoffId = parseNumericId(handoff.id);
+    if (!memberId || !handoffId) {
+      throw new Error('Wallet link handoff is invalid');
+    }
+
+    const message = buildWalletLinkHandoffMessage({
+      memberId,
+      walletAddress: normalizedWallet,
+      handoffId,
+      tokenHash: handoff.token_hash,
+      expiresAt,
+    });
+    const recoveredWallet = normalizeWalletAddress(verifyMessage(message, signature));
+    if (recoveredWallet !== normalizedWallet) {
+      throw new Error('Invalid wallet link signature');
+    }
+
+    await this.absorbMergeablePlaceholderWalletMember(memberId, normalizedWallet);
+    await this.linkAuthenticatedWallet(memberId, normalizedWallet, {
+      label: handoff.label,
+      description: handoff.description,
+      kind: kind ?? 'SMART',
+    });
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLET_LINK_HANDOFFS}
+        SET consumed_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [handoffId, memberId]
+      );
+    });
+
+    const member = await this.loadMemberById(memberId);
+    if (member) {
+      await this.backfillPlaidOwnership(member);
+    }
+
+    return this.loadWallets(memberId);
+  }
+
+  async createWalletLinkChallengeByAuthSubject(
+    authSubject: string,
+    input: CreateMemberWalletLinkChallengeInput
+  ): Promise<MemberWalletLinkChallenge> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const walletAddress = normalizeWalletAddress(input.walletAddress);
+
+    if (walletAddress === member.primaryWallet) {
+      throw new Error('Wallet is already the primary signer for this account');
+    }
+
+    const existingWallet = await this.loadWalletRowByAddress(walletAddress);
+    if (existingWallet) {
+      const existingMemberId = parseNumericId(existingWallet.member_id);
+      if (existingMemberId && existingMemberId !== member.id) {
+        throw new Error('Wallet is already linked to another account');
+      }
+      if (
+        existingMemberId === member.id
+        && existingWallet.auth_alias_enabled
+        && existingWallet.status !== 'REMOVED'
+      ) {
+        throw new Error('Wallet is already linked to this account');
+      }
+    }
+
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + WALLET_LINK_CHALLENGE_TTL_MS);
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const message = buildWalletLinkMessage({
+      memberId: member.id,
+      walletAddress,
+      nonce,
+      issuedAt,
+      expiresAt,
+    });
+
+    const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
+    const kind = normalizeWalletKind(input.kind ?? existingWallet?.kind ?? 'SMART');
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLET_LINK_CHALLENGES}
+        SET consumed_at = NOW()
+        WHERE member_id = $1
+          AND wallet_address = $2
+          AND consumed_at IS NULL
+        `,
+        [member.id, walletAddress]
+      );
+
+      return pool.query<MemberWalletLinkChallengeDbRow>(
+        `
+        INSERT INTO ${TABLE_WALLET_LINK_CHALLENGES} (
+          member_id,
+          wallet_address,
+          label,
+          description,
+          kind,
+          nonce,
+          message,
+          expires_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        RETURNING *
+        `,
+        [member.id, walletAddress, label, description, kind, nonce, message, expiresAt]
+      );
+    });
+
+    return mapWalletLinkChallenge(result.rows[0]);
+  }
+
+  async completeWalletLinkChallengeByAuthSubject(
+    authSubject: string,
+    challengeId: number,
+    signature: string
+  ): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const challenge = await this.loadWalletLinkChallenge(member.id, challengeId);
+
+    if (!challenge) {
+      throw new Error('Wallet link challenge not found');
+    }
+    if (challenge.consumed_at) {
+      throw new Error('Wallet link challenge has already been used');
+    }
+
+    const expiresAt = parseDate(challenge.expires_at);
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      throw new Error('Wallet link challenge has expired');
+    }
+
+    const recoveredWallet = normalizeWalletAddress(verifyMessage(challenge.message, signature));
+    if (recoveredWallet !== normalizeWalletAddress(challenge.wallet_address)) {
+      throw new Error('Invalid wallet link signature');
+    }
+
+    await this.linkAuthenticatedWallet(member.id, challenge.wallet_address, {
+      label: challenge.label,
+      description: challenge.description,
+      kind: challenge.kind,
+    });
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLET_LINK_CHALLENGES}
+        SET consumed_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [challengeId, member.id]
+      );
+    });
+
+    const updatedMember = await this.loadMemberById(member.id);
+    if (updatedMember) {
+      await this.backfillPlaidOwnership(updatedMember);
+    }
+
+    return this.loadWallets(member.id);
+  }
+
+  async listSocialAccountsByAuthSubject(authSubject: string): Promise<MemberSocialAccountRecord[] | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async addSocialAccountByAuthSubject(
+    authSubject: string,
+    input: UpsertMemberSocialAccountInput
+  ): Promise<MemberSocialAccountRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const platform = normalizeOptionalString(input.platform, 64) ?? null;
+    const handle = normalizeOptionalString(input.handle, 255) ?? null;
+    if (!platform || !handle) {
+      throw new Error('Social platform and handle are required');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_SOCIALS} (
+          member_id,
+          platform,
+          handle,
+          visibility,
+          status
+        ) VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (member_id, platform, handle)
+        DO UPDATE SET
+          visibility = EXCLUDED.visibility,
+          status = EXCLUDED.status,
+          updated_at = NOW()
+        `,
+        [
+          member.id,
+          platform,
+          handle,
+          normalizeSocialVisibility(input.visibility),
+          normalizeSocialStatus(input.status),
+        ]
+      );
+    });
+
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async updateSocialAccountByAuthSubject(
+    authSubject: string,
+    socialId: number,
+    patch: UpdateMemberSocialAccountInput
+  ): Promise<MemberSocialAccountRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const current = await this.loadSocialAccountById(member.id, socialId);
+    if (!current) {
+      throw new Error('Member social account not found');
+    }
+
+    const nextPlatform = patch.platform === undefined
+      ? current.platform
+      : normalizeOptionalString(patch.platform, 64) ?? null;
+    const nextHandle = patch.handle === undefined
+      ? current.handle
+      : normalizeOptionalString(patch.handle, 255) ?? null;
+    if (!nextPlatform || !nextHandle) {
+      throw new Error('Social platform and handle are required');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_SOCIALS}
+        SET
+          platform = $3,
+          handle = $4,
+          visibility = $5,
+          status = $6,
+          updated_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [
+          socialId,
+          member.id,
+          nextPlatform,
+          nextHandle,
+          patch.visibility === undefined ? current.visibility : normalizeSocialVisibility(patch.visibility),
+          patch.status === undefined ? current.status : normalizeSocialStatus(patch.status),
+        ]
+      );
+    });
+
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async removeSocialAccountByAuthSubject(authSubject: string, socialId: number): Promise<MemberSocialAccountRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const pool = this.mustPool();
+
+    await withRetry(async () => {
+      await pool.query(
+        `DELETE FROM ${TABLE_SOCIALS} WHERE id = $1 AND member_id = $2`,
+        [socialId, member.id]
+      );
+    });
+
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async updateMembershipStateByMemberId(
+    memberId: number,
+    patch: UpdateMemberMembershipStateInput
+  ): Promise<MemberRecord> {
+    await this.ensureReady();
+    const updates: string[] = [];
+    const values: Array<string | number | Date | null> = [memberId];
+
+    if (patch.membershipPlan !== undefined) {
+      values.push(patch.membershipPlan);
+      updates.push(`membership_plan = $${values.length}`);
+    }
+    if (patch.membershipStatus !== undefined) {
+      values.push(patch.membershipStatus);
+      updates.push(`membership_status = $${values.length}`);
+    }
+    if (patch.membershipRegistryMemberId !== undefined) {
+      values.push(patch.membershipRegistryMemberId);
+      updates.push(`membership_registry_member_id = $${values.length}`);
+    }
+    if (patch.membershipChainId !== undefined) {
+      values.push(patch.membershipChainId);
+      updates.push(`membership_chain_id = $${values.length}`);
+    }
+    if (patch.membershipTxHash !== undefined) {
+      values.push(patch.membershipTxHash);
+      updates.push(`membership_tx_hash = $${values.length}`);
+    }
+    if (patch.membershipSyncedAt !== undefined) {
+      values.push(patch.membershipSyncedAt);
+      updates.push(`membership_synced_at = $${values.length}`);
+    }
+    if (patch.membershipMetadataHash !== undefined) {
+      values.push(patch.membershipMetadataHash);
+      updates.push(`membership_metadata_hash = $${values.length}`);
+    }
+
+    if (updates.length === 0) {
+      const member = await this.loadMemberById(memberId);
+      if (!member) throw new Error('Member record not found');
+      return member;
+    }
+
+    updates.push('updated_at = NOW()');
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `
+        UPDATE ${TABLE_MEMBERS}
+        SET ${updates.join(', ')}
+        WHERE id = $1
+        RETURNING *
+        `,
+        values
+      );
+    });
+
+    if (!result.rows[0]) {
+      throw new Error('Member record not found');
+    }
+
+    return mapMember(result.rows[0]);
+  }
+
+  async acceptTermsByAuthSubject(
+    authSubject: string,
+    input: AcceptTermsInput
+  ): Promise<MemberTermsSummaryItem[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const pool = this.mustPool();
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_TERMS} (
+          member_id,
+          document_type,
+          document_version,
+          wallet_address,
+          ip_hash,
+          user_agent
+        ) VALUES ($1,$2,$3,$4,$5,$6)
+        ON CONFLICT (member_id, document_type, document_version)
+        DO UPDATE SET
+          accepted_at = NOW(),
+          wallet_address = EXCLUDED.wallet_address,
+          ip_hash = EXCLUDED.ip_hash,
+          user_agent = EXCLUDED.user_agent
+        `,
+        [
+          member.id,
+          input.documentType,
+          input.documentVersion,
+          normalizeWalletAddress(input.walletAddress),
+          input.ipHash ?? null,
+          input.userAgent ?? null,
+        ]
+      );
+    });
+
+    await this.refreshDerivedState(member.id);
+    return this.loadTermsSummary(member.id);
+  }
+
+  async getVerificationByAuthSubject(authSubject: string): Promise<MemberVerificationSummary | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    const row = await this.loadVerificationRow(member.id);
+    return mapVerification(row, member);
+  }
+
+  async startVerificationByAuthSubject(
+    authSubject: string,
+    input: { provider?: string | null; verificationLevel?: string | null } = {}
+  ): Promise<MemberAccountCenter> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const currentAccount = await this.getAccountCenterByAuthSubject(authSubject, {
+      includeLockedPrivateProfile: true,
+      requireMember: true,
+    });
+
+    if (!currentAccount.capabilities.canStartVerification) {
+      throw new Error('Member is not eligible to start verification');
+    }
+
+    const pool = this.mustPool();
+    const provider = normalizeOptionalString(input.provider ?? null, 64) ?? 'manual_review';
+    const verificationLevel =
+      normalizeOptionalString(input.verificationLevel ?? null, 64) ?? 'BASIC_KYC';
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_MEMBERS}
+        SET
+          status = 'VERIFICATION_PENDING',
+          verification_status = 'PENDING',
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [member.id]
+      );
+
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_VERIFICATIONS} (
+          member_id,
+          provider,
+          verification_level,
+          status,
+          submitted_at,
+          updated_at
+        ) VALUES ($1,$2,$3,'PENDING',NOW(),NOW())
+        ON CONFLICT (member_id, provider, verification_level)
+        DO UPDATE SET
+          status = 'PENDING',
+          submitted_at = COALESCE(${TABLE_VERIFICATIONS}.submitted_at, NOW()),
+          decided_at = NULL,
+          updated_at = NOW()
+        `,
+        [member.id, provider, verificationLevel]
+      );
+    });
+
+    return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
+  }
+
+  async getAccountCenterByAuthSubject(
+    authSubject: string,
+    options: { includeLockedPrivateProfile?: boolean; requireMember?: boolean } = {}
+  ): Promise<MemberAccountCenter> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) {
+      if (options.requireMember) {
+        throw new Error('Member record not found');
+      }
+      throw new Error('Member record not found');
+    }
+
+    await this.ensureDefaultRows(member.id);
+
+    const [profile, onboardingRow, securityRow, terms, verificationRow] = await Promise.all([
+      this.loadProfileView(member.id, Boolean(options.includeLockedPrivateProfile)),
+      this.loadOnboardingRow(member.id),
+      this.loadSecurityRow(member.id),
+      this.loadTermsSummary(member.id),
+      this.loadVerificationRow(member.id),
+    ]);
+    const [wallets, socialAccounts] = await Promise.all([
+      this.loadWallets(member.id),
+      this.loadSocialAccounts(member.id),
+    ]);
+
+    const refreshedMember = (await this.loadMemberByAuthSubject(authSubject.trim())) ?? member;
+
+    return {
+      member: refreshedMember,
+      profile,
+      onboarding: mapOnboarding(onboardingRow),
+      security: mapSecurity(securityRow),
+      verification: mapVerification(verificationRow, refreshedMember),
+      wallets,
+      socialAccounts,
+      capabilities: deriveCapabilities(refreshedMember),
+      terms,
+    };
+  }
+
+  private mustPool(): Pool {
+    const pool = getPostgresPool();
+    if (!pool) {
+      throw new Error('Postgres pool is unavailable');
+    }
+    return pool;
+  }
+
+  private async ensureDefaultRows(memberId: number): Promise<void> {
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `INSERT INTO ${TABLE_PROFILE_PUBLIC} (member_id) VALUES ($1) ON CONFLICT (member_id) DO NOTHING`,
+        [memberId]
+      );
+      await pool.query(
+        `INSERT INTO ${TABLE_ONBOARDING} (member_id) VALUES ($1) ON CONFLICT (member_id) DO NOTHING`,
+        [memberId]
+      );
+      await pool.query(
+        `INSERT INTO ${TABLE_SECURITY} (member_id) VALUES ($1) ON CONFLICT (member_id) DO NOTHING`,
+        [memberId]
+      );
+    });
+  }
+
+  private async loadMemberByAuthSubject(authSubject: string): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE auth_subject = $1 LIMIT 1`,
+        [authSubject]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByReownProfileUuid(profileUuid: string): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE reown_profile_uuid = $1 LIMIT 1`,
+        [profileUuid]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByPrimaryWallet(primaryWallet: string): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE primary_wallet = $1 LIMIT 1`,
+        [primaryWallet]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByLinkedWallet(walletAddress: string): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `
+        SELECT m.*
+        FROM ${TABLE_MEMBERS} m
+        INNER JOIN ${TABLE_WALLETS} w
+          ON w.member_id = m.id
+        WHERE w.wallet_address = $1
+          AND w.auth_alias_enabled = TRUE
+          AND w.status != 'REMOVED'
+        LIMIT 1
+        `,
+        [walletAddress]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByReownEmail(email: string): Promise<MemberRecord | null> {
+    const normalizedEmail = normalizeOptionalEmail(email);
+    if (!normalizedEmail) {
+      return null;
+    }
+
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE reown_email_hash = $1 LIMIT 1`,
+        [sha256Hex(normalizedEmail)]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByReownPhone(phone: string): Promise<MemberRecord | null> {
+    const normalizedPhone = normalizeOptionalPhone(phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE reown_phone_hash = $1 LIMIT 1`,
+        [sha256Hex(normalizedPhone)]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  /** Save this member's XMTP messaging address (their embedded EOA). */
+  async setXmtpAddress(authSubject: string, xmtpAddress: string): Promise<void> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const addr = normalizeWalletAddress(xmtpAddress);
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(`UPDATE ${TABLE_MEMBERS} SET xmtp_address = $2, updated_at = NOW() WHERE id = $1`, [member.id, addr]);
+    });
+  }
+
+  /** Resolve a member's XMTP messaging address (embedded EOA) from any of their verified wallets. */
+  async getXmtpAddressForWallet(walletAddress: string): Promise<string | null> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ xmtp_address: string | null }>(
+        `SELECT xmtp_address FROM ${TABLE_MEMBERS}
+           WHERE primary_wallet = $1
+              OR id = (SELECT member_id FROM ${TABLE_WALLETS} WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+           LIMIT 1`,
+        [addr],
+      );
+    });
+    return result.rows[0]?.xmtp_address ?? null;
+  }
+
+  /** Membership plan for any of a member's wallets (LIFETIME = Accelerated track, YEARLY = Standard). */
+  /** When the member holding this wallet joined, or null if no member holds it. Starts the Match Period. */
+  async getJoinedAtByWallet(walletAddress: string): Promise<Date | null> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ created_at: Date | string }>(
+        `SELECT created_at FROM ${TABLE_MEMBERS}
+           WHERE primary_wallet = $1
+              OR id = (SELECT member_id FROM ${TABLE_WALLETS} WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+           LIMIT 1`,
+        [addr],
+      );
+    });
+    const v = result.rows[0]?.created_at;
+    return v ? new Date(v) : null;
+  }
+
+  async getMembershipPlanByWallet(walletAddress: string): Promise<MemberMembershipPlan> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ membership_plan: MemberMembershipPlan }>(
+        `SELECT membership_plan FROM ${TABLE_MEMBERS}
+           WHERE primary_wallet = $1
+              OR id = (SELECT member_id FROM ${TABLE_WALLETS} WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+           LIMIT 1`,
+        [addr],
+      );
+    });
+    return result.rows[0]?.membership_plan ?? null;
+  }
+
+  /**
+   * A member's contact details, found by any wallet they hold.
+   *
+   * The reverse of the directory lookup, and needed for the same reason a charge alert exists:
+   * something has to reach a member who is not looking at the app. Matched across every active
+   * wallet rather than the primary alone, because the wallet a charge is raised against is
+   * whichever one the merchant was given.
+   *
+   * Returns null when they have opted out of notifications. Not an empty contact — the caller
+   * should be able to tell "we have no way to reach them" apart from "they asked us not to".
+   */
+  /** The name a signed-in member chose to be seen by (their public display name, else @username), or null. */
+  async publicNameForAuth(input: ResolveMemberAuthInput): Promise<string | null> {
+    await this.ensureReady();
+    const member = await this.resolveMemberByAuthInput(input);
+    if (!member) return null;
+    const { rows } = await this.mustPool().query<{ display_name: string | null; username: string | null }>(
+      `SELECT display_name, username FROM ${TABLE_PROFILE_PUBLIC} WHERE member_id = $1`,
+      [member.id],
+    );
+    const r = rows[0];
+    return r?.display_name?.trim() || (r?.username?.trim() ? `@${r.username.trim()}` : null);
+  }
+
+  /** The names members chose to be seen by, for these wallets (memberPublicNames below). */
+  async publicNamesForWallets(wallets: string[]): Promise<Map<string, string>> {
+    await this.ensureReady();
+    return memberPublicNames(this.mustPool(), wallets);
+  }
+
+  async getContactByWallet(
+    walletAddress: string,
+  ): Promise<{ email: string | null; phone: string | null } | null> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    /*
+     * The member by wallet, and whether they'll take notifications (the public profile; no profile
+     * yet is the default, which is yes). Email and phone are in the private profile, which is
+     * encrypted: they're read through loadPrivateProfile, never as columns. This used to select
+     * p.email / p.phone / p.notifications_opt_in from the private table, none of which exist, so
+     * every charge and refund text or email failed ("column p.email does not exist").
+     */
+    const result = await withRetry(async () => {
+      return pool.query<{ member_id: number; notifications_opt_in: boolean | null }>(
+        `SELECT m.id AS member_id, pub.notifications_opt_in
+           FROM ${TABLE_MEMBERS} m
+           LEFT JOIN ${TABLE_PROFILE_PUBLIC} pub ON pub.member_id = m.id
+          WHERE m.primary_wallet = $1
+             OR m.id = (SELECT member_id FROM ${TABLE_WALLETS}
+                         WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+          LIMIT 1`,
+        [addr],
+      );
+    });
+    const row = result.rows[0];
+    if (!row || row.notifications_opt_in === false) return null;
+    const { privateProfile } = await this.loadPrivateProfile(Number(row.member_id), false);
+    if (!privateProfile) return null;
+    return { email: privateProfile.email ?? null, phone: privateProfile.phone ?? null };
+  }
+
+  /**
+   * The state of residence on the member's private profile, as they typed it (free text), for the
+   * credit onboarding job's state attestation. `unreadable` when the profile exists but this server
+   * cannot decrypt it (MEMBER_PRIVATE_DATA_* unset): that is not "no state", and must not read as one.
+   */
+  async addressStateByWallet(
+    walletAddress: string,
+  ): Promise<{ addressState: string | null; unreadable?: boolean }> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ member_id: number }>(
+        `SELECT m.id AS member_id
+           FROM ${TABLE_MEMBERS} m
+          WHERE m.primary_wallet = $1
+          LIMIT 1`,
+        [addr],
+      );
+    });
+    const row = result.rows[0];
+    if (!row) return { addressState: null };
+    const { privateProfile, privateProfileExists } = await this.loadPrivateProfile(Number(row.member_id), false);
+    if (!privateProfile) return { addressState: null, unreadable: privateProfileExists };
+    return { addressState: privateProfile.addressState ?? null };
+  }
+
+  private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
+    const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
+    if (authSubject) {
+      const byAuthSubject = await this.loadMemberByAuthSubject(authSubject);
+      if (byAuthSubject) {
+        return byAuthSubject;
+      }
+    }
+
+    const profileUuid = normalizeOptionalString(input.profileUuid ?? null, 255) ?? null;
+    if (profileUuid) {
+      const byProfileUuid = await this.loadMemberByReownProfileUuid(profileUuid);
+      if (byProfileUuid) {
+        return byProfileUuid;
+      }
+    }
+
+    // Match against EVERY verified address (the primary smart wallet + any linked external wallet), so a
+    // pre-migration account keyed by a now-linked wallet is found instead of duplicated. Deterministic:
+    // the DID/auth_subject checks above always win first, so this only fires when there's no DID match.
+    const candidateWallets = [
+      input.walletAddress,
+      ...(input.walletAddresses ?? []),
+    ]
+      .filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+      .map((a) => normalizeWalletAddress(a));
+    for (const addr of new Set(candidateWallets)) {
+      const byPrimaryWallet = await this.loadMemberByPrimaryWallet(addr);
+      if (byPrimaryWallet) {
+        return byPrimaryWallet;
+      }
+      const byLinkedWallet = await this.loadMemberByLinkedWallet(addr);
+      if (byLinkedWallet) {
+        return byLinkedWallet;
+      }
+    }
+
+    const email = normalizeOptionalEmail(input.email ?? null) ?? null;
+    if (email) {
+      const byEmail = await this.loadMemberByReownEmail(email);
+      if (byEmail) {
+        return byEmail;
+      }
+    }
+
+    const phone = normalizeOptionalPhone(input.phone ?? null) ?? null;
+    if (phone) {
+      const byPhone = await this.loadMemberByReownPhone(phone);
+      if (byPhone) {
+        return byPhone;
+      }
+    }
+
+    return null;
+  }
+
+  private async loadMemberById(memberId: number): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE id = $1 LIMIT 1`,
+        [memberId]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async mustMember(authSubject: string): Promise<MemberRecord> {
+    const member = await this.loadMemberByAuthSubject(authSubject);
+    if (!member) {
+      throw new Error('Member record not found');
+    }
+    return member;
+  }
+
+  private async loadPublicProfileRow(memberId: number): Promise<MemberPublicProfileDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberPublicProfileDbRow>(
+        `SELECT * FROM ${TABLE_PROFILE_PUBLIC} WHERE member_id = $1 LIMIT 1`,
+        [memberId]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * For the Command Center's Members (Phase 7b): each member's legal name and city from their private
+   * profile, read only, or nulls when it can't be read (no profile, or the encryption key isn't set).
+   */
+  async privateBasics(memberIds: number[]): Promise<Map<number, { legalName: string | null; email: string | null; phone: string | null; city: string | null }>> {
+    const out = new Map<number, { legalName: string | null; email: string | null; phone: string | null; city: string | null }>();
+    for (const id of memberIds) {
+      const p = (await this.loadPrivateProfile(id, false).catch(() => null))?.privateProfile ?? null;
+      out.set(id, { legalName: p?.legalName ?? null, email: p?.email ?? null, phone: p?.phone ?? null, city: p?.addressCity ?? p?.cityRegion ?? null });
+    }
+    return out;
+  }
+
+  private async loadPrivateProfile(
+    memberId: number,
+    includeLockedPrivateProfile: boolean
+  ): Promise<{
+    privateProfile: MemberPrivateProfile | null;
+    privateProfileExists: boolean;
+    privateProfileLocked: boolean;
+  }> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberPrivateProfileDbRow>(
+        `SELECT * FROM ${TABLE_PROFILE_PRIVATE} WHERE member_id = $1 LIMIT 1`,
+        [memberId]
+      );
+    });
+
+    const row = result.rows[0];
+    if (!row) {
+      return {
+        privateProfile: null,
+        privateProfileExists: false,
+        privateProfileLocked: false,
+      };
+    }
+
+    if (!this.isPrivateDataEncryptionConfigured()) {
+      return {
+        privateProfile: null,
+        privateProfileExists: true,
+        privateProfileLocked: includeLockedPrivateProfile,
+      };
+    }
+
+    const plaintext = decryptMemberPrivateData(
+      {
+        ciphertext: row.payload_ciphertext,
+        iv: row.payload_iv,
+        authTag: row.payload_auth_tag,
+        wrappedKeyCiphertext: row.wrapped_data_key_ciphertext,
+        wrappedKeyIv: row.wrapped_data_key_iv,
+        wrappedKeyAuthTag: row.wrapped_data_key_auth_tag,
+        keyVersion: row.key_version,
+      },
+      encryptionContext(memberId)
+    );
+
+    const parsed = JSON.parse(plaintext) as Partial<MemberPrivateProfile> | null;
+    return {
+      privateProfile: {
+        legalName: normalizeOptionalString(parsed?.legalName ?? null, 160) ?? null,
+        email: normalizeOptionalEmail(parsed?.email ?? null) ?? null,
+        phone: normalizeOptionalPhone(parsed?.phone ?? null) ?? null,
+        cityRegion: normalizeOptionalString(parsed?.cityRegion ?? null, 160) ?? null,
+        addressLine1: normalizeOptionalString(parsed?.addressLine1 ?? null, 160) ?? null,
+        addressLine2: normalizeOptionalString(parsed?.addressLine2 ?? null, 160) ?? null,
+        addressCity: normalizeOptionalString(parsed?.addressCity ?? null, 120) ?? null,
+        addressState: normalizeOptionalString(parsed?.addressState ?? null, 60) ?? null,
+        addressPostalCode: normalizeOptionalString(parsed?.addressPostalCode ?? null, 20) ?? null,
+      },
+      privateProfileExists: true,
+      privateProfileLocked: false,
+    };
+  }
+
+  private async loadProfileView(
+    memberId: number,
+    includeLockedPrivateProfile: boolean
+  ): Promise<MemberProfileView> {
+    const [publicRow, privateProfileResult] = await Promise.all([
+      this.loadPublicProfileRow(memberId),
+      this.loadPrivateProfile(memberId, includeLockedPrivateProfile),
+    ]);
+
+    return {
+      publicProfile: mapPublicProfile(publicRow),
+      privateProfile: privateProfileResult.privateProfile,
+      privateProfileExists: privateProfileResult.privateProfileExists,
+      privateProfileLocked: privateProfileResult.privateProfileLocked,
+    };
+  }
+
+  private async loadOnboardingRow(memberId: number): Promise<MemberOnboardingDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberOnboardingDbRow>(
+        `SELECT * FROM ${TABLE_ONBOARDING} WHERE member_id = $1 LIMIT 1`,
+        [memberId]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
+  private async loadSecurityRow(memberId: number): Promise<MemberSecurityDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberSecurityDbRow>(
+        `SELECT * FROM ${TABLE_SECURITY} WHERE member_id = $1 LIMIT 1`,
+        [memberId]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
+  private async loadTermsSummary(memberId: number): Promise<MemberTermsSummaryItem[]> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberTermsDbRow>(
+        `
+        SELECT DISTINCT ON (document_type)
+          document_type,
+          document_version,
+          accepted_at
+        FROM ${TABLE_TERMS}
+        WHERE member_id = $1
+        ORDER BY document_type, accepted_at DESC
+        `,
+        [memberId]
+      );
+    });
+    return mapTerms(result.rows);
+  }
+
+  private async loadVerificationRow(memberId: number): Promise<MemberVerificationDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberVerificationDbRow>(
+        `
+        SELECT
+          status,
+          provider,
+          verification_level,
+          provider_customer_id,
+          provider_case_id,
+          requirements,
+          result_summary,
+          submitted_at,
+          decided_at,
+          updated_at
+        FROM ${TABLE_VERIFICATIONS}
+        WHERE member_id = $1
+        ORDER BY updated_at DESC NULLS LAST, id DESC
+        LIMIT 1
+        `,
+        [memberId]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
+  private async loadWalletById(memberId: number, walletId: number): Promise<MemberWalletRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletDbRow>(
+        `
+        SELECT * FROM ${TABLE_WALLETS}
+        WHERE id = $1
+          AND member_id = $2
+        LIMIT 1
+        `,
+        [walletId, memberId]
+      );
+    });
+    return result.rows[0] ? mapWallet(result.rows[0]) : null;
+  }
+
+  private async loadWalletRowByAddress(walletAddress: string): Promise<MemberWalletDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletDbRow>(
+        `
+        SELECT * FROM ${TABLE_WALLETS}
+        WHERE wallet_address = $1
+        LIMIT 1
+        `,
+        [walletAddress]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
+  private async loadWalletLinkChallenge(
+    memberId: number,
+    challengeId: number
+  ): Promise<MemberWalletLinkChallengeDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletLinkChallengeDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_WALLET_LINK_CHALLENGES}
+        WHERE id = $1
+          AND member_id = $2
+        LIMIT 1
+        `,
+        [challengeId, memberId]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
+  private async loadWalletLinkHandoffByToken(token: string): Promise<MemberWalletLinkHandoffDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletLinkHandoffDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_WALLET_LINK_HANDOFFS}
+        WHERE token_hash = $1
+        LIMIT 1
+        `,
+        [sha256Hex(token)]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
+  private async loadWallets(memberId: number): Promise<MemberWalletRecord[]> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletDbRow>(
+        `
+        SELECT * FROM ${TABLE_WALLETS}
+        WHERE member_id = $1
+        ORDER BY is_primary DESC, created_at ASC, id ASC
+        `,
+        [memberId]
+      );
+    });
+    return result.rows.map(mapWallet).filter((wallet) => wallet.status !== 'REMOVED');
+  }
+
+  private async isMergeablePlaceholderMember(memberId: number, walletAddress: string): Promise<boolean> {
+    const member = await this.loadMemberById(memberId);
+    if (!member) return false;
+    if (member.status !== 'ONBOARDING' || member.verificationStatus !== 'NOT_STARTED') {
+      return false;
+    }
+    if (member.primaryWallet !== walletAddress) {
+      return false;
+    }
+
+    const [wallets, onboardingRow, profile, terms, socials, verificationRow] = await Promise.all([
+      this.loadWallets(memberId),
+      this.loadOnboardingRow(memberId),
+      this.loadProfileView(memberId, false),
+      this.loadTermsSummary(memberId),
+      this.loadSocialAccounts(memberId),
+      this.loadVerificationRow(memberId),
+    ]);
+    const onboarding = mapOnboarding(onboardingRow);
+
+    if (
+      wallets.length !== 1
+      || wallets[0]?.walletAddress !== walletAddress
+      || !wallets[0]?.isPrimary
+    ) {
+      return false;
+    }
+
+    const publicProfile = profile.publicProfile;
+    const hasMeaningfulPublicProfile = Boolean(
+      publicProfile.username
+      || publicProfile.displayName
+      || publicProfile.bio
+      || publicProfile.timezone
+      || publicProfile.locale
+      || publicProfile.avatarUrl
+    );
+
+    return (
+      onboarding.draftStatus === 'in_progress'
+      && !profile.privateProfile
+      && !hasMeaningfulPublicProfile
+      && terms.length === 0
+      && socials.length === 0
+      && !verificationRow
+    );
+  }
+
+  private async absorbMergeablePlaceholderWalletMember(
+    targetMemberId: number,
+    walletAddress: string
+  ): Promise<void> {
+    const existingWallet = await this.loadWalletRowByAddress(walletAddress);
+    const existingMemberId = parseNumericId(existingWallet?.member_id);
+    if (!existingWallet || !existingMemberId || existingMemberId === targetMemberId) {
+      return;
+    }
+
+    const mergeable = await this.isMergeablePlaceholderMember(existingMemberId, walletAddress);
+    if (!mergeable) {
+      throw new Error('Wallet is already linked to another account');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query('BEGIN');
+      try {
+        await pool.query(
+          `
+          UPDATE ${TABLE_WALLETS}
+          SET
+            member_id = $1,
+            label = COALESCE(NULLIF(label, 'Primary wallet'), 'Linked wallet'),
+            kind = CASE WHEN kind = 'PRIMARY' THEN 'SMART' ELSE kind END,
+            is_primary = FALSE,
+            auth_alias_enabled = TRUE,
+            updated_at = NOW()
+          WHERE member_id = $2
+            AND wallet_address = $3
+          `,
+          [targetMemberId, existingMemberId, walletAddress]
+        );
+        await pool.query(
+          `DELETE FROM ${TABLE_MEMBERS} WHERE id = $1`,
+          [existingMemberId]
+        );
+        await pool.query('COMMIT');
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        throw error;
+      }
+    });
+  }
+
+  private async loadSocialAccountById(memberId: number, socialId: number): Promise<MemberSocialAccountRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberSocialDbRow>(
+        `
+        SELECT * FROM ${TABLE_SOCIALS}
+        WHERE id = $1
+          AND member_id = $2
+        LIMIT 1
+        `,
+        [socialId, memberId]
+      );
+    });
+    return result.rows[0] ? mapSocialAccount(result.rows[0]) : null;
+  }
+
+  private async loadSocialAccounts(memberId: number): Promise<MemberSocialAccountRecord[]> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberSocialDbRow>(
+        `
+        SELECT * FROM ${TABLE_SOCIALS}
+        WHERE member_id = $1
+        ORDER BY created_at ASC, id ASC
+        `,
+        [memberId]
+      );
+    });
+    return result.rows.map(mapSocialAccount).filter((account) => account.status !== 'REMOVED');
+  }
+
+  private async updateMemberResidency(
+    memberId: number,
+    patch: { residencyCountry?: string | null; settlementCurrency?: string | null }
+  ): Promise<void> {
+    const updates: string[] = [];
+    const values: Array<string | number | null> = [memberId];
+
+    if (patch.residencyCountry !== undefined) {
+      values.push(patch.residencyCountry);
+      updates.push(`residency_country = $${values.length}`);
+    }
+
+    if (patch.settlementCurrency !== undefined) {
+      values.push(patch.settlementCurrency);
+      updates.push(`settlement_currency = $${values.length}`);
+    }
+
+    if (updates.length === 0) {
+      return;
+    }
+
+    const pool = this.mustPool();
+    updates.push('updated_at = NOW()');
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_MEMBERS}
+        SET ${updates.join(', ')}
+        WHERE id = $1
+        `,
+        values
+      );
+    });
+  }
+
+  private async syncPrimaryWallet(member: MemberRecord): Promise<void> {
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLETS}
+        SET
+          is_primary = FALSE,
+          updated_at = NOW()
+        WHERE member_id = $1
+        `,
+        [member.id]
+      );
+
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_WALLETS} (
+          member_id,
+          wallet_address,
+          label,
+          description,
+          kind,
+          status,
+          is_primary,
+          auth_alias_enabled,
+          verified_at
+        ) VALUES ($1,$2,$3,NULL,'PRIMARY','ACTIVE',TRUE,TRUE,NOW())
+        ON CONFLICT (wallet_address)
+        DO UPDATE SET
+          member_id = EXCLUDED.member_id,
+          label = EXCLUDED.label,
+          description = COALESCE(${TABLE_WALLETS}.description, EXCLUDED.description),
+          kind = 'PRIMARY',
+          status = 'ACTIVE',
+          is_primary = TRUE,
+          auth_alias_enabled = TRUE,
+          verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
+          updated_at = NOW()
+        `,
+        [member.id, member.primaryWallet, 'Primary wallet']
+      );
+    });
+  }
+
+  private async linkAuthenticatedWallet(
+    memberId: number,
+    walletAddress: string,
+    metadata?: { label?: string | null; description?: string | null; kind?: MemberWalletKind | null }
+  ): Promise<void> {
+    const normalizedWallet = normalizeWalletAddress(walletAddress);
+    const existingWallet = await this.loadWalletRowByAddress(normalizedWallet);
+    if (existingWallet && parseNumericId(existingWallet.member_id) !== memberId) {
+      throw new Error('Wallet is already linked to another account');
+    }
+
+    const label =
+      existingWallet?.label ??
+      normalizeOptionalString(metadata?.label ?? null, 120) ??
+      'Authenticated wallet';
+    const description =
+      existingWallet?.description ??
+      normalizeOptionalString(metadata?.description ?? null, 280) ??
+      null;
+    const existingKind = existingWallet?.kind;
+    const kind = existingKind && existingKind !== 'PRIMARY'
+      ? existingKind
+      : normalizeWalletKind(metadata?.kind ?? 'SMART');
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_WALLETS} (
+          member_id,
+          wallet_address,
+          label,
+          description,
+          kind,
+          status,
+          is_primary,
+          auth_alias_enabled,
+          verified_at
+        ) VALUES ($1,$2,$3,$4,$5,'ACTIVE',FALSE,TRUE,NOW())
+        ON CONFLICT (wallet_address)
+        DO UPDATE SET
+          member_id = EXCLUDED.member_id,
+          label = COALESCE(${TABLE_WALLETS}.label, EXCLUDED.label),
+          description = COALESCE(${TABLE_WALLETS}.description, EXCLUDED.description),
+          kind = CASE
+            WHEN ${TABLE_WALLETS}.is_primary = TRUE THEN 'PRIMARY'
+            WHEN ${TABLE_WALLETS}.kind = 'HARDWARE' THEN 'HARDWARE'
+            WHEN ${TABLE_WALLETS}.kind = 'SMART' THEN 'SMART'
+            WHEN ${TABLE_WALLETS}.kind = 'EMBEDDED' THEN 'EMBEDDED'
+            ELSE EXCLUDED.kind
+          END,
+          status = 'ACTIVE',
+          auth_alias_enabled = TRUE,
+          verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
+          updated_at = NOW()
+        `,
+        [memberId, normalizedWallet, label, description, kind]
+      );
+    });
+  }
+
+  private async backfillPlaidOwnership(member: MemberRecord): Promise<void> {
+    if (!plaidTokenStore.isConfigured()) {
+      return;
+    }
+
+    try {
+      const wallets = await this.loadWallets(member.id);
+      const walletScope = [
+        member.primaryWallet,
+        ...wallets.map((wallet) => wallet.walletAddress),
+      ];
+      await plaidTokenStore.attachMemberId(member.id, walletScope);
+    } catch (error) {
+      console.warn('Failed to backfill Plaid member ownership:', {
+        memberId: member.id,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  private async refreshDerivedState(memberId: number): Promise<void> {
+    const pool = this.mustPool();
+    const memberResult = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE id = $1 LIMIT 1`,
+        [memberId]
+      );
+    });
+    const memberRow = memberResult.rows[0];
+    if (!memberRow) return;
+
+    const member = mapMember(memberRow);
+    const onboarding = mapOnboarding(await this.loadOnboardingRow(memberId));
+    const privateProfileResult = await this.loadPrivateProfile(memberId, false);
+    const terms = await this.loadTermsSummary(memberId);
+    const nextState = deriveMemberState({
+      member,
+      onboarding,
+      privateProfile: privateProfileResult.privateProfile,
+      terms,
+    });
+
+    if (nextState.status === member.status && nextState.verificationStatus === member.verificationStatus) {
+      return;
+    }
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_MEMBERS}
+        SET
+          status = $2,
+          verification_status = $3,
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [memberId, nextState.status, nextState.verificationStatus]
+      );
+    });
+  }
+
+  private async ensureSchema(): Promise<void> {
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_MEMBERS} (
+          id BIGSERIAL PRIMARY KEY,
+          auth_subject TEXT NOT NULL UNIQUE,
+          primary_wallet TEXT NOT NULL UNIQUE,
+          reown_profile_uuid TEXT,
+          reown_email_hash TEXT,
+          reown_phone_hash TEXT,
+          xmtp_address TEXT,
+          status TEXT NOT NULL DEFAULT 'ONBOARDING',
+          verification_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+          membership_plan TEXT,
+          membership_status TEXT NOT NULL DEFAULT 'NONE',
+          residency_country TEXT,
+          settlement_currency TEXT,
+          membership_registry_member_id BIGINT,
+          membership_chain_id INTEGER,
+          membership_tx_hash TEXT,
+          membership_synced_at TIMESTAMPTZ,
+          membership_metadata_hash TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_authenticated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      // Account-phone hash for identity matching (older tables predate this column).
+      await pool.query(`ALTER TABLE ${TABLE_MEMBERS} ADD COLUMN IF NOT EXISTS reown_phone_hash TEXT;`);
+      // XMTP messaging address (the embedded EOA used for XMTP), so peers can resolve it from a wallet.
+      await pool.query(`ALTER TABLE ${TABLE_MEMBERS} ADD COLUMN IF NOT EXISTS xmtp_address TEXT;`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS members_xmtp_address_idx ON ${TABLE_MEMBERS} (xmtp_address);`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_PROFILE_PUBLIC} (
+          member_id BIGINT PRIMARY KEY REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          username TEXT UNIQUE,
+          display_name TEXT,
+          bio TEXT,
+          timezone TEXT,
+          locale TEXT,
+          avatar_url TEXT,
+          notifications_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      // Handles are case-insensitively unique, and that has to hold in the database rather than in
+      // whichever code path happens to write one. TEXT UNIQUE alone lets @Kai and @kai both exist,
+      // which in a payments app is a phishing surface: somebody types what they were told.
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE_PROFILE_PUBLIC}_username_lower_idx
+           ON ${TABLE_PROFILE_PUBLIC} (lower(username)) WHERE username IS NOT NULL;`
+      );
+
+      // Every handle a member has ever held.
+      //
+      // Two jobs, and the second is the one that matters. It counts a member's changes, so the
+      // free allowance can be enforced. And it keeps released handles OUT OF CIRCULATION: if @kai
+      // could be re-claimed after being given up, money sent to @kai by somebody working from an
+      // old note reaches a different person entirely. In a payments app a handle is closer to an
+      // account number than to a display name, and account numbers are not recycled.
+      //
+      // `assigned` marks the one generated at signup, which is not a change the member made and so
+      // does not count against them.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_HANDLE_HISTORY} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          handle TEXT NOT NULL,
+          assigned BOOLEAN NOT NULL DEFAULT FALSE,
+          claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          released_at TIMESTAMPTZ
+        )
+      `);
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE_HANDLE_HISTORY}_handle_lower_idx
+           ON ${TABLE_HANDLE_HISTORY} (lower(handle));`
+      );
+      await pool.query(
+        `CREATE INDEX IF NOT EXISTS ${TABLE_HANDLE_HISTORY}_member_idx
+           ON ${TABLE_HANDLE_HISTORY} (member_id);`
+      );
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_PROFILE_PRIVATE} (
+          member_id BIGINT PRIMARY KEY REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          payload_ciphertext BYTEA NOT NULL,
+          payload_iv BYTEA NOT NULL,
+          payload_auth_tag BYTEA NOT NULL,
+          wrapped_data_key_ciphertext BYTEA NOT NULL,
+          wrapped_data_key_iv BYTEA NOT NULL,
+          wrapped_data_key_auth_tag BYTEA NOT NULL,
+          key_version TEXT NOT NULL,
+          email_hash TEXT,
+          phone_hash TEXT,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_ONBOARDING} (
+          member_id BIGINT PRIMARY KEY REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          current_step TEXT NOT NULL DEFAULT 'identity',
+          access_track TEXT NOT NULL DEFAULT 'basic',
+          account_method TEXT NOT NULL DEFAULT 'wallet',
+          identity_mode_selected TEXT NOT NULL DEFAULT 'pseudonymous',
+          referral_source TEXT,
+          invite_code TEXT,
+          income_source TEXT,
+          reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+          goals_note TEXT,
+          recovery_method TEXT,
+          card_waitlist BOOLEAN NOT NULL DEFAULT FALSE,
+          local_pools BOOLEAN NOT NULL DEFAULT FALSE,
+          draft_status TEXT NOT NULL DEFAULT 'in_progress',
+          submitted_at TIMESTAMPTZ,
+          completed_at TIMESTAMPTZ,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_TERMS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          document_type TEXT NOT NULL,
+          document_version TEXT NOT NULL,
+          accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          wallet_address TEXT NOT NULL,
+          ip_hash TEXT,
+          user_agent TEXT,
+          UNIQUE(member_id, document_type, document_version)
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_TERMS}_member_id
+        ON ${TABLE_TERMS} (member_id)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_SECURITY} (
+          member_id BIGINT PRIMARY KEY REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          signature_lock BOOLEAN NOT NULL DEFAULT TRUE,
+          session_review BOOLEAN NOT NULL DEFAULT TRUE,
+          biometric_access BOOLEAN NOT NULL DEFAULT TRUE,
+          social_discovery BOOLEAN NOT NULL DEFAULT FALSE,
+          transfer_alerts BOOLEAN NOT NULL DEFAULT TRUE,
+          auto_pledge BOOLEAN NOT NULL DEFAULT TRUE,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      // Background pledging of Savings and Earn (older tables predate this column). On by default.
+      await pool.query(SECURITY_AUTO_PLEDGE_COLUMN);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_VERIFICATIONS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL,
+          verification_level TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+          provider_customer_id TEXT,
+          provider_case_id TEXT,
+          requirements JSONB,
+          result_summary JSONB,
+          submitted_at TIMESTAMPTZ,
+          decided_at TIMESTAMPTZ,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(member_id, provider, verification_level)
+        )
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_WALLETS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          wallet_address TEXT NOT NULL UNIQUE,
+          label TEXT,
+          description TEXT,
+          kind TEXT NOT NULL DEFAULT 'PRIMARY',
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+          auth_alias_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          verified_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_WALLETS}_primary
+        ON ${TABLE_WALLETS} (member_id, is_primary)
+        WHERE is_primary = TRUE
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLETS}_member_id
+        ON ${TABLE_WALLETS} (member_id)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_WALLETS}
+        ADD COLUMN IF NOT EXISTS auth_alias_enabled BOOLEAN NOT NULL DEFAULT FALSE
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_WALLETS}
+        ADD COLUMN IF NOT EXISTS description TEXT
+      `);
+
+      await pool.query(`
+        UPDATE ${TABLE_WALLETS}
+        SET auth_alias_enabled = TRUE
+        WHERE is_primary = TRUE
+           OR label = 'Authenticated wallet'
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_WALLET_LINK_CHALLENGES} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          wallet_address TEXT NOT NULL,
+          label TEXT,
+          description TEXT,
+          kind TEXT NOT NULL DEFAULT 'SMART',
+          nonce TEXT NOT NULL,
+          message TEXT NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL,
+          consumed_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_CHALLENGES}_member_wallet
+        ON ${TABLE_WALLET_LINK_CHALLENGES} (member_id, wallet_address)
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_CHALLENGES}_expires_at
+        ON ${TABLE_WALLET_LINK_CHALLENGES} (expires_at)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_WALLET_LINK_CHALLENGES}
+        ADD COLUMN IF NOT EXISTS description TEXT
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_WALLET_LINK_HANDOFFS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          label TEXT,
+          description TEXT,
+          expires_at TIMESTAMPTZ NOT NULL,
+          consumed_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_HANDOFFS}_member_id
+        ON ${TABLE_WALLET_LINK_HANDOFFS} (member_id)
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_HANDOFFS}_expires_at
+        ON ${TABLE_WALLET_LINK_HANDOFFS} (expires_at)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_SOCIALS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          platform TEXT NOT NULL,
+          handle TEXT NOT NULL,
+          visibility TEXT NOT NULL DEFAULT 'PUBLIC',
+          status TEXT NOT NULL DEFAULT 'CONNECTED',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(member_id, platform, handle)
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_SOCIALS}_member_id
+        ON ${TABLE_SOCIALS} (member_id)
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_MEMBERS}_wallet
+        ON ${TABLE_MEMBERS} (primary_wallet)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_MEMBERS}
+        ADD COLUMN IF NOT EXISTS reown_email_hash TEXT
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_MEMBERS}_profile_uuid
+        ON ${TABLE_MEMBERS} (reown_profile_uuid)
+      `);
+
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_MEMBERS}_reown_email_hash
+        ON ${TABLE_MEMBERS} (reown_email_hash)
+        WHERE reown_email_hash IS NOT NULL
+      `);
+    });
+  }
+}
+
+/**
+ * The name a shop sees for a member who paid it: the display name the member set, or their
+ * @username, from their PUBLIC profile only. Never the legal name, which is private and encrypted:
+ * a shop is shown what the member chose to show. Keyed by the lowercased wallet (primary or linked);
+ * a wallet with neither isn't in the map, and the caller says "A Clear member".
+ */
+export async function memberPublicNames(
+  q: { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }> },
+  wallets: string[],
+): Promise<Map<string, string>> {
+  const wanted = [...new Set(wallets.filter(Boolean).map(normalizeWalletAddress))];
+  if (!wanted.length) return new Map();
+  const { rows } = (await q.query(
+    `SELECT x.addr, pp.display_name, pp.username
+       FROM unnest($1::text[]) AS x(addr)
+       JOIN ${TABLE_MEMBERS} m
+         ON m.primary_wallet = x.addr
+         OR m.id = (SELECT w.member_id FROM ${TABLE_WALLETS} w WHERE w.wallet_address = x.addr AND w.status = 'ACTIVE' LIMIT 1)
+       JOIN ${TABLE_PROFILE_PUBLIC} pp ON pp.member_id = m.id`,
+    [wanted],
+  )) as { rows: Array<{ addr: string; display_name: string | null; username: string | null }> };
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const name = r.display_name?.trim() || (r.username?.trim() ? `@${r.username.trim()}` : '');
+    if (name && !out.has(r.addr)) out.set(r.addr, name);
+  }
+  return out;
+}
+
+export const memberStore = new MemberStore();

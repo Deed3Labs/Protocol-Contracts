@@ -1,0 +1,27 @@
+import SavingsPage from './SavingsPage';
+import PendingFigures from '@/components/clear/PendingFigures';
+import { useSavingsData } from '@/hooks/useSavingsData';
+import { useElpa } from '@/hooks/useElpa';
+import { useHousing } from '@/hooks/useHousing';
+
+/**
+ * Live Savings — the balance and the equity credits behind it.
+ *
+ * The reading moved to `useSavingsData` when Assurance turned out to need the same figures: which
+ * protections are on is decided by the member's credits, and a pane fetching its own copy is a
+ * second place for them to disagree. The projection, the milestones and the vesting schedule are
+ * still placeholder, and each falls back rather than blanking — a member with a real balance and an
+ * empty page has been told something false about their savings.
+ */
+export default function SavingsRoute() {
+  const { pending, ...data } = useSavingsData();
+  // The ELPA, from Clear's books (a typed stub until the books API exists), never from a contract.
+  const elpa = useElpa();
+  // The Housing Allowance and credits, from the chain; named from the books when they know the home.
+  const { housing, refresh } = useHousing(elpa.status === 'none' ? undefined : elpa.home);
+  return (
+    <PendingFigures pending={pending}>
+      <SavingsPage data={data} elpa={elpa} housing={housing} onHousingChanged={refresh} />
+    </PendingFigures>
+  );
+}

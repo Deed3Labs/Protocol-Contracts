@@ -1,0 +1,616 @@
+import express from 'express';
+import { buildInfo } from './services/command/deploys.js';
+import { redactError } from './utils/redact.js';
+import { createServer } from 'http';
+import cors from 'cors';
+import compression from 'compression';
+import dotenv from 'dotenv';
+import { applyBridgeEnv } from './config/bridgeEnv.js';
+import { getRedisClient, closeRedisConnection } from './config/redis.js';
+import { closePostgresPool } from './config/postgres.js';
+import { merchantDb, runMerchantMigrations } from './config/merchantDb.js';
+import { rateLimiter } from './middleware/rateLimiter.js';
+import { requireAuth } from './middleware/auth.js';
+import { liveCommandCatalogRouter, liveCommandJoinRouter, liveCommandRouter, liveCommandSharedRouter, liveCommandWebhookRouter } from './services/command/live.js';
+import { seedCommand } from './services/command/seed.js';
+import { structureCommand } from './services/command/structure.js';
+import { requireMemberCapability } from './middleware/memberCapabilities.js';
+import pricesRouter from './routes/prices.js';
+import balancesRouter from './routes/balances.js';
+import tokenBalancesRouter from './routes/tokenBalances.js';
+import nftsRouter from './routes/nfts.js';
+import transactionsRouter from './routes/transactions.js';
+import stripeRouter from './routes/stripe.js';
+import stripeWebhooksRouter from './routes/stripeWebhooks.js';
+import plaidRouter from './routes/plaid.js';
+import bridgeRouter from './routes/bridge.js';
+import cardsRouter from './routes/cards.js';
+import sendRouter from './routes/send.js';
+import savingsRouter from './routes/savings.js';
+import membersRouter from './routes/members.js';
+import memberWalletLinksPublicRouter from './routes/memberWalletLinksPublic.js';
+import avatarRouter from './routes/avatar.js';
+import portfolioRouter from './routes/portfolio.js';
+import payRouter from './routes/pay.js';
+import housingRouter from './routes/housing.js';
+import creditRouter from './routes/credit.js';
+import assuranceRouter from './routes/assurance.js';
+import disputesRouter from './routes/disputes.js';
+import chargesRouter from './routes/charges.js';
+import merchantRouter from './routes/merchant.js';
+import { publicShopsRouter } from './routes/publicShops.js';
+import { startChargeReconciler } from './services/chargeReconciler.js';
+import withdrawRouter from './routes/withdraw.js';
+import autopayRouter from './routes/autopay.js';
+import contactsRouter from './routes/contacts.js';
+import notificationsRouter from './routes/notifications.js';
+import requestsRouter from './routes/requests.js';
+import onramperRouter from './routes/onramper.js';
+import onramperWebhookRouter from './routes/onramperWebhook.js';
+import coinbaseRampWebhookRouter from './routes/coinbaseRampWebhook.js';
+import bridgeWebhookRouter from './routes/bridgeWebhook.js';
+import rampRouter from './routes/ramp.js';
+import lithicRouter from './routes/lithic.js';
+import sweepsRouter from './routes/sweeps.js';
+import lithicCardsRouter from './routes/lithicCards.js';
+import lithicAuthStreamRouter, { onAuthorizationApproved } from './routes/lithicAuthStream.js';
+import { authorizeCardOnChain } from './services/chain/cardSettlementService.js';
+import lithicWebhookRouter from './routes/lithicWebhook.js';
+import { startPriceUpdater } from './jobs/priceUpdater.js';
+import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
+import { startAutopayRunner } from './jobs/autopayRunner.js';
+import { startDueBillNotifier } from './jobs/dueBillNotifier.js';
+import { startGreetingNotifier } from './jobs/greetingNotifier.js';
+import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
+import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
+import { startSweepRunner } from './jobs/sweepRunner.js';
+import { startMemoryMonitor } from './jobs/memoryMonitor.js';
+import { startRelayerGasMonitor } from './jobs/relayerGas.js';
+import { logJobWallets } from './jobs/jobWallets.js';
+import { startSessionCleanup } from './jobs/sessionCleanup.js';
+import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
+import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
+import { startClearTenderSync } from './jobs/clearTenderSync.js';
+import { startTerminalSweep } from './jobs/terminalSweep.js';
+import { devicePointRouter } from './routes/devicePoint.js';
+import { pointPageRouter, receiptPageRouter } from './routes/phonePages.js';
+import { checkoutRouter, linkPageRouter } from './routes/payLinks.js';
+import { v1Cors, v1Errors, v1Router } from './routes/v1.js';
+import { startOutboxProcessor } from './jobs/outboxProcessor.js';
+import { startCommandIndexer } from './jobs/commandIndexer.js';
+import { startCommandGithub } from './jobs/commandGithub.js';
+import { startCommandFeeds } from './jobs/commandFeeds.js';
+import { startCommandGeocoder } from './jobs/commandGeocoder.js';
+import { startCommandInvites } from './jobs/commandInvites.js';
+import { startWebhookDeliveries } from './jobs/webhookDeliveries.js';
+import { startRewardsJobs } from './jobs/rewardsJobs.js';
+import { partnersRouter, rewardsRouter, shopRouter } from './routes/rewards.js';
+import { startCardReconciliation } from './jobs/cardReconciliation.js';
+import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
+import { startMonthlyStatements } from './jobs/monthlyStatements.js';
+import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
+import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
+import { startCycleKeeper } from './jobs/cycleKeeper.js';
+import { startCreditOnboarding } from './jobs/creditOnboarding.js';
+import { startCreditsMint } from './jobs/creditsMint.js';
+import { startEnforcementKeeper } from './jobs/enforcementKeeper.js';
+import { startPledgeKeepers } from './jobs/pledgeKeeper.js';
+import { startQueueFillKeeper } from './jobs/queueFillKeeper.js';
+import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
+import { startOffersGranter } from './jobs/offersGranter.js';
+import { startReconciler } from './jobs/reconciler.js';
+import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
+import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
+import { startPayoutFundingKeeper } from './jobs/payoutFundingKeeper.js';
+import { startAssuranceFeePayer } from './jobs/assuranceFeePayer.js';
+import { startPayoutTopUp } from './jobs/payoutTopUp.js';
+import { startFundingDesk } from './jobs/fundingDesk.js';
+import { websocketService } from './services/websocketService.js';
+import { eventListenerService } from './services/eventListenerService.js';
+import stepUpRouter from './routes/stepUp.js';
+import sessionRouter from './routes/session.js';
+
+dotenv.config();
+// Live Bridge, or its sandbox (BRIDGE_ENV=sandbox), before anything reads Bridge's settings.
+applyBridgeEnv();
+
+const app = express();
+const httpServer = createServer(app);
+const PORT: number = parseInt(process.env.PORT || '3001', 10);
+
+type RawBodyRequest = express.Request & { rawBody?: Buffer };
+
+// Trust first proxy hop (Railway/Render/Nginx) so req.ip is accurate for rate limiting.
+app.set('trust proxy', 1);
+
+// Middleware
+app.use(compression());
+
+// CORS configuration - handle Vercel preview URLs and production
+// IMPORTANT: CORS must be set up BEFORE routes
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    const allowedOrigins = process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : [];
+    
+    const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
+    const isVercelPreview = allowVercelPreviews && origin.endsWith('.vercel.app');
+    
+    // If no CORS_ORIGIN is set, default to compatibility mode (allow all origins).
+    // Enable STRICT_CORS=true to force explicit CORS_ORIGIN configuration in production.
+    if (allowedOrigins.length === 0) {
+      const strictCors = process.env.STRICT_CORS === 'true';
+      if (!strictCors) {
+        console.warn(`[CORS] CORS_ORIGIN not set. Allowing origin: ${origin}`);
+        return callback(null, true);
+      }
+      console.warn(`[CORS] Blocked origin because STRICT_CORS=true and CORS_ORIGIN is not configured: ${origin}`);
+      // Fail closed without throwing a 500 through Express error middleware.
+      return callback(null, false);
+    }
+    
+    // If '*' is specified, allow all origins
+    if (allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    
+    // Check if origin matches any allowed origin
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed.includes('*')) {
+        // Handle wildcard patterns like https://*.vercel.app
+        const pattern = allowed.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
+      }
+      return origin === allowed;
+    });
+    
+    // Allow if explicitly allowed OR if preview URLs are explicitly enabled.
+    if (isAllowed || isVercelPreview) {
+      if (isVercelPreview) {
+        console.log(`[CORS] Allowing Vercel preview URL: ${origin}`);
+      }
+      callback(null, true);
+    } else {
+      // Log the blocked origin for debugging
+      console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+      // Fail closed without throwing a 500 through Express error middleware.
+      callback(null, false);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  // X-Clear-Device is how a counter tablet says which shop it is. It is sent on every merchant
+  // request, including the ones reached before anyone signs in, so leaving it out of the preflight
+  // allowlist blocks the whole surface — enrolment first, which is the one request that cannot be
+  // worked around because it is what creates the device.
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'X-Wallet-Address',
+    'X-Reown-Project-Id',
+    'X-Appkit-Project-Id',
+    'X-Clear-Device',
+    // A fresh server-verified Face ID (routes/stepUp), on the requests that need one.
+    'X-Step-Up',
+    // Pay with Clear's modal: its payment-scoped sign-in (routes/payLinks.ts).
+    'X-Pay-Session',
+    // The Command Center's session, on every request it makes once signed in (routes/command.ts).
+    'X-Command-Session',
+  ],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+// Pay with Clear's public API answers browsers on any website with its own CORS (routes/v1.ts): a
+// shop's page reads prices and opens the modal with its publishable key. Everything else keeps this one.
+app.use('/v1', v1Cors);
+const appCors = cors(corsOptions);
+app.use((req, res, next) => (req.path.startsWith('/v1/') || req.path === '/v1' ? next() : appCors(req, res, next)));
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as RawBodyRequest).rawBody = Buffer.from(buf);
+    },
+  })
+);
+app.use(express.urlencoded({ extended: true }));
+
+// Health check (before rate limiter so it's always accessible)
+app.get('/health', async (req: express.Request, res: express.Response) => {
+  try {
+    let isRedisConnected = false;
+    try {
+      const redisClient = await getRedisClient();
+      isRedisConnected = redisClient.isOpen;
+    } catch (redisError) {
+      // Redis connection failed, but server is still running
+      console.error('Redis health check failed:', redisError);
+    }
+
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      redis: isRedisConnected ? 'connected' : 'disconnected',
+      // what's running, as Railway built it: Command's Build page reads both environments' (deploys.ts)
+      build: buildInfo(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// API Routes will be set up in startServer after rate limiter is initialized
+// 404 and error handlers will be set up after routes
+
+// Start server
+async function startServer() {
+  try {
+    // Try to initialize Redis connection (non-blocking)
+    getRedisClient()
+      .then(() => {
+        console.log('✅ Redis connection established');
+      })
+      .catch((error) => {
+        console.error('⚠️ Redis connection failed (server will continue without cache):', error);
+      });
+
+    // Set up rate limiter middleware (will work even if Redis fails)
+    const windowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
+    const maxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10);
+    const rateLimiterMiddleware = await rateLimiter(windowMs, maxRequests);
+    
+    // Add rate limiter to all API routes
+    // Auth Stream Access is mounted before the rate limiter on purpose: throttling this endpoint
+    // would decline a member's card at a till, and it is already authenticated by HMAC signature.
+    app.use('/api/webhooks/lithic/auth-stream', lithicAuthStreamRouter);
+    // An approval with a credit part is recorded on chain once it has been answered (audit M-2).
+    onAuthorizationApproved(authorizeCardOnChain);
+
+    app.use('/api', rateLimiterMiddleware);
+
+    // Public API routes (after rate limiter)
+    app.use('/api/prices', pricesRouter);
+    app.use('/api/balances', balancesRouter);
+    app.use('/api/token-balances', tokenBalancesRouter); // Uses same service as balances (consolidated)
+    app.use('/api/nfts', nftsRouter);
+    app.use('/api/transactions', transactionsRouter);
+    app.use('/api/stripe/webhooks', stripeWebhooksRouter);
+    app.use('/api/member-links', memberWalletLinksPublicRouter);
+    app.use('/api/avatars', avatarRouter);
+    app.use('/api/webhooks/onramper', onramperWebhookRouter); // public; verified via signature
+    app.use('/api/webhooks/coinbase-ramp', coinbaseRampWebhookRouter); // public; verified via X-Hook0-Signature
+    app.use('/api/webhooks/bridge', bridgeWebhookRouter); // public; verified via X-Webhook-Signature (RSA)
+    app.use('/api/webhooks/lithic', lithicWebhookRouter); // public; verified via standard-webhooks HMAC
+    app.use('/api/stripe', requireAuth, stripeRouter);
+    app.use('/api/members', requireAuth, membersRouter);
+    app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
+    // NOTE: deliberately NOT behind requireMemberCapability('canUseBridge'). That capability is
+    // `verified`, and since Bridge now owns verification, gating these routes on it is circular: you
+    // could never reach /kyc-link to become verified because being unverified blocked the call.
+    // requireAuth still scopes every route to the signed-in member, and Bridge enforces its own KYC
+    // on anything that actually moves money (a virtual account can't be opened until it approves).
+    app.use('/api/bridge', requireAuth, bridgeRouter);
+    app.use('/api/cards', requireAuth, cardsRouter);
+    app.use('/api/send', sendRouter);
+    app.use('/api/savings', requireAuth, savingsRouter);
+    app.use('/api/portfolio', requireAuth, portfolioRouter);
+    app.use('/api/pay', requireAuth, payRouter);
+    app.use('/api/housing', requireAuth, housingRouter);
+    app.use('/api/credit', requireAuth, creditRouter);
+    // A claim is money and a member's own account of a bad day; both halves need the member.
+    app.use('/api/assurance', requireAuth, assuranceRouter);
+    app.use('/api/disputes', requireAuth, disputesRouter);
+    app.use('/api/step-up', requireAuth, stepUpRouter);
+    app.use('/api/session', requireAuth, sessionRouter);
+    // The Command Center: its own sign-in check (Privy, no wallet needed), sessions and access
+    // levels, enforced per endpoint inside. See services/command/live.ts.
+    // a document shared by view-only link opens without signing in: the link is the key
+    app.use('/api/command/shared', liveCommandSharedRouter());
+    // the sandbox providers' webhooks (Plaid's) carry a signature, not a session
+    app.use('/api/command/webhooks', liveCommandWebhookRouter());
+    // the site's join form: anyone may post, a few times a minute an address
+    app.use('/api/command/join', liveCommandJoinRouter());
+    // the shop's catalog for the store (Phase 11): public, drafts with the shared token
+    app.use('/api/command/catalog', liveCommandCatalogRouter());
+    app.use('/api/command', liveCommandRouter());
+    // Deliberately not `requireAuth` at the mount: `POST /api/charges` is a merchant device
+    // authenticating by signature, with no member session to check. The member-facing routes
+    // inside attach `requireAuth` themselves — see the note in routes/charges.ts for why that
+    // must not be left to the mount.
+    app.use('/api/charges', chargesRouter);
+
+    // The merchant surface. Its own auth (bearer tokens against merchant.staff), deliberately
+    // sharing nothing with the member session — different product, different origin, different
+    // threat model. Individual routes attach requireMerchant/requireOwner; the mount does not,
+    // because POST /session is how a shift starts and has no session yet.
+    app.use('/api/merchant', merchantRouter);
+    // Clear Terminal: a Point's own API (its device key), and the public phone pages (no sign-in,
+    // limited by address). See routes/devicePoint.ts and routes/phonePages.ts.
+    app.use('/api/device/point', devicePointRouter());
+    app.use('/api/p', pointPageRouter());
+    app.use('/api/r', receiptPageRouter());
+    // Pay with Clear (docs/pay-reference): a payment link's page, and the payment-scoped session it
+    // pays through. No sign-in, limited by address. See routes/payLinks.ts.
+    app.use('/api/l', linkPageRouter());
+    app.use('/api/checkout', checkoutRouter());
+    // Pay with Clear's public API: its own keys, versions and errors (routes/v1.ts).
+    app.use('/v1', v1Router());
+    app.use('/v1', v1Errors);
+    // Rewards (docs/rewards-reference): a shop's app at /api/s/:slug, the hub's at /api/rewards, Add a
+    // shop's directory. Each takes rewards' own tokens, never a member route's.
+    app.use('/api/s', shopRouter());
+    app.use('/api/rewards', rewardsRouter());
+    app.use('/api/partners', partnersRouter());
+    // For useclear.org's server: shop approval (behind its key) and the shop-token public key.
+    app.use('/api/public', publicShopsRouter());
+    app.use('/api/withdraw', requireAuth, withdrawRouter);
+    app.use('/api/autopay', requireAuth, autopayRouter);
+    app.use('/api/contacts', requireAuth, contactsRouter);
+    app.use('/api/notifications', requireAuth, notificationsRouter);
+    app.use('/api/requests', requireAuth, requestsRouter);
+    app.use('/api/onramper', requireAuth, onramperRouter);
+    app.use('/api/ramp', requireAuth, rampRouter);
+    app.use('/api/lithic', requireAuth, lithicRouter);
+    app.use('/api/lithic/cards', requireAuth, lithicCardsRouter);
+    app.use('/api/sweeps', requireAuth, sweepsRouter);
+
+    console.log('✅ API routes registered:');
+    console.log('  - /api/prices');
+    console.log('  - /api/balances (native token balances)');
+    console.log('  - /api/token-balances (ERC20 token balances - uses same service)');
+    console.log('  - /api/nfts');
+    console.log('  - /api/transactions');
+    console.log('  - /api/stripe/webhooks');
+    console.log('  - /api/member-links');
+    console.log('  - /api/stripe');
+    console.log('  - /api/members');
+    console.log('  - /api/plaid');
+    console.log('  - /api/bridge');
+    console.log('  - /api/send');
+    console.log('  - /api/savings');
+
+    // 404 handler (must be after all routes)
+    app.use((req: express.Request, res: express.Response) => {
+      res.status(404).json({
+        error: 'Not found',
+        message: `Route ${req.path} not found`,
+      });
+    });
+
+    // Error handler (must be after all routes and 404 handler)
+    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      /*
+       * Redacted, because this handler sees requests it knows nothing about.
+       *
+       * Logging the Error whole is the natural thing to write and the reason it is worth changing:
+       * a provider SDK hangs the failed request off the error, so `console.error('...', err)` on
+       * the one route that carries an SSN would have written it to the log wholesale. The dev-only
+       * message goes through the same scrub — a laptop's console is still a place data ends up.
+       */
+      console.error('Unhandled error:', redactError(err));
+      res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? redactError(err) : 'An error occurred',
+      });
+    });
+
+    // Initialize WebSocket server
+    websocketService.initialize(httpServer);
+
+    // Initialize blockchain event listeners
+    eventListenerService.initialize().catch((error) => {
+      console.error('⚠️ Event listeners failed to start:', error);
+    });
+
+    // Start background jobs (non-blocking)
+    startPriceUpdater().catch((error) => {
+      console.error('⚠️ Background jobs failed to start:', error);
+    });
+    startPortfolioSnapshotter().catch((error) => {
+      console.error('⚠️ Portfolio snapshotter failed to start:', error);
+    });
+    // Charges left mid-flight by a crash or a dropped RPC connection. Self-healing rather than
+    // something an operator has to remember, because the failure it repairs is invisible until a
+    // member complains that Approve did nothing.
+    startChargeReconciler();
+    startAutopayRunner().catch((error) => {
+      console.error('⚠️ Autopay runner failed to start:', error);
+    });
+    startDueBillNotifier().catch((error) => {
+      console.error('⚠️ Due-bill notifier failed to start:', error);
+    });
+    startGreetingNotifier().catch((error) => {
+      console.error('⚠️ Greeting notifier failed to start:', error);
+    });
+    startSendExpiryNotifier().catch((error) => {
+      console.error('⚠️ Send-expiry notifier failed to start:', error);
+    });
+    startPulledFundsReleaser().catch((error) => {
+      console.error('⚠️ Pulled-funds releaser failed to start:', error);
+    });
+
+    startSweepRunner().catch((error) => {
+      console.error('Failed to start sweep runner:', error);
+    });
+
+    // Cheap, and the only thing that will tell us the SHAPE of memory use rather than its peak.
+    startMemoryMonitor();
+    // A signer with no gas fails silently — the pledge does not happen and every figure downstream
+    // is quietly stale. This is the only thing that would have said so.
+    startRelayerGasMonitor();
+    // Which wallet does which job, by address only: the operator checks these against the chain's roles.
+    logJobWallets();
+    startSessionCleanup();
+    // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
+    startCreditPeriodRenewer();
+    // Phase 2b: cycles are judged only when somebody syncs them. This does, once each is due, and
+    // records a computed default (triggerDefault) once its own switch is on. docs/operators/keepers.md.
+    startCycleKeeper().catch((error) => {
+      console.error('Failed to start the cycle keeper:', error);
+    });
+    // No line opens until a member's state is attested: attest each verified member's state, then
+    // open the line. Off unless CREDIT_ONBOARDING_ENABLED=1. docs/operators/keepers.md.
+    startCreditOnboarding();
+    // Vested credits, minted on chain by the Points Issuer. Off unless CREDITS_MINT_ENABLED=1.
+    startCreditsMint();
+    // Phase 2b/2f: notice an Earn shortfall (and clear a closed one).
+    startEnforcementKeeper().catch((error) => {
+      console.error('Failed to start the enforcement keeper:', error);
+    });
+    // Decision 53: settle a default or a shortfall past its wait from pledged pool shares
+    // (enforce, settle, cancelExcess) and pledged bonds (payPledged). Off unless switched on.
+    startPledgeKeepers().catch((error) => {
+      console.error('Failed to start the pledge keepers:', error);
+    });
+    // Decision 53: fill the Yield Pool's queue when it has cash for it. Off unless switched on.
+    startQueueFillKeeper();
+    // Nothing else sets a term limit: without this a member's split plans all revert at zero.
+    startTermLimitReviewer();
+    // Nothing else gives a new member the co-op's $10, or takes an unspent one back.
+    startOffersGranter();
+
+    startReconciler().catch((error) => {
+      console.error('Failed to start reconciler:', error);
+    });
+
+    // Collateral that changes on chain tells us nothing, so without this a snapshot keeps saying
+    // whatever was true when we last happened to write it — and the auth stream fails closed on it.
+    startSnapshotRefresher().catch((error) => {
+      console.error('Failed to start snapshot refresher:', error);
+    });
+
+    // A settled card purchase becomes debt on chain; this retries what the webhook could not land.
+    startCardSettlementSweeper().catch((error) => {
+      console.error('Failed to start card settlement sweeper:', error);
+    });
+
+    // Merchant payouts are funded ahead of time by hand (decision 17). This says when they are not:
+    // read-only, hourly, off unless PAYOUT_KEEPER_ENABLED=1.
+    startPayoutFundingKeeper();
+    startPayoutTopUp();
+    startFundingDesk();
+
+    // The merchant back office's tables. Awaited so the merchant endpoints never see a half-built
+    // schema, but a failure doesn't take the member API down with it: nothing member-facing reads
+    // these tables, and a failed migration has rolled back whole.
+    try {
+      const applied = await runMerchantMigrations();
+      if (applied.length) console.log(`✅ Merchant migrations applied: ${applied.join(', ')}`);
+    } catch (error) {
+      console.error('❌ Merchant migrations failed; merchant back-office tables are not ready:', redactError(error));
+    }
+    // The Command Center's seed: the prototype's rows and figures, into empty tables only. On for
+    // dev (the demo site); off unless COMMAND_SEED=on.
+    if (process.env.COMMAND_SEED === 'on') {
+      try {
+        const db = await merchantDb();
+        const seeded = db ? await seedCommand(db) : [];
+        if (seeded.length) console.log(`✅ Command Center seeded: ${seeded.length} item(s)`);
+      } catch (error) {
+        console.error('❌ Command Center seed failed:', redactError(error));
+      }
+    }
+    // …then its structure, seed or not: the contracts, entities and boards' seats, into empty tables only.
+    try {
+      const db = await merchantDb();
+      const written = db ? await structureCommand(db) : [];
+      if (written.length) console.log(`✅ Command Center structure: ${written.join(', ')}`);
+    } catch (error) {
+      console.error('❌ Command Center structure failed:', redactError(error));
+    }
+    // The Command Center's indexer: every deployed contract's events, after the migrations.
+    startCommandIndexer();
+    // …and its GitHub poller: the commits that touch the contracts, into Contracts' changes.
+    startCommandGithub();
+    // …and the sandbox feeds: Plaid, Bridge, Lithic and Stripe, each on its own schedule.
+    startCommandFeeds();
+    // …and the Merchants map's pins: shops' street addresses, looked up with the US Census geocoder.
+    startCommandGeocoder();
+    // …and the invites a batch queued, emailed once it's approved.
+    startCommandInvites();
+    // The Assurance Pool's fee: read daily, accrued monthly, paid from the CL Fees wallet once CL
+    // Operating's signers fund it. Off without ASSURANCE_POOL_V2_<chain>; pays only with
+    // ASSURANCE_FEE_PAYER_ENABLED=1 (docs/operators/assurance-fee-payer.md). After the migrations.
+    startAssuranceFeePayer();
+    // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
+    // create the inbox it reads.
+    startStripeEventProcessor();
+    // Captures card holds nobody closed, well inside Stripe's 2-day window.
+    startCardCaptureSafety();
+    // Clear tenders follow their charges: approved, declined, expired, withdrawn.
+    startClearTenderSync();
+    // Clear Terminal: holds, Calls and Bills that lapse.
+    startTerminalSweep();
+    // Acts on what the back office announced: recording and reversing tax at Stripe.
+    startOutboxProcessor();
+    // Pay with Clear: the shops' webhooks, signed and retried for 3 days.
+    startWebhookDeliveries();
+    startRewardsJobs();
+    // Nightly: card payouts brought up to date, then our books checked against the processor's.
+    startCardReconciliation();
+    // Daily: Clear's fee billed and collected for any shop whose processor can't take it per sale.
+    startClearFeeBilling();
+    startMonthlyStatements();
+    // Every 15m: unpaid orders left open for two hours give their stock back.
+    startStaleOrderSweep();
+
+    // Start HTTP server (Express + WebSocket)
+    // Bind to 0.0.0.0 to accept connections from Railway/external hosts
+    // IMPORTANT: Routes are registered BEFORE server starts listening
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🌐 CORS enabled for: ${process.env.CORS_ORIGIN || 'all origins (*)'}`);
+      console.log(`🌍 Listening on: 0.0.0.0:${PORT}`);
+      console.log(`✅ All routes are ready to handle requests`);
+      console.log(`✅ WebSocket server ready for real-time updates`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  eventListenerService.cleanup();
+  websocketService.cleanup();
+  await closeRedisConnection();
+  await closePostgresPool();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  eventListenerService.cleanup();
+  websocketService.cleanup();
+  await closeRedisConnection();
+  await closePostgresPool();
+  process.exit(0);
+});
+
+// A rejected promise in a request handler (e.g. an async route that throws) must NOT take the whole
+// server down — otherwise one bad request 502s every user until Railway restarts. Log and keep serving;
+// the failing request still returns an error to its own caller.
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled promise rejection (server kept alive):', reason);
+});
+
+// Start server with error handling
+startServer().catch((error) => {
+  console.error('❌ Failed to start server:', error);
+  process.exit(1);
+});

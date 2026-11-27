@@ -1,0 +1,141 @@
+import type Stripe from 'stripe';
+import { applyPaymentSnapshot, applyRefundSnapshot, isOnlineCardTender } from '../cards/cardTenders.js';
+import type { CardConnectorProvider } from '../cards/connector.js';
+import { refundSnapshot } from '../cards/stripeConnector.js';
+import { syncPayout } from '../payouts/payoutSync.js';
+import { settleOrder } from '../orders/settle.js';
+import { touchShop } from '../terminal/bus.js';
+import type { Handlers } from './inbox.js';
+
+/**
+ * Card payment events from shops' Stripe accounts (card-processing prompt, Phase 4). Every state
+ * change goes through the same code as the app's own sync, and posts to the ledger through it.
+ *
+ * A payment event is a nudge, not the truth: the handler asks Stripe for the PaymentIntent as it
+ * stands now and applies that. Events arrive out of order, and "authorised" arriving after
+ * "captured" must not move anything backwards; the tender state machine refuses it anyway.
+ */
+const PAYMENT_EVENTS = [
+  'payment_intent.amount_capturable_updated',
+  'payment_intent.succeeded',
+  'payment_intent.payment_failed',
+  'payment_intent.canceled',
+] as const;
+
+export function cardPaymentHandlers(provider: () => CardConnectorProvider | null): Handlers {
+  const catchUp = async (tx: Parameters<NonNullable<Handlers[string]>>[0], event: Stripe.Event, paymentId: string | null) => {
+    if (!paymentId) return;
+    const pi = { id: paymentId };
+    const { rows } = await tx.query<{ id: string; merchant: string; method: 'card'; reader_id: string | null; checkout_session_id: string | null }>(
+      'SELECT id, merchant, method, reader_id, checkout_session_id FROM payments.tenders WHERE payment_intent_id = $1',
+      [pi.id],
+    );
+    // Not one of ours: a payment the shop took some other way on its own account.
+    if (!rows[0] || !event.account) return;
+    const p = provider();
+    if (!p) throw new Error('Card processing is not configured here; will retry');
+    const snapshot = await p.getPayment(event.account, pi.id);
+    // Online, a declined card isn't the end: the customer is still in the fields and can try another
+    // on the same payment. It stays pending until it's paid, or the session ends.
+    if (isOnlineCardTender(rows[0]) && snapshot.state === 'waiting') return;
+    const r = await applyPaymentSnapshot(tx, { merchant: rows[0].merchant, tenderId: rows[0].id, snapshot, actor: null });
+    // A declined attempt is voided so it can't be confirmed later; the counter starts a new tender.
+    if (r.declined) await p.cancel(event.account, pi.id).catch(() => undefined);
+  };
+  const onPayment: Handlers[string] = (tx, event) => catchUp(tx, event, (event.data.object as Stripe.PaymentIntent).id);
+  /**
+   * A smart reader finished (or failed) a payment it was sent. Often the first news, and the
+   * failure codes (declined, customer cancelled, connection error) all come down to one question
+   * answered the same way: where does the PaymentIntent stand now.
+   */
+  const onReader: Handlers[string] = (tx, event) => {
+    const reader = event.data.object as Stripe.Terminal.Reader;
+    const target = reader.action?.type === 'process_payment_intent' ? reader.action.process_payment_intent?.payment_intent : null;
+    return catchUp(tx, event, typeof target === 'string' ? target : (target?.id ?? null));
+  };
+
+  /**
+   * A phone page's checkout finished: its payment is the tender's from now on, and is applied as any
+   * card payment is. An expired one withdraws the tender, so the bill shows what's owed again.
+   */
+  const onCheckout: Handlers[string] = async (tx, event) => {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const { rows } = await tx.query<{ id: string; merchant: string; order_id: string; status: string }>(
+      'SELECT id, merchant, order_id, status FROM payments.tenders WHERE checkout_session_id = $1',
+      [session.id],
+    );
+    const t = rows[0];
+    if (!t) return;
+    // The event's transaction commits after this returns; the Points look again once it has.
+    setTimeout(() => touchShop(t.merchant), 500).unref?.();
+    if (event.type === 'checkout.session.expired') {
+      if (t.status === 'pending') {
+        await tx.query(`UPDATE payments.tenders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending'`, [t.id]);
+        await settleOrder(tx, { merchant: t.merchant, orderId: t.order_id, actor: null });
+      }
+      return;
+    }
+    const paymentId = typeof session.payment_intent === 'string' ? session.payment_intent : (session.payment_intent?.id ?? null);
+    if (!paymentId) return;
+    await tx.query('UPDATE payments.tenders SET payment_intent_id = $2, updated_at = now() WHERE id = $1 AND payment_intent_id IS NULL', [t.id, paymentId]);
+    await catchUp(tx, event, paymentId);
+  };
+
+  const onRefund: Handlers[string] = async (tx, event) => {
+    const refund = event.data.object as Stripe.Refund;
+    const { rows } = await tx.query<{ id: string; merchant: string }>('SELECT id, merchant FROM payments.refunds WHERE external_refund_id = $1', [refund.id]);
+    if (!rows[0]) return;
+    await applyRefundSnapshot(tx, { merchant: rows[0].merchant, refundId: rows[0].id, snapshot: refundSnapshot(refund), actor: null });
+  };
+
+  return {
+    ...Object.fromEntries(PAYMENT_EVENTS.map((type) => [type, onPayment])),
+    'checkout.session.completed': onCheckout,
+    'checkout.session.async_payment_succeeded': onCheckout,
+    'checkout.session.expired': onCheckout,
+    'terminal.reader.action_succeeded': onReader,
+    'terminal.reader.action_failed': onReader,
+    'refund.updated': onRefund,
+    'refund.failed': onRefund,
+    'charge.refund.updated': onRefund,
+
+    ...Object.fromEntries(
+      ['payout.created', 'payout.updated', 'payout.paid', 'payout.failed', 'payout.canceled'].map((type) => [
+        type,
+        /**
+         * A shop's payout moved. Synced from the processor (not the event body), in the event's own
+         * transaction: the payout, its ledger entry and "event done" commit together.
+         */
+        (async (tx, event) => {
+          const payout = event.data.object as Stripe.Payout;
+          if (!event.account) return;
+          const { rows } = await tx.query<{ id: string; merchant: string }>(
+            'SELECT id, merchant FROM merchant.card_connectors WHERE external_account_id = $1 ORDER BY (disconnected_at IS NULL) DESC LIMIT 1',
+            [event.account],
+          );
+          if (!rows[0]) return;
+          const p = provider();
+          if (!p) throw new Error('Card processing is not configured here; will retry');
+          await syncPayout(tx, p, { merchant: rows[0].merchant, connectorId: rows[0].id, account: event.account, payoutId: payout.id });
+        }) as NonNullable<Handlers[string]>,
+      ]),
+    ),
+
+    /**
+     * A customer disputed a card payment. Recorded for the owner (the outbox carries it to
+     * notifications); the money side lands with the payout sync (Phase 8), from Stripe's figures.
+     */
+    'charge.dispute.created': async (tx, event) => {
+      const dispute = event.data.object as Stripe.Dispute;
+      const pi = typeof dispute.payment_intent === 'string' ? dispute.payment_intent : (dispute.payment_intent?.id ?? null);
+      if (!pi) return;
+      const { rows } = await tx.query<{ id: string; merchant: string; order_id: string }>('SELECT id, merchant, order_id FROM payments.tenders WHERE payment_intent_id = $1', [pi]);
+      if (!rows[0]) return;
+      await tx.query(
+        `INSERT INTO payments.outbox (merchant, topic, dedupe_key, payload) VALUES ($1, 'card.dispute_opened', $2, $3)
+         ON CONFLICT (dedupe_key) DO NOTHING`,
+        [rows[0].merchant, `dispute:${dispute.id}`, JSON.stringify({ disputeId: dispute.id, tenderId: rows[0].id, orderId: rows[0].order_id, amountCents: dispute.amount, reason: dispute.reason })],
+      );
+    },
+  };
+}

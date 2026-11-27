@@ -1,21 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../core/interfaces/burner-bond/IBurnerBond.sol";
-import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /// @title BurnerBondDeposit
 /// @notice Handles all financial logic for BurnerBond creation
 /// @dev Separates financial operations from NFT minting logic
-contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
+interface IBondVault {
+    function recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity)
+        external;
+    function reserveToken() external view returns (address);
+}
+
+contract BurnerBondDeposit is
+    IBurnerBondDeposit,
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
 
@@ -27,8 +38,10 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
     /// @notice Factory contract for managing collections (single source of truth for parameters)
     IBurnerBondFactory public factory;
     
-    /// @notice AssurancePool contract for token deposits
-    IAssurancePool public assurancePool;
+    /// @notice Where bond proceeds are held.
+    /// @dev Not the AssurancePool. Bondholders are creditors and their principal must not be put
+    /// to work absorbing other people's defaults.
+    IBondVault public bondVault;
     
     /// @notice Mapping from token address to BurnerBond collection
     mapping(address => IBurnerBond) public tokenToCollection;
@@ -59,18 +72,22 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
 
     /* ========== CONSTRUCTOR ========== */
     
-    /// @notice Initialize the BurnerBondDeposit contract
-    /// @param _factory Address of the BurnerBondFactory contract (single source of truth for parameters)
-    /// @param _assurancePool Address of the AssurancePool contract
-    constructor(
-        address _factory,
-        address _assurancePool
-    ) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice sets the deposit contract up.
+    /// @param _factory Address of the parameter source
+    /// @dev Takes no AssurancePool (section 13): bond principal never enters it, and the bond
+    /// contracts hold no address to send it there with.
+    function initialize(address _factory) external initializer {
+        __Ownable_init();
+        __ReentrancyGuard_init();
+
         require(_factory != address(0), "Invalid factory address");
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
         
         factory = IBurnerBondFactory(_factory);
-        assurancePool = IAssurancePool(_assurancePool);
         
         // Start deposit ID counter at 1
         _depositIdCounter.increment();
@@ -170,6 +187,10 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         uint256 maturityDate,
         uint256 discountPercentage
     ) public override nonReentrant returns (uint256 bondId) {
+        // Proceeds go to the BondVault, which holds and pays out in one reserve token. A bond in
+        // anything else would put money there the vault does not count and cannot pay back.
+        require(tokenAddress == bondVault.reserveToken(), "Not the vault's reserve token");
+
         // Check if collection exists, if not, create it automatically
         IBurnerBond burnerBond = tokenToCollection[tokenAddress];
         
@@ -182,6 +203,9 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
             burnerBond = tokenToCollection[tokenAddress];
             require(address(burnerBond) != address(0), "Collection creation failed");
         }
+        // A collection the factory owner has deactivated stops selling. Its bonds already sold
+        // still redeem and roll; only new money is turned away.
+        require(factory.getCollectionInfo(tokenAddress).isActive, "Collection inactive");
         
         // Get the underlying token
         IERC20 underlyingToken = IERC20(tokenAddress);
@@ -225,27 +249,30 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         // IMMEDIATELY PROCESS THE DEPOSIT (auto-processing)
         // This entire block is atomic - if any step fails, the whole transaction reverts
         
-        // Step 1: Approve AssurancePool to spend underlying token
-        underlyingToken.approve(address(assurancePool), requiredDeposit);
-        
-        // Step 2: Deposit underlying token into AssurancePool excess reserve
-        // If this fails, the entire transaction reverts and user keeps their token
-        assurancePool.depositTokenIntoExcess(address(underlyingToken), requiredDeposit);
-        
-        // Step 3: Only mint bond AFTER successful deposit to AssurancePool
-        // This ensures the bond is backed by actual underlying token in the pool
+        // Step 1: Move the proceeds into the bond vault.
+        // Not the AssurancePool. Principal that sits in the loss-absorbing fund is principal
+        // funding somebody else's default, and a redemption drawn from the same pool competes
+        // with the losses it was paying for.
+        require(address(bondVault) != address(0), "Bond vault not set");
+        underlyingToken.safeTransfer(address(bondVault), requiredDeposit);
+
+        // Step 2: Only mint the bond once the proceeds are actually held.
         bondId = burnerBond.mintBond(
             faceValue,
             maturityDate,
             discountPercentage,
             msg.sender
         );
+
+        // Book what the vault now owes at the same moment it takes the money in, rather than
+        // discovering it at maturity.
+        bondVault.recordPurchase(bondId, requiredDeposit, faceValue, uint64(maturityDate));
         
         // Safety check: Ensure bond was actually minted
         require(bondId > 0, "Bond minting failed");
         
         // If we reach here, both deposit and minting succeeded
-        // The bond is now fully backed by underlying token in the AssurancePool
+        // The bond is now backed by the underlying token held in the bond vault
         
         // Update deposit information
         deposits[depositId].bondId = bondId;
@@ -327,22 +354,9 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         tokenToCollection[tokenAddress] = IBurnerBond(collectionAddress);
     }
     
-    /// @notice Update deposit calculation parameters (delegates to factory)
-    /// @param _maxDiscount Maximum discount percentage in basis points (0-5000)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    /// @param _maxMaturity Maximum maturity period in seconds
-    function updateDepositParameters(uint256 _maxDiscount, uint256 _minDiscount, uint256 _maxMaturity) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateGlobalParameters(_maxDiscount, _minDiscount, _maxMaturity);
-    }
-    
-    /// @notice Set minimum discount percentage (delegates to factory)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    function setMinDiscount(uint256 _minDiscount) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.setMinDiscount(_minDiscount);
-    }
-    
+    // The factory's discount, maturity and face-value bounds are global and set on the factory
+    // by its owner. This contract used to carry setters that forwarded to it; the factory's
+    // setters are owner-only and the caller there was this contract, so every one reverted.
     /// @notice Set the factory contract address
     /// @param _factory Address of the BurnerBondFactory contract
     function setFactory(address _factory) external override onlyOwner {
@@ -350,28 +364,13 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         factory = IBurnerBondFactory(_factory);
     }
     
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external override onlyOwner {
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
-        assurancePool = IAssurancePool(_assurancePool);
+    /// @notice sets the vault bond proceeds are held in.
+    /// @param _bondVault Address of the BondVault contract
+    function setBondVault(address _bondVault) external onlyOwner {
+        require(_bondVault != address(0), "Invalid BondVault address");
+        bondVault = IBondVault(_bondVault);
     }
-    
-    /// @notice Update minimum and maximum face value limits (delegates to factory)
-    /// @param _minFaceValue Minimum face value in underlying token units
-    /// @param _maxFaceValue Maximum face value in underlying token units
-    function updateFaceValueLimits(uint256 _minFaceValue, uint256 _maxFaceValue) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateFaceValueLimits(_minFaceValue, _maxFaceValue);
-    }
-    
-    /// @notice Update minimum maturity period (delegates to factory)
-    /// @param _minMaturity Minimum maturity period in seconds
-    function updateMinMaturity(uint256 _minMaturity) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateMinMaturity(_minMaturity);
-    }
-    
+
     /// @notice Emergency function to recover stuck tokens (owner only)
     /// @param token Token address to recover
     /// @param amount Amount to recover
@@ -406,7 +405,7 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         }
         
         // Call factory to create collection
-        // This will revert if token is not whitelisted by AssuranceOracle
+        // This will revert if the token is not whitelisted in the TokenRegistry
         IBurnerBondFactory(factory).createCollection(
             tokenAddress,
             tokenSymbol,
@@ -440,11 +439,12 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         // Get the underlying token
         IERC20 underlyingToken = IERC20(deposit.tokenAddress);
 
-        // Approve AssurancePool to spend underlying token
-        underlyingToken.approve(address(assurancePool), deposit.amount);
-
-        // Deposit underlying token into AssurancePool excess reserve
-        assurancePool.depositTokenIntoExcess(deposit.tokenAddress, deposit.amount);
+        // Into the bond vault, as `makeDeposit` does, and never the AssurancePool (compliance
+        // addendum 12.11). This path used to put the principal into the AssurancePool's excess
+        // reserve, where it funded other people's defaults and the bond's redemption competed
+        // with them. The vault holds it against this bond's redemption and books what it owes.
+        require(address(bondVault) != address(0), "Bond vault not set");
+        underlyingToken.safeTransfer(address(bondVault), deposit.amount);
 
         // Mint bond using BurnerBond contract
         bondId = burnerBond.mintBond(
@@ -453,6 +453,7 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
             deposit.discountPercentage,
             deposit.depositor
         );
+        bondVault.recordPurchase(bondId, deposit.amount, deposit.faceValue, uint64(deposit.maturityDate));
 
         // Update deposit information
         deposit.bondId = bondId;

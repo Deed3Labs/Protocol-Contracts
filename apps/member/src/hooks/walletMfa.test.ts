@@ -1,0 +1,64 @@
+import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { requireStepUp, setStepUpVerifier, setWalletMfa, walletEnforcesMfa, clearStepUp } from '@/lib/stepUp';
+
+const read = (p: string) => readFileSync(join(import.meta.dirname, '..', p), 'utf8');
+
+describe('payments are guarded at the wallet (Privy MFA)', () => {
+  test('our sheet prompts, Privy verifies; Face ID off also takes it off payments', () => {
+    const cfg = read('AppKitProvider.tsx');
+    expect(cfg).toContain('mfa: { noPromptOnMfaRequired: true },');
+    // Mounted once, for every route: /c/:code (Pay now) and onboarding sit outside the shell, and
+    // Privy waits on this listener, so a payment there would wait until Privy timed out.
+    expect(read('App.tsx')).toContain('<ConfirmIdentitySheet />');
+    expect(read('components/shell/AppShell.tsx')).not.toContain('<ConfirmIdentitySheet />');
+    const sheet = read('components/shell/ConfirmIdentitySheet.tsx');
+    // …and it's what says the wallet asks for itself, so a cold /c/:code doesn't ask twice.
+    expect(sheet).toContain('setWalletMfa(walletFactor);');
+    expect(read('hooks/usePaymentProtection.ts')).not.toContain('setWalletMfa(');
+    expect(sheet).toContain('useRegisterMfaListener({');
+    expect(sheet).toMatch(/const options = await init\('passkey'\);[\s\S]{0,80}await submit\('passkey', options\);/);
+    expect(sheet).toMatch(/await init\('totp'\);\s*await submit\('totp', code\);/);
+    expect(sheet).toContain('cancel();');
+    expect(cfg).toContain('passkeys: { shouldUnenrollMfaOnUnlink: true, shouldUnlinkOnUnenrollMfa: false },');
+  });
+
+  test('payments are turned on in their own row, not as a second sheet chasing the sign-in one', () => {
+    const faceId = read('hooks/useFaceId.ts');
+    expect(faceId).not.toContain('enrollFaceIdWhenLinked');
+    expect(faceId).not.toContain('enrollWithServer');
+    expect(read('components/shell/AppLock.tsx')).toContain('usePaymentProtection();');
+    expect(read('hooks/usePaymentProtection.ts')).toContain('await submitEnrollmentWithPasskey({ credentialIds: unenrolledPasskeys });');
+  });
+
+  test('an authenticator app is the fallback, set up by scanning and confirming a code', () => {
+    const hook = read('hooks/usePaymentProtection.ts');
+    expect(hook).toContain('return await initEnrollmentWithTotp();');
+    expect(hook).toContain("await submitEnrollmentWithTotp({ mfaCode: code.replace(/\\s+/g, '') });");
+    expect(read('components/settings/AuthenticatorDialog.tsx')).toContain('<QRCodeSVG value={setup.authUrl}');
+  });
+
+  test('the placeholder "Require Face ID for payments over $X" switch is gone', () => {
+    expect(read('pages/app/SettingsPage.tsx')).not.toContain('faceid-payments');
+  });
+});
+
+describe('one prompt per payment, not two', () => {
+  test('where the wallet enforces MFA, the app does not ask first', async () => {
+    let asked = 0;
+    setStepUpVerifier(async () => {
+      asked += 1;
+    });
+    clearStepUp();
+    setWalletMfa(true);
+    expect(walletEnforcesMfa()).toBe(true);
+    // runBatch checks this before calling requireStepUp; the gate itself is unchanged.
+    if (!walletEnforcesMfa()) await requireStepUp();
+    expect(asked).toBe(0);
+    setWalletMfa(false);
+    if (!walletEnforcesMfa()) await requireStepUp();
+    expect(asked).toBe(1);
+    setStepUpVerifier(null);
+  });
+});

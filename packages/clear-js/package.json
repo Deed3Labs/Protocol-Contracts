@@ -1,0 +1,37 @@
+{
+  "name": "@useclear/js",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Pay with Clear for the browser: the shop's own button opens Clear's modal. Also served at https://js.useclear.org/v1.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Deed3Labs/Protocol-Contracts.git",
+    "directory": "packages/clear-js"
+  },
+  "homepage": "https://app.useclear.org/docs/quickstart.md",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/types/clear-js/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/clear-js/src/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs && node ../../scripts/sdk/build-types.mjs",
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@clear/public-api-contracts": "file:../public-api-contracts",
+    "typescript": "~5.8.3"
+  }
+}

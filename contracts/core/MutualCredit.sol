@@ -62,6 +62,16 @@ contract MutualCredit is IMutualCredit, ERC20BurnableUpgradeable {
 
     /* ========== PRIVATE FUNCTIONS ========== */
 
+    /// @notice how much of a member's ceiling a plain transfer may mint against.
+    /// @dev The whole of what is left by default. The ledger narrows it: part of a ceiling can be
+    /// reserved for a path that always records a schedule (a term plan), and a plain transfer must
+    /// not reach that part (audit C-1).
+    /// @param member address of member to query.
+    /// @return credit a transfer may still mint for the member.
+    function _drawableCreditOf(address member) internal view virtual returns (uint256) {
+        return creditLimitLeftOf(member);
+    }
+
     /// @notice transfers tokens from sender to recipient
     /// @dev overrides ERC20 _transfer to include credit line logic
     /// @param _from sender address
@@ -86,7 +96,7 @@ contract MutualCredit is IMutualCredit, ERC20BurnableUpgradeable {
         }
         CreditLine memory _creditLine = creditLines[_from];
         uint256 _missingBalance = _amount - _balanceFrom;
-        uint256 _creditLeft = creditLimitLeftOf(_from);
+        uint256 _creditLeft = _drawableCreditOf(_from);
         require(_creditLeft >= _missingBalance, "MutualCredit: Insufficient credit");
         // increment credit balance
         creditLines[_from].creditBalance = (_creditLine.creditBalance + _missingBalance).toUInt128();
@@ -106,6 +116,102 @@ contract MutualCredit is IMutualCredit, ERC20BurnableUpgradeable {
         // decrement credit balance
         creditLines[_to].creditBalance = (_creditLine.creditBalance - _repay).toUInt128();
         _burn(_to, _repay);
+    }
+
+    /// @notice deepens a member's credit balance and mints the matching claim to a recipient.
+    /// @dev Carry accrual, not a transfer. The member did not spend anything -- their obligation
+    /// grew with time held -- so nothing moves out of their balance, and the claim that now exists
+    /// against the network lands with whoever is owed it.
+    ///
+    /// Deliberately not limit-checked. Carry is what makes a member's headroom shrink while they
+    /// hold a position, and a ceiling that stopped carry accruing once it was reached would make
+    /// standing still free. A member may end up owing more than their ceiling; `creditLimitLeftOf`
+    /// already reports no headroom in that case, so they simply cannot draw again.
+    /// @param member address whose obligation grows.
+    /// @param recipient address the matching claim is minted to.
+    /// @param amount amount accrued.
+    function _accrueCredit(address member, address recipient, uint256 amount) internal virtual {
+        if (amount == 0) return;
+        CreditLine memory _creditLine = creditLines[member];
+        creditLines[member].creditBalance = (_creditLine.creditBalance + amount).toUInt128();
+        _mint(recipient, amount);
+    }
+
+    /// @notice unwinds an accrual: burns the claim and shrinks the obligation that matched it.
+    /// @dev The exact inverse of `_accrueCredit`, and the only way an obligation leaves this
+    /// ledger without reserve tokens arriving to settle it. That is the point -- origination put
+    /// the obligation here without capital, so undoing it must not require any either.
+    ///
+    /// The claim is burned from whoever holds it, which is why the holder is a parameter rather
+    /// than assumed: a purchase mints to the merchant, and reversing it has to take it back from
+    /// the merchant, not from the member who never held it.
+    /// @param member address whose obligation shrinks.
+    /// @param holder address the matching claim is burned from.
+    /// @param amount amount to unwind.
+    function _reverseCredit(address member, address holder, uint256 amount) internal virtual {
+        if (amount == 0) return;
+        CreditLine memory _creditLine = creditLines[member];
+        // Callers check this and revert with something that names the pair. Belt and braces: an
+        // underflow here would wrap a member's obligation to an enormous number.
+        require(_creditLine.creditBalance >= amount, "MutualCredit: reversal exceeds obligation");
+        creditLines[member].creditBalance = (_creditLine.creditBalance - amount).toUInt128();
+        _burn(holder, amount);
+    }
+
+    /// @notice moves an obligation from one party to another. No claim is minted or burned.
+    /// @dev What is left of a reversal once there is no claim to take back. The merchant drew
+    /// their payout down, so nothing can be burned from them -- but the member must still be
+    /// released, and the debt does not simply evaporate. It changes hands.
+    ///
+    /// Claims are untouched on purpose: the total owed to the network is the same before and
+    /// after, it is owed by somebody else. Burning and re-minting to express that would take a
+    /// claim off a holder who never agreed to give one up.
+    /// @param from address released of the obligation.
+    /// @param to address taking it on.
+    /// @param amount amount moved.
+    function _transferObligation(address from, address to, uint256 amount) internal virtual {
+        if (amount == 0) return;
+        CreditLine memory _from = creditLines[from];
+        require(_from.creditBalance >= amount, "MutualCredit: transfer exceeds obligation");
+        creditLines[from].creditBalance = (_from.creditBalance - amount).toUInt128();
+        creditLines[to].creditBalance = (creditLines[to].creditBalance + amount).toUInt128();
+    }
+
+    /// @notice records an obligation with no claim minted to match it.
+    /// @dev For a refund paid in cash to a member who had already paid. The cash came out of
+    /// members' money in the payout pool, which was standing behind claims other people still
+    /// hold; the party that was paid for the sale now owes it, and that obligation is what stands
+    /// behind those claims instead. Minting a fresh claim as well would count the same money twice
+    /// (audit X-3).
+    /// @param holder address taking on the obligation.
+    /// @param amount amount owed.
+    function _createObligation(address holder, uint256 amount) internal virtual {
+        if (amount == 0) return;
+        creditLines[holder].creditBalance = (creditLines[holder].creditBalance + amount).toUInt128();
+    }
+
+    /// @notice like `_accrueCredit`, but the recipient's existing obligation is netted first.
+    /// @dev A merchant who owes on a refund is paid their next sale by having that debt cleared,
+    /// and only the rest is minted to them (audit X-4). Capped by the caller at what it knows to be
+    /// nettable, so debt an issuer tracks is never cleared behind its back.
+    /// @param member address whose obligation grows.
+    /// @param recipient address owed the claim.
+    /// @param amount amount accrued.
+    /// @param nettable most of the recipient's obligation that may be cleared.
+    /// @return netted how much of the recipient's obligation was cleared instead of minting.
+    function _accrueCreditNetted(address member, address recipient, uint256 amount, uint256 nettable)
+        internal
+        virtual
+        returns (uint256 netted)
+    {
+        if (amount == 0) return 0;
+        uint256 owed = creditLines[recipient].creditBalance;
+        netted = Math.min(Math.min(owed, nettable), amount);
+        creditLines[member].creditBalance = (creditLines[member].creditBalance + amount).toUInt128();
+        if (netted > 0) {
+            creditLines[recipient].creditBalance = (owed - netted).toUInt128();
+        }
+        if (amount > netted) _mint(recipient, amount - netted);
     }
 
     /// @notice sets the credit limit of a given member

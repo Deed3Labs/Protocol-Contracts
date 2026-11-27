@@ -1,0 +1,341 @@
+import { Router, type Request, type Response } from 'express';
+import { requireAuth, requireVerifiedWallet } from '../middleware/auth.js';
+import { requireStepUp } from '../middleware/stepUp.js';
+import { chargeContents } from '../services/chargeContents.js';
+import { chargeStore, type ChargeRow } from '../services/chargeStore.js';
+import { confirmPayNow, paidNowBpsFor, releasePayNowFor, startPayNow, type PayNowResult } from '../services/payNowService.js';
+import { onlineForCharge, onlineOverTime } from '../services/merchant/pay/overTime.js';
+import {
+  approveCharge,
+  prepareChargeApproval,
+  declineCharge,
+  raiseCharge,
+  splitQuotesForCharge,
+  CHARGE_TTL_SECONDS,
+} from '../services/chargeService.js';
+import { splitsOffered } from '@clear/domain';
+
+/** The splits the member app offers on a charge (apps/member ChargeApprovalRoute). */
+const OFFERED_SPLITS = [1, 2, 4, 12];
+
+/*
+ * Charges: one route a merchant posts to, and three a member answers on.
+ *
+ * The asymmetry is the design. A merchant proves itself by signing — there is no merchant session,
+ * so `POST /` authenticates from the body. Every other route is the member's own session acting on
+ * their own charge, and each one re-checks that the charge is theirs rather than trusting the code:
+ * a code travels by text and text gets forwarded, so possession of one cannot be what authorises
+ * answering it.
+ *
+ * `requireAuth` is attached to those three routes individually rather than to the router, because
+ * the router cannot carry it — `POST /` has no session. That is not a stylistic choice, and getting
+ * it wrong is not a small bug: `requireVerifiedWallet` falls through to *true* when there is no
+ * `req.auth` at all, a compatibility path for routes that authenticate some other way. Without
+ * `requireAuth` in front of it, every ownership check below would pass for anyone holding a code.
+ */
+const chargesRouter = Router();
+
+/**
+ * What a member is allowed to see. Payout and the merchant's address are not their business -- except
+ * while they are paying now, when their own wallet is sending to it (`pay`, from the pay-now routes).
+ */
+async function memberView(charge: ChargeRow) {
+  const [contents, bps, overTime, online, splitQuotes] = await Promise.all([
+    chargeContents(charge),
+    paidNowBpsFor(charge).catch(() => null),
+    onlineOverTime(charge.code).catch(() => null),
+    onlineForCharge(charge.code).catch(() => null),
+    charge.status === 'pending'
+      ? splitQuotesForCharge(charge, splitsOffered(charge.amountCents, OFFERED_SPLITS)).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  return {
+    code: charge.code,
+    merchantName: charge.merchantName,
+    amountCents: charge.amountCents,
+    status: charge.status,
+    splitInto: charge.splitInto,
+    planId: charge.planId,
+    txHash: charge.txHash,
+    expiresAt: charge.expiresAt,
+    createdAt: charge.createdAt,
+    paidNow: charge.paidNow,
+    /** Held for paying now: when the hold lapses, and whether a payment is already on its way. */
+    payingNow: charge.status === 'resolving' && charge.payNow ? { until: charge.payNow.until, sent: Boolean(charge.txHash) } : null,
+    paidAt: charge.status === 'approved' ? charge.resolvedAt : null,
+    ...contents,
+    /** What the shop pays Clear on this charge if it's paid now ("the shop pays 1.25%"). */
+    paidNowBps: bps,
+    /**
+     * The chain's price for each split offered (`_quote`): what the chooser shows before a split is
+     * picked, and what the member will be asked to sign. Null when it could not be read.
+     */
+    splitQuotes,
+    /**
+     * Paid online, through a link or a website: false when only paying now is offered (the link's
+     * choice, or over time online still off). Null at the counter, whose rules are the app's own.
+     */
+    overTime,
+    /** A website's or a link's charge: the sheet's "· ONLINE" line and "Then you're back on …". */
+    online,
+  };
+}
+
+/**
+ * A merchant raises a charge.
+ *
+ * Deliberately outside `requireAuth`: the caller is a merchant device, not a member session, and
+ * it authenticates with an EIP-712 signature the service verifies against the on-chain registry.
+ * Nothing here reads `req.auth`.
+ */
+chargesRouter.post('/', async (req: Request, res: Response) => {
+  const { merchant, merchantName, member, amountCents, nonce, issuedAt, signature } = req.body ?? {};
+
+  if (typeof merchant !== 'string' || typeof member !== 'string' || typeof signature !== 'string') {
+    res.status(400).json({ error: 'Invalid request', message: 'merchant, member and signature are required' });
+    return;
+  }
+
+  const result = await raiseCharge({
+    merchant,
+    merchantName: typeof merchantName === 'string' ? merchantName : '',
+    member,
+    amountCents: Number(amountCents),
+    nonce: typeof nonce === 'string' ? nonce : '',
+    issuedAt: Number(issuedAt),
+    signature,
+  });
+
+  if (!result.ok || !result.charge) {
+    // 400 rather than 401 across the board: a merchant device should not be able to tell a bad
+    // signature from an inactive registration from an over-cap amount by status code alone.
+    res.status(400).json({ error: 'Charge refused', message: result.reason ?? 'could not raise the charge' });
+    return;
+  }
+
+  res.status(201).json({
+    code: result.charge.code,
+    status: result.charge.status,
+    expiresAt: result.charge.expiresAt,
+    ttlSeconds: CHARGE_TTL_SECONDS,
+  });
+});
+
+/**
+ * The member's own charges paid now, for Activity: one row a payment (and one a refund), in place of
+ * the USDC transfers each was made of. The transaction hashes are what lets the app fold those away.
+ */
+chargesRouter.get('/', requireAuth, async (req: Request, res: Response) => {
+  const wallet = req.auth?.walletAddress;
+  if (!wallet) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await chargeStore.listPaidNowByMember(wallet);
+  const hash = (h: string | null) => (h && h.startsWith('0x') ? h : null);
+  res.json({
+    payments: rows.map((c) => ({
+      code: c.code,
+      merchantName: c.merchantName,
+      amountCents: c.amountCents,
+      status: c.status,
+      paidAt: c.resolvedAt,
+      txHash: c.txHash,
+      refundTxHashes: [hash(c.refundLegs.shop), hash(c.refundLegs.clear)].filter((h): h is string => Boolean(h)),
+    })),
+  });
+});
+
+/**
+ * Every charge the member has had, newest first: waiting on them, paid now, over time, declined,
+ * expired. For the Charges page and Activity, so a charge can be found again after the alert is gone
+ * or the app was closed. Only their own (by the session's wallet); nothing here opens or claims one.
+ */
+chargesRouter.get('/history', requireAuth, async (req: Request, res: Response) => {
+  const wallet = req.auth?.walletAddress;
+  if (!wallet) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await chargeStore.listByMember(wallet);
+  res.json({
+    charges: rows.map((c) => ({
+      code: c.code,
+      merchantName: c.merchantName,
+      amountCents: c.amountCents,
+      status: c.status,
+      paidNow: c.paidNow,
+      splitInto: c.splitInto,
+      createdAt: c.createdAt,
+      resolvedAt: c.resolvedAt,
+      expiresAt: c.expiresAt,
+      payingNow: c.status === 'resolving' && Boolean(c.payNow),
+    })),
+  });
+});
+
+/** The member opens it. Also what the merchant's "waiting" state is watching. */
+chargesRouter.get('/:code', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  /**
+   * Unclaimed charges belong to whoever opens them — reference section 03.
+   *
+   * A charge raised by showing a code has no member: the customer scans it off the tablet, and
+   * that scan is what says who they are. So an unclaimed charge is claimed here rather than
+   * refused for not naming the caller in advance.
+   *
+   * Once claimed it behaves exactly as before — the wallet must match, which is what stops a
+   * second person guessing a code and reading somebody else's charge.
+   */
+  if (!charge.memberWallet) {
+    const wallet = req.auth?.walletAddress;
+    if (!wallet) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Sign in to open this charge.' });
+      return;
+    }
+    const claimed = await chargeStore.attachMember(charge.code, wallet);
+    if (!claimed) {
+      // Somebody scanned it first, or it lapsed between the read and the write.
+      res.status(409).json({
+        error: 'Already open',
+        message: 'That code has already been opened, or it has expired.',
+      });
+      return;
+    }
+    res.json(await memberView(claimed));
+    return;
+  }
+
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+
+  await chargeStore.markOpened(charge.code);
+  res.json(await memberView(charge));
+});
+
+/*
+ * Approving over time is two calls (audit H-4): `approve/prepare` returns the plan terms as EIP-712
+ * typed data, the member's own wallet signs them on the phone, and `approve` submits that signature
+ * with the terms. TermIssuer opens a plan only on a member's signature over its terms.
+ */
+chargesRouter.post('/:code/approve/prepare', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+
+  const installments = Number(req.body?.installments);
+  if (!Number.isInteger(installments) || installments < 1) {
+    res.status(400).json({ error: 'Invalid split', message: 'installments must be a whole number.' });
+    return;
+  }
+
+  const prepared = await prepareChargeApproval(charge.code, charge.memberWallet, installments);
+  if (!prepared.ok) {
+    // `code` names the refusals the app treats differently: `state_not_confirmed` (nobody has
+    // attested the member's state, so no credit yet; paying now still works).
+    res.status(409).json({ error: 'Could not prepare', message: prepared.reason, code: prepared.code ?? null });
+    return;
+  }
+  res.json({ typedData: prepared.typedData, disclosure: prepared.disclosure, free: prepared.free });
+});
+
+// Approving opens a credit plan the member owes: a fresh Face ID, checked here as well as in the app.
+chargesRouter.post('/:code/approve', requireAuth, requireStepUp, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+
+  const installments = Number(req.body?.installments);
+  if (!Number.isInteger(installments) || installments < 1) {
+    res.status(400).json({ error: 'Invalid split', message: 'installments must be a whole number.' });
+    return;
+  }
+
+  // The member's signature over the prepared terms, and those terms. Checked against the charge in
+  // approveCharge, and by the contract.
+  const signed =
+    req.body?.terms && typeof req.body?.signature === 'string'
+      ? { terms: req.body.terms, signature: String(req.body.signature) }
+      : null;
+  const result = await approveCharge(charge.code, charge.memberWallet, installments, signed);
+  if (!result.ok || !result.charge) {
+    res.status(409).json({ error: 'Could not approve', message: result.reason ?? 'Approval failed.' });
+    return;
+  }
+  res.json(await memberView(result.charge));
+});
+
+chargesRouter.post('/:code/decline', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+
+  const result = await declineCharge(charge.code, charge.memberWallet);
+  if (!result.ok || !result.charge) {
+    res.status(409).json({ error: 'Could not decline', message: result.reason ?? 'Decline failed.' });
+    return;
+  }
+  res.json(await memberView(result.charge));
+});
+
+/*
+ * Paying now, from the member's cash (services/payNowService). Three steps: hold and quote, then the
+ * member's wallet sends, then confirm. Starting one is spending, so it takes a fresh Face ID like the
+ * other money routes; confirming and going back move nothing.
+ */
+async function answer(res: Response, result: PayNowResult, failure: string) {
+  if (result.pending && result.charge) {
+    res.status(202).json({ ...(await memberView(result.charge)), message: result.reason });
+    return;
+  }
+  if (!result.ok || !result.charge) {
+    res.status(409).json({ error: failure, message: result.reason ?? failure });
+    return;
+  }
+  res.json({ ...(await memberView(result.charge)), ...(result.pay ? { pay: result.pay } : {}) });
+}
+
+chargesRouter.post('/:code/pay-now', requireAuth, requireStepUp, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+  await answer(res, await startPayNow(charge.code, charge.memberWallet!), 'Could not pay now');
+});
+
+chargesRouter.post('/:code/pay-now/confirm', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+  const txHash = typeof req.body?.txHash === 'string' ? req.body.txHash : '';
+  await answer(res, await confirmPayNow(charge.code, charge.memberWallet!, txHash), 'Could not confirm the payment');
+});
+
+chargesRouter.delete('/:code/pay-now', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+  await answer(res, await releasePayNowFor(charge.code, charge.memberWallet!), 'Could not go back');
+});
+
+export default chargesRouter;

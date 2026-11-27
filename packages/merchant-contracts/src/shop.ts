@@ -1,0 +1,274 @@
+import { z } from 'zod';
+import { Id, NonNegativeCents, Role, ShopId, Timestamp } from './common';
+
+/**
+ * A shop, its settings and its people.
+ *
+ * The shop row is `merchant.profiles`, keyed by the shop's wallet address (HARD STOP 1).
+ */
+
+export const Address = z.object({
+  line1: z.string().min(1),
+  line2: z.string().nullable(),
+  city: z.string().min(1),
+  /** State or region: `CA`. */
+  region: z.string().min(1),
+  postalCode: z.string().min(1),
+  /** ISO 3166-1 alpha-2. */
+  country: z.string().length(2),
+});
+export type Address = z.infer<typeof Address>;
+
+/** The card plan decides Clear's fee on a card sale (see `clearCardFee`). */
+export const CardPlan = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('payg') }),
+  z.object({ kind: z.literal('paid'), feeCents: NonNegativeCents }),
+]);
+export type CardPlan = z.infer<typeof CardPlan>;
+
+/**
+ * What Clear charges on Clear credit, by how the member pays. For display: what a Clear charge
+ * actually settles at is read from the on-chain merchant registry, which stays the source of truth
+ * (HARD STOP 1). Basis points: 125 is 1.25%.
+ */
+export const ClearTier = z.object({
+  tier: z.enum(['founding', 'standard']),
+  paidNowBps: z.number().int().min(0),
+  overTimeBps: z.number().int().min(0),
+});
+export type ClearTier = z.infer<typeof ClearTier>;
+
+export const Shop = z.object({
+  id: ShopId,
+  name: z.string().min(1),
+  /** Sets the sales tax. Null until the shop enters it. */
+  address: Address.nullable(),
+  /** IANA: `America/Los_Angeles`. Business dates and day reports use it. */
+  timezone: z.string().min(1),
+  currency: z.literal('usd'),
+  cardPlan: CardPlan,
+  clearTier: ClearTier,
+  /** What members see in Clear Partners: what the shop does, a line about it, and how to reach it. */
+  listing: z.object({
+    category: z.string().nullable(),
+    oneLine: z.string().nullable(),
+    phone: z.string().nullable(),
+    email: z.string().nullable(),
+  }),
+});
+export type Shop = z.infer<typeof Shop>;
+
+/** "08:00" to "18:00", in the shop's timezone. */
+export const OpenSpan = z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) }).refine((s) => s.to > s.from, 'It closes after it opens');
+
+/**
+ * When the shop is open: the usual week (seven days, Monday first; null is closed) and the dates
+ * that differ (closed all day, or other hours). Staff hours sit inside these, and members' "open
+ * now" reads them.
+ */
+export const ShopHours = z.object({
+  week: z.array(z.object({ day: z.number().int().min(0).max(6), open: OpenSpan.nullable() })).length(7),
+  dates: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), label: z.string().trim().min(1).max(60), open: OpenSpan.nullable() })).max(60),
+});
+export type ShopHours = z.infer<typeof ShopHours>;
+
+/** What an owner can change about the shop: where it is (which sets sales tax and the reader location) and its timezone. */
+export const ShopPatch = z
+  .object({
+    address: Address,
+    timezone: z.string().min(1),
+    name: z.string().trim().min(1).max(60),
+    listing: z
+      .object({
+        category: z.string().trim().max(60).nullable(),
+        oneLine: z.string().trim().max(140).nullable(),
+        phone: z.string().trim().max(40).nullable(),
+        email: z.string().trim().max(200).nullable(),
+      })
+      .partial(),
+  })
+  .partial();
+export type ShopPatch = z.infer<typeof ShopPatch>;
+
+/**
+ * Where a shop's sales tax comes from (Settings › Tax). The shop is liable, so tax is worked out on
+ * its own Stripe account once Stripe Tax is on there; until then from the rate for its address,
+ * looked up once and kept; with neither, no tax is added and Settings says so.
+ */
+export const TaxStatus = z.object({
+  source: z.enum(['stripe', 'address_rate', 'none']),
+  /** Why Stripe Tax isn't being used yet, for the Settings copy. */
+  stripe: z.enum(['active', 'not_connected', 'setup_needed']),
+  /** The rate at the shop by kind of item, "7.75", when known. */
+  rates: z.object({ goods: z.string().nullable(), labour: z.string().nullable(), food: z.string().nullable() }),
+  pricesIncludeTax: z.boolean(),
+});
+export type TaxStatus = z.infer<typeof TaxStatus>;
+
+export const Staff = z.object({
+  id: Id,
+  name: z.string().min(1),
+  role: Role,
+  active: z.boolean(),
+});
+export type Staff = z.infer<typeof Staff>;
+
+export const ShopSettings = z.object({
+  paymentMethods: z.object({ card: z.boolean(), cash: z.boolean(), split: z.boolean() }),
+  tips: z.object({
+    enabled: z.boolean(),
+    mode: z.enum(['amounts', 'percentages']),
+    /** Cents when `amounts`, whole percents when `percentages`. */
+    presets: z.array(z.number().int().min(1)).max(4),
+    goTo: z.enum(['raiser', 'hours']),
+  }),
+  startingCashCents: NonNegativeCents,
+  twoCounts: z.boolean(),
+  /** A break: how long, and after how long on shift. Home shows who is due one. */
+  breaks: z.object({ minutes: z.number().int().min(0).max(240), afterMinutes: z.number().int().min(60).max(960) }),
+  /** Settings › Notifications: the end-of-day summary, emailed when the day is closed, to `email`. */
+  notifications: z.object({ endOfDay: z.boolean(), email: z.string().trim().email('That isn’t an email address').nullable() }),
+  /** Settings › Payouts: each month's statement, emailed on the 2nd to this address; null is off. */
+  statementsEmail: z.string().trim().email('That isn’t an email address').nullable(),
+  /** When only one person is on at close. */
+  onePersonClose: z.enum(['owner_next_morning', 'wait_for_second']),
+  /** Who can Close the day: owners and managers, or anyone on shift. The server enforces it. */
+  whoCanClose: z.enum(['managers', 'anyone']),
+  /** Store-and-forward on the M2 only; Tap to Pay is always online. */
+  offlineCards: z.object({ enabled: z.boolean(), limitCents: NonNegativeCents }),
+  /** Prices at the counter: before tax (added at checkout), or with tax included ("a $9.00 taco costs $9.00"). */
+  tax: z.object({ pricesIncludeTax: z.boolean() }),
+  /** Most off a charge a role can give without a PIN, in whole percents. Null: no limit. */
+  discountLimits: z.object({
+    counter: z.number().int().min(0).max(100),
+    manager: z.number().int().min(0).max(100),
+    owner: z.number().int().min(0).max(100).nullable(),
+  }),
+  /** Who can open the drawer without a sale (Devices › Cash drawer): owners and managers, or anyone on shift. */
+  drawerNoSaleRoles: z.enum(['managers', 'anyone']).optional(),
+  /** A No sale asks for a PIN and a reason. */
+  noSaleNeedsPin: z.boolean().optional(),
+  /** Tables, for shops that serve at tables (Settings › Counter). Off by default. */
+  tableService: z.boolean().optional(),
+  /** Settings › Counter › Clear paid tables: this many minutes after paying, or null for by hand (Tables v2). */
+  clearPaidAfterMinutes: z.number().int().min(1).max(120).nullable().optional(),
+  /** Settings › Counter › Wait estimates: from how long tables took this week, or a set number of minutes. */
+  waitEstimate: z.union([z.literal('this_week'), z.number().int().min(1).max(240)]).optional(),
+  /** Settings › Counter › Text the wait list: joined, almost ready, table ready. */
+  textWaitlist: z.boolean().optional(),
+  updatedAt: Timestamp,
+});
+export type ShopSettings = z.infer<typeof ShopSettings>;
+
+/** A change to settings: owners only, enforced by the server. */
+export const ShopSettingsPatch = ShopSettings.omit({ updatedAt: true }).partial();
+export type ShopSettingsPatch = z.infer<typeof ShopSettingsPatch>;
+
+export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
+  paymentMethods: { card: true, cash: true, split: true },
+  tips: { enabled: true, mode: 'amounts', presets: [500, 1000, 2000], goTo: 'raiser' },
+  startingCashCents: 15000,
+  breaks: { minutes: 30, afterMinutes: 300 },
+  notifications: { endOfDay: true, email: null },
+  statementsEmail: null,
+  twoCounts: true,
+  onePersonClose: 'owner_next_morning',
+  whoCanClose: 'managers',
+  offlineCards: { enabled: false, limitCents: 50000 },
+  tax: { pricesIncludeTax: false },
+  discountLimits: { counter: 10, manager: 25, owner: null },
+  drawerNoSaleRoles: 'managers',
+  noSaleNeedsPin: true,
+  tableService: false,
+  clearPaidAfterMinutes: 10,
+  waitEstimate: 'this_week',
+  textWaitlist: true,
+};
+
+/**
+ * Set up the till (Home, owners and managers): the steps signup leaves for later, and which are
+ * done. `team` lists who has been added besides the owner.
+ */
+export const SetupProgress = z.object({
+  stripe: z.boolean(),
+  reader: z.boolean(),
+  items: z.boolean(),
+  team: z.array(z.string()),
+  cash: z.boolean(),
+  tips: z.boolean(),
+});
+export type SetupProgress = z.infer<typeof SetupProgress>;
+
+/**
+ * The shop's business verification with Bridge (hosted KYB), which Bridge needs before it moves the
+ * shop's money to a bank. `withdrawToBank` is Bridge's fiat payout capability for the shop.
+ */
+export const KybStatus = z.object({
+  state: z.enum(['not_started', 'needs_info', 'in_review', 'verified', 'rejected', 'paused']),
+  withdrawToBank: z.boolean(),
+  /** Bridge's reason, when it has said no or wants more. */
+  reason: z.string().nullable(),
+  /** The address the business was verified under. */
+  email: z.string().nullable(),
+  /** False when Bridge isn't set up for Clear at all. */
+  available: z.boolean(),
+});
+export type KybStatus = z.infer<typeof KybStatus>;
+export const StartKyb = z.object({
+  legalName: z.string().trim().min(2, 'The business’s legal name').max(160),
+  email: z.string().trim().email('That isn’t an email address'),
+});
+
+/**
+ * Onboarding › Your terms › Have a code?: what a code does. `ok` puts the shop on `tier` (its Clear
+ * rates, in basis points) while places last; `full` is a real code with no places left; `unknown`
+ * is any other string, a retired code included.
+ */
+export const TermsCodeCheck = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('ok'), code: z.string(), tier: z.string(), paidNowBps: z.number().int(), overTimeBps: z.number().int(), placesLeft: z.number().int().min(0), places: z.number().int().min(0) }),
+  z.object({ state: z.literal('full'), code: z.string(), tier: z.string(), places: z.number().int().min(0) }),
+  z.object({ state: z.literal('unknown') }),
+]);
+export type TermsCodeCheck = z.infer<typeof TermsCodeCheck>;
+
+/** A bank account the shop withdraws to: linked with Plaid, paid out to by Bridge. */
+export const BankAccount = z.object({
+  id: Id,
+  bankName: z.string(),
+  /** The last four digits. */
+  mask: z.string(),
+  subtype: z.enum(['checking', 'savings']),
+  addedAt: z.string(),
+});
+export type BankAccount = z.infer<typeof BankAccount>;
+/**
+ * Payouts › Receive: the shop's own account and routing numbers, from Bridge, for being paid by ACH
+ * or wire. Dollars sent to them arrive as USDC in the shop's cash account.
+ *
+ * `not_configured` Bridge isn't set up for Clear; `not_verified` the business isn't verified yet
+ * (Settings › Advanced); `not_opened` it is, and an owner can open the account; `ready` here it is.
+ */
+export const ReceiveDetails = z.object({
+  state: z.enum(['not_configured', 'not_verified', 'not_opened', 'ready']),
+  account: z
+    .object({
+      /** Whose name payers put on the transfer. */
+      beneficiary: z.string(),
+      bankName: z.string().nullable(),
+      routingNumber: z.string(),
+      accountNumber: z.string(),
+      /** The rails it takes: ach_push, wire. */
+      rails: z.array(z.string()),
+    })
+    .nullable(),
+  /** Where Email them sends them: the address the business was verified under. */
+  email: z.string().nullable(),
+});
+export type ReceiveDetails = z.infer<typeof ReceiveDetails>;
+/** What Plaid Link hands back: its public token, the account chosen, and the bank's name for display. */
+export const AddBank = z.object({
+  publicToken: z.string().min(1),
+  accountId: z.string().min(1),
+  institution: z.string().trim().max(120).nullable(),
+});
+

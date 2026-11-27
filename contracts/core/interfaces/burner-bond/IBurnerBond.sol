@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155Upgradeable.sol";
 
 /// @title IBurnerBond
 /// @notice Interface for BurnerBond ERC-1155 token system
-interface IBurnerBond is IERC1155 {
+/// @dev Extends the upgradeable ERC-1155 interface because a collection is a clone of one
+/// implementation rather than its own deployment. Declaring the standard twice, once from each
+/// generation, is the same events defined twice.
+interface IBurnerBond is IERC1155Upgradeable {
     
     /* ========== STRUCTS ========== */
     
@@ -23,6 +26,10 @@ interface IBurnerBond is IERC1155 {
         uint256 purchasePrice;
         bool isRedeemed;
         address creator;
+        /// @dev When the bond was issued. Needed to know how much of its term has run, which is
+        /// what decides what it is worth today -- and which cannot be reconstructed from the
+        /// maturity date alone, because bonds do not all have the same term.
+        uint64 issuedAt;
     }
     
     /* ========== EVENTS ========== */
@@ -119,11 +126,11 @@ interface IBurnerBond is IERC1155 {
     function getDiscountCurve() external view returns (uint8 curveType, uint256 maxDiscount, uint256 maxMaturity, uint256 curveParameter);
     
     /// @notice Set discount curve configuration
+    /// @dev The curve's shape only. Its bounds -- maximum discount and maturity -- are the
+    /// factory's, shared by every collection.
     /// @param curveType Type of curve (0=linear, 1=bonding, 2=logarithmic, 3=custom)
-    /// @param maxDiscount Maximum discount percentage in basis points
-    /// @param maxMaturity Maximum maturity period in seconds
-    /// @param curveParameter Curve-specific parameter (steepness, base, etc.)
-    function setDiscountCurve(uint8 curveType, uint256 maxDiscount, uint256 maxMaturity, uint256 curveParameter) external;
+    /// @param curveParameter Curve-specific parameter (steepness, base, etc.), 10,000 = 1.0
+    function setDiscountCurve(uint8 curveType, uint256 curveParameter) external;
     
     /// @notice Calculate discount using the configured curve
     /// @param maturityDate Maturity date for the bond
@@ -211,32 +218,10 @@ interface IBurnerBond is IERC1155 {
     
     /* ========== ADMIN FUNCTIONS ========== */
     
-    /// @notice Update discount calculation parameters
-    /// @param _maxDiscount Maximum discount percentage in basis points (0-5000)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    /// @param _maxMaturity Maximum maturity period in seconds
-    function updateDiscountParameters(uint256 _maxDiscount, uint256 _minDiscount, uint256 _maxMaturity) external;
-    
-    /// @notice Set minimum discount percentage
-    /// @param _minDiscount Minimum discount percentage in basis points
-    function setMinDiscount(uint256 _minDiscount) external;
-    
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external;
     
     /// @notice Set the underlying token address
     /// @param _underlyingToken Address of the underlying token
     function setUnderlyingToken(address _underlyingToken) external;
-    
-    /// @notice Update minimum and maximum face value limits
-    /// @param _minFaceValue Minimum face value in underlying token units
-    /// @param _maxFaceValue Maximum face value in underlying token units
-    function updateFaceValueLimits(uint256 _minFaceValue, uint256 _maxFaceValue) external;
-    
-    /// @notice Update minimum maturity period
-    /// @param _minMaturity Minimum maturity period in seconds
-    function updateMinMaturity(uint256 _minMaturity) external;
     
     /// @notice Get collection name
     /// @return Collection name
@@ -254,19 +239,6 @@ interface IBurnerBond is IERC1155 {
     /// @return Address of the underlying token
     function getUnderlyingToken() external view returns (address);
     
-    /// @notice Get collection metadata
-    /// @return name Collection name
-    /// @return symbol Collection symbol
-    /// @return description Collection description
-    /// @return underlyingToken Address of underlying token
-    /// @return totalSupply Total bonds minted
-    function getCollectionMetadata() external view returns (
-        string memory name,
-        string memory symbol,
-        string memory description,
-        address underlyingToken,
-        uint256 totalSupply
-    );
     
     /// @notice Get contract-level metadata URI (ERC-7572)
     /// @dev Returns JSON metadata for the entire collection

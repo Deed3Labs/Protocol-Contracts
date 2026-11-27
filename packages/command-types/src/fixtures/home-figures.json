@@ -1,0 +1,59 @@
+{
+ "home.funnel": [
+  [
+   "Visits",
+   36410
+  ],
+  [
+   "Joined",
+   1302
+  ],
+  [
+   "Invited",
+   300
+  ],
+  [
+   "Opened",
+   188
+  ],
+  [
+   "Activated",
+   124
+  ],
+  [
+   "First spend",
+   109
+  ]
+ ],
+ "home.alerts": [
+  {
+   "t": "Plaid is 3 hours behind",
+   "sev": "absent",
+   "area": "Money",
+   "age": "since 19:52",
+   "go": "money",
+   "fix": "resync",
+   "progress": [
+    7,
+    12
+   ]
+  },
+  {
+   "t": "Poster P-044 is sun-faded",
+   "sev": "underway",
+   "area": "Growth",
+   "age": "Mesa Laundry · 19 Oct",
+   "go": "growth",
+   "fix": "route"
+  },
+  {
+   "t": "Rosa’s hit their cap 3 times",
+   "sev": "underway",
+   "area": "Merchants",
+   "age": "today",
+   "go": "merchants",
+   "fix": "needs"
+  }
+ ],
+ "home.redeemed_paid": 540
+}

@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+/* The old palette. Only the pages not yet converted to the reference still read it. */
+@import '../../../packages/tokens/src/tokens.css';
+/*
+ * The reference, transcribed (generated — see scripts/reference-css.mjs), then the app's own
+ * departures from it. In the components layer, so they sit above Tailwind's reset.
+ */
+@import './styles/reference.css' layer(components);
+@import './styles/app.css' layer(components);
+
+
+/* Figures line up in columns so a writer can scan a list of amounts without reading each one. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

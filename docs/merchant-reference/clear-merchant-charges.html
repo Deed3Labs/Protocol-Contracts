@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clear for merchants &middot; Charges</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=IBM+Plex+Mono:wght@400&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>/* Clear app — tokens, component anatomy and shared components.
+   Generated from useclear.org/style. Pass 1: Home + move money. */
+
+:root{
+  --paper:#DFE3DE; --paper-2:#E9ECE7; --ink:#16211D;
+  --ink-70:#525B57; --ink-50:#5A635F; --ink-28:#A7ADA8; --ink-13:#C5CAC5;
+  --live:#24409E;
+  --land:#6B7F5C; --land-ink:#55654A;
+  --settled:#0E6B4E; --underway:#8A5512; --absent:#9B2C22;
+  --s1:8px; --s2:16px; --s3:24px; --s4:40px; --s5:64px; --s6:96px;
+  --radius-none:0; --radius-pill:999px;
+  --font-display:'Bricolage Grotesque',Georgia,serif;
+  --font-text:'Instrument Sans',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --t-hero:40px; --t-hero-m:32px;
+  --t-fig:20px; --t-row:15px;
+  --t-body:15px; --t-sec:13px; --t-detail:12px; --t-label:11.5px;
+  --tier-savings:var(--settled);
+  --tier-asset:var(--land); --tier-asset-ink:var(--land-ink);
+  --tier-income:var(--underway); --tier-boost:var(--absent);
+  --vest-cash:var(--ink); --vest-vested:var(--settled); --vest-vesting:var(--underway);
+  --seam:var(--ink-28);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;padding:var(--s4) var(--s3);background:var(--paper);
+  font-family:var(--font-text);font-size:var(--t-body);line-height:1.6;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+
+.doc{max-width:1120px;margin:0 auto}
+h1{font-family:var(--font-display);font-weight:800;font-size:38px;letter-spacing:-.038em;line-height:1.02;margin:0 0 var(--s2)}
+h2{font-family:var(--font-mono);font-weight:400;font-size:var(--t-label);letter-spacing:.1em;text-transform:uppercase;
+   color:var(--ink-50);margin:var(--s5) 0 0;padding-bottom:var(--s1);border-bottom:1px solid var(--ink-13)}
+h2 + .note{margin-top:var(--s2)}
+.note{font-size:var(--t-sec);color:var(--ink-70);max-width:66ch;line-height:1.65;margin:0 0 var(--s3)}
+.note strong{color:var(--ink);font-weight:600}
+.lede{font-size:17px;line-height:1.45;color:var(--ink-70);max-width:66ch;margin:0 0 var(--s4)}
+.row{display:flex;gap:var(--s3);flex-wrap:wrap;align-items:flex-start}
+
+.desktop{background:var(--paper);border:1px solid var(--ink-28);padding:var(--s3);max-width:880px;width:100%}
+/* a screen that needs the room takes the full document width */
+.desktop.wide{max-width:none}
+.phone{width:340px;background:var(--paper);border:1px solid var(--ink-28);border-radius:26px;
+       padding:var(--s2);position:relative;padding-bottom:var(--s6)}
+
+/* ---------- COMPONENT ANATOMY ----------
+   Every component is header / main / footer. Padding lives on the
+   sections, not the container, so every divider runs edge to edge.
+   Main takes the slack, which pins the footer to the bottom.        */
+.cell,.panel{display:flex;flex-direction:column;min-width:0}
+.cell{background:var(--paper)}
+.panel{border:1px solid var(--seam);background:var(--paper)}
+.chead,.cmain,.cfoot{padding:var(--s2)}
+.cmain{flex:1 1 auto}
+.cmain,.cfoot,.cbar{border-top:1px solid var(--ink-13)}
+.cmain:first-child,.cfoot:first-child,.cbar:first-child{border-top:0}
+.chead + .cfoot{border-top:1px solid var(--ink-13)}
+.chead .sechead{border-bottom:0;padding-bottom:0;margin-bottom:0}
+.panel.act{background:var(--paper-2)}
+.panel.act.short{border-color:var(--live)}
+.panel.act.clear{border-color:var(--settled)}
+.cyc-num{color:var(--ink)}
+.panel.act.short .cyc-num{color:var(--live)}
+.panel.act.clear .cyc-num{color:var(--settled)}
+
+.slab{display:grid;gap:1px;background:var(--seam);border:1px solid var(--seam);
+      grid-template-columns:minmax(0,1.08fr) minmax(0,1fr)}
+.slab.one{grid-template-columns:minmax(0,1fr)}
+/* Earn: the ladder needs more width than the pool does */
+.slab.earn{grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr)}
+/* Inbox. NOT .msg — that is the message block, and .msg{display:inline-block}
+   applied to the slab kills the grid and stacks the panes. Name collisions on a
+   shared stylesheet are the whole reason this modifier is called inbox.
+   .86/1.14, the same ratio Earn uses. The slab holds the window height, the
+   messages scroll between a header and a composer that stay put, and the page
+   itself does not scroll. Height needs an overflow bound or the panes spill. */
+.slab.inbox{grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr);
+            height:calc(100dvh - 137px);overflow:hidden}
+.slab.inbox > .cell{min-height:0;overflow:hidden}
+.slab.inbox .cmain{flex:1 1 auto;overflow-y:auto;min-height:0}
+.slab.inbox .cmain::-webkit-scrollbar{width:0}
+.cell.full{grid-column:1/-1}
+.col{display:grid;gap:1px;background:var(--seam);grid-template-rows:auto 1fr;min-width:0}
+.home{display:flex;flex-direction:column;gap:var(--s3)}
+.phone .home{gap:var(--s2)}
+
+.label{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-50);margin:0}
+.sechead{display:flex;flex-wrap:nowrap;justify-content:space-between;align-items:baseline;gap:var(--s2);height:24px}
+.sechead > *{white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+.fig{font-family:var(--font-text);font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:0}
+.fig-hero{font-size:var(--t-hero);line-height:1.05}
+.fig-sec{font-size:var(--t-fig);line-height:1.2}
+.fig-row{font-size:var(--t-row);font-weight:500}
+.of{font-weight:400;font-size:var(--t-sec);color:var(--ink-50)}
+.sub{font-size:var(--t-sec);color:var(--ink-70);margin:0}
+.det{font-size:var(--t-detail);color:var(--ink-50);margin:0;line-height:1.5}
+/* A header is a fixed 24px line, whatever it holds. Without the fixed height a
+   header carrying a 20px figure is taller than one carrying a 12px caption, and
+   two cells in the same grid row end up with their rules a few pixels apart.
+   These selectors sit after .det and .fig-sec deliberately: at equal specificity
+   the later rule wins, which is why setting this earlier did nothing. */
+.sechead .label,.sechead .det,.sechead .fig,.sechead > span{line-height:24px}
+
+.rows > div{padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.rows > div:first-child{padding-top:0}
+.rows > div:last-child{border-bottom:0;padding-bottom:0}
+/* a ruled list closes itself, so the space below reads as slack not content */
+.rows.ruled > div:last-child{border-bottom:1px solid var(--ink-13);padding-bottom:var(--s2)}
+.line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+.line > :first-child{min-width:0}
+.pair{display:flex;gap:var(--s1)}
+.pair .btn{flex:1;height:44px}
+/* stacked buttons: never .pair, whose flex basis collapses on the cross axis */
+.stack{display:flex;flex-direction:column;gap:var(--s1)}
+.stack .btn{width:100%;height:44px;flex:none}
+
+.btn{font-family:var(--font-text);font-size:var(--t-sec);font-weight:500;height:36px;padding:0 var(--s2);
+     border:1px solid var(--ink-28);background:transparent;color:var(--ink);border-radius:var(--radius-pill);
+     cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);white-space:nowrap}
+.btn:hover{border-color:var(--ink)}
+.btn-primary{height:44px;background:var(--ink);color:var(--paper);border-color:var(--ink);padding:0 var(--s3)}
+.btn-lg{height:44px;width:100%}
+
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--radius-pill);
+      font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+      border:1px solid currentColor;white-space:nowrap}
+.chip .core{width:6px;height:6px;border-radius:50%;background:currentColor;
+            box-shadow:0 0 4px 1px color-mix(in srgb, currentColor 45%, transparent);flex-shrink:0}
+.chip.settled{color:var(--settled)} .chip.underway{color:var(--underway)} .chip.neutral{color:var(--ink-50)} .chip.live{color:var(--live)}
+.ping{position:relative}
+.ping::after{content:'';position:absolute;inset:0;border-radius:inherit;background:currentColor;
+             animation:live-ping 2s cubic-bezier(0,0,.2,1) infinite}
+@keyframes live-ping{0%{transform:scale(1);opacity:.6}75%,100%{transform:scale(3.4);opacity:0}}
+@media (prefers-reduced-motion:reduce){.ping::after{animation:none;opacity:0}}
+
+.bar{display:flex;height:8px;background:var(--ink-13);overflow:hidden}
+.bar > div{height:100%}
+.track{height:8px;background:var(--ink-13)}
+.t-sav{color:var(--tier-savings)} .t-ast{color:var(--tier-asset-ink)}
+.t-inc{color:var(--tier-income)} .muted{color:var(--ink-50)} .pos{color:var(--settled)}
+.legend div{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-detail);line-height:2}
+.legend div span:last-child{flex-shrink:0;white-space:nowrap;color:var(--ink-70)}
+/* hero key — one line, name then its figure, colour on the name.
+   Nothing tries to sit under its own segment of the bar. */
+.keyline{font-size:var(--t-sec);color:var(--ink-70);margin:var(--s1) 0 0;line-height:1.7}
+.keyline strong{font-weight:500;color:var(--ink)}
+.sep{color:var(--ink-50);margin:0 5px}
+.keyline .sep{color:var(--ink-50);margin:0 4px}
+.legend div span.muted:last-child{color:var(--ink-50)}
+
+.topbar{display:flex;justify-content:space-between;align-items:center;
+        padding-bottom:var(--s2);border-bottom:1px solid var(--ink-28);margin-bottom:var(--s3)}
+.wm{font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:-.035em}
+.lockup{display:inline-flex;align-items:center;color:var(--ink)}
+.lockup .mk{display:block;flex-shrink:0;width:20px;height:20px}
+.lockup .wm{font-size:19px;margin-left:10px;line-height:1}
+.lockup.sm .mk{width:18px;height:18px}
+.lockup.sm .wm{font-size:17px;margin-left:9px}
+.topbar nav{display:flex;gap:var(--s3);font-size:var(--t-sec);color:var(--ink-50)}
+.tbright{display:flex;align-items:center;gap:var(--s3)}
+/* the corner is its own group, so anything added later sits with the bell
+   and the avatar rather than a nav-width gap away from them */
+.tbicons{display:flex;align-items:center;gap:var(--s1)}
+.iconbtn{position:relative;width:34px;height:34px;border:0;background:transparent;color:var(--ink-50);
+         display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:var(--radius-pill)}
+.iconbtn:hover{color:var(--ink)}
+/* unread is the guide's dot, still: core plus glow, no ping — mail is not an event */
+.unread{position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--live);
+        box-shadow:0 0 0 2px var(--paper), 0 0 6px 1px color-mix(in srgb, var(--live) 55%, transparent)}
+/* an avatar is an image, and images are square */
+.avatarbtn{width:32px;height:32px;border:1px solid var(--ink-28);background:var(--paper-2);color:var(--ink);
+           font-family:var(--font-text);font-weight:600;font-size:var(--t-detail);display:flex;
+           align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.avatarbtn.sm{width:28px;height:28px;font-size:11px}
+.sheet.menu{width:280px}
+.sheet.notif{width:340px}
+.menurow{display:flex;align-items:center;gap:12px;height:38px;font-size:var(--t-sec);cursor:pointer}
+.menurow span.ic{color:var(--ink-50);display:flex;flex-shrink:0}
+.topbar nav .on{color:var(--ink);font-weight:500}
+
+/* the split footer keeps its centred hairline, now inside .cfoot */
+.foot2{display:grid;grid-template-columns:1fr 1fr}
+.foot2 > div{min-width:0;display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer}
+.foot2 > div:first-child{padding-right:var(--fp,14px)}
+.foot2 > div:last-child{padding-left:var(--fp,14px);border-left:1px solid var(--ink-13)}
+.foot2 p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.navwrap{position:absolute;bottom:var(--s2);left:var(--s2);right:var(--s2);display:flex;gap:var(--s1);align-items:center}
+.navbar{flex:1;height:52px;display:flex;align-items:center;justify-content:space-around;
+        background:var(--paper-2);border:1px solid var(--ink-28)}
+.navbar a{color:var(--ink-50);display:flex;align-items:center;justify-content:center;
+          flex:1;min-width:44px;height:44px}
+.navbar a.on{color:var(--ink)}
+.navfab.wide{width:auto;padding:0 var(--s2);gap:7px;font-size:var(--t-sec);font-weight:500}
+.navfab{height:52px;width:52px;border-radius:var(--radius-pill);background:var(--ink);color:var(--paper);
+        border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.qa{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1)}
+.qa .btn{width:100%}
+
+.tokens{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s2);margin-bottom:var(--s4)}
+.tok{border-top:1px solid var(--ink-13);padding-top:var(--s1)}
+.tok .sw{height:26px;margin-bottom:var(--s1)}
+.tok p{margin:0}
+.tok .n{font-size:var(--t-sec);font-weight:500}
+.tok .v{font-family:var(--font-mono);font-size:var(--t-label);color:var(--ink-50)}
+.chg{list-style:none;padding:0;margin:0 0 var(--s3);max-width:74ch}
+.chg li{border-top:1px solid var(--ink-13);padding:var(--s1) 0;font-size:var(--t-sec);color:var(--ink-70);line-height:1.6}
+.chg li b{color:var(--ink);font-weight:600}
+.statelab{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;text-transform:uppercase;
+          color:var(--ink);margin:var(--s4) 0 var(--s1)}
+
+@media (max-width:900px){
+  body{padding:var(--s3) var(--s2)}
+  h1{font-size:30px}
+  .desktop{overflow-x:auto}
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--docbg:#16211D;--doctext:#ABB1AC;--docrule:#3A4440;--docink:#DFE3DE}
+}
+:root[data-theme="dark"]{--docbg:#16211D;--doctext:#ABB1AC;--docrule:#3A4440;--docink:#DFE3DE}
+body{background:var(--docbg,var(--paper));color:var(--docink,var(--ink))}
+.note,.lede{color:var(--doctext,var(--ink-70))}
+h2{color:var(--doctext,var(--ink-50));border-color:var(--docrule,var(--ink-13))}
+.statelab{color:var(--docink,var(--ink))}
+.chg li{border-color:var(--docrule,var(--ink-13));color:var(--doctext,var(--ink-70))}
+.chg li b{color:var(--docink,var(--ink))}
+.tok{border-color:var(--docrule,var(--ink-13))}
+.tok .v{color:var(--doctext,var(--ink-50))}
+.desktop,.phone,.panel,.slab,.sheet,.modal,.authshell{color:var(--ink)}
+
+
+/* ================= MODAL — a component like any other ================= */
+.sheet{width:340px;background:var(--paper);border:1px solid var(--ink-28);border-radius:26px;overflow:hidden}
+.sheet.wide{width:640px;border-radius:0}
+.modal{display:flex;flex-direction:column;min-width:0}
+.mtitle{font-size:var(--t-body);font-weight:600}
+.mclose{color:var(--ink-50);cursor:pointer;display:flex}
+.mcols{display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:var(--s3);align-items:start}
+.mhero{text-align:center;padding:var(--s3) 0}
+
+.bigamt{font-family:var(--font-text);font-weight:600;font-size:var(--t-hero);letter-spacing:-.03em;
+        line-height:1.05;margin:4px 0 0;font-variant-numeric:tabular-nums}
+.bigamt .dec{color:var(--ink-50)}
+.paytoday{font-size:var(--t-sec);color:var(--live);margin:6px 0 0}
+
+.qc{display:flex;gap:var(--s1);margin-top:var(--s2)}
+.chip-q{flex:1;padding:0;height:34px;font-size:var(--t-detail)}
+.chip-q.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* route — two legs on a shared seam, the control sitting on it */
+.route{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1px;background:var(--seam);
+       border:1px solid var(--seam);position:relative;margin-top:var(--s2)}
+.route .leg{background:var(--paper-2);padding:var(--s2);min-width:0}
+.route > .leg:nth-child(1){padding-right:25px}
+.route > .leg:nth-child(2){padding-left:25px}
+.route .nm{font-size:var(--t-sec);margin:6px 0 0;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.route .bal{font-size:var(--t-detail);color:var(--ink-50);margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.swap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;
+      border-radius:var(--radius-pill);background:var(--paper-2);border:1px solid var(--seam);
+      box-shadow:0 0 0 3px var(--paper-2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+
+/* keypad — the slab idea at small scale */
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--seam);
+        border:1px solid var(--seam);margin-top:var(--s2)}
+.keypad div{background:var(--paper-2);padding:13px 0;text-align:center;font-family:var(--font-text);
+            font-size:19px;font-weight:500;cursor:pointer;user-select:none;display:flex;
+            align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.keypad .fn{color:var(--ink-50)}
+
+/* consequences — the five lines, no longer a box inside a box */
+.conseq div{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-sec);line-height:1.95}
+.conseq div span:first-child{color:var(--ink-70)}
+.conseq div span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.conseq .earn span{color:var(--live)}
+.conseq .earn span:last-child{font-weight:600}
+.conseq .limit{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
+.conseq .limit span:last-child{color:var(--settled);font-weight:600}
+.conseq .limit.down span:last-child{color:var(--ink)}
+/* absent is for a broken constraint, never for a choice being discouraged */
+.conseq .short span{color:var(--absent)}
+.conseq .short span:last-child{font-weight:600}
+
+/* named steps */
+.steps{margin-top:var(--s3)}
+.steps > div{display:flex;align-items:center;gap:10px;font-size:var(--t-sec);line-height:2.1;color:var(--ink-50)}
+.steps > div.ok{color:var(--ink-70)}
+.steps > div.on{color:var(--ink);font-weight:500}
+.marker{width:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.marker .core{width:7px;height:7px;border-radius:50%;background:currentColor;
+              box-shadow:0 0 6px 1px color-mix(in srgb, currentColor 55%, transparent)}
+.pend{width:6px;height:6px;border-radius:50%;background:var(--ink-28);display:block}
+
+/* ================= SPLIT PAY ================= */
+.qc.split{margin-top:var(--s2)}
+.qc.split .chip-q{height:36px;font-size:var(--t-sec)}
+/* segment bars — one block per payment. A count made visible, not a ratio. */
+.segs{display:flex;gap:4px;height:9px;margin-top:var(--s2)}
+.segs > div{flex:1;background:var(--ink);min-width:0}
+.segcap{font-size:var(--t-sec);color:var(--ink-70);margin:var(--s1) 0 0}
+.balrow{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+.balrow .nm{font-size:var(--t-sec);color:var(--ink-70);margin:0}
+.conseq .total{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
+.conseq .total span{color:var(--live)}
+.conseq .total span:last-child{font-weight:600}
+.footnote{border-top:1px solid var(--ink-13);margin-top:var(--s2);padding-top:var(--s2)}
+.footnote p{margin:0;font-size:var(--t-detail);color:var(--ink-50);line-height:1.6}
+
+/* ================= EARN ================= */
+/* The guide has no chart vocabulary. A ring is a data mark, not a container,
+   so the square/pill rule does not reach it — but its caps are squared, because
+   a round cap is the one rounded gesture the guide otherwise never makes. */
+.ring{position:relative;flex-shrink:0}
+.ring svg{transform:rotate(-90deg);display:block}
+.ring .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+           font-family:var(--font-text);font-weight:600;font-size:var(--t-sec);font-variant-numeric:tabular-nums}
+.rate{display:flex;align-items:center;gap:var(--s2)}
+.rate .apy{font-family:var(--font-text);font-weight:600;font-size:26px;letter-spacing:-.02em;margin:0;line-height:1.1}
+.rate .apy small{font-size:var(--t-detail);font-weight:400;color:var(--ink-70)}
+
+.ladder{font-size:var(--t-sec);font-variant-numeric:tabular-nums}
+.ladder .lrow{display:grid;gap:10px;align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.ladder .lrow:first-child{padding-top:0}
+.ladder .lrow:last-child{border-bottom:0;padding-bottom:0}
+.ladder .lhead{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;
+               text-transform:uppercase;color:var(--ink-50);padding-top:0}
+.ladder .lrow > :not(:first-child){text-align:right}
+/* stat tile — label above figure. Side by side it clipped at phone width. */
+.stat .label{margin-bottom:6px}
+.stat .fig{white-space:nowrap}
+/* ---- control bar — a fourth optional section, for components you filter
+   or sort. Sits between header and main so both its rules run edge to edge. */
+.cbar{padding:var(--s2);border-top:1px solid var(--ink-13)}
+/* a footer pair is one line: the left side truncates, the right side never shrinks */
+.cfoot > .line > *{white-space:nowrap}
+.cfoot > .line > :first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.cfoot > .line > :last-child{flex-shrink:0}
+.listctl{display:flex;justify-content:space-between;align-items:center;gap:var(--s1)}
+.listctl .btn{height:34px;padding:0 12px;gap:6px;font-size:var(--t-sec)}
+.listctl .btn svg{flex-shrink:0}
+.ladder.sm{font-size:11px}
+.ladder.sm .lrow{gap:6px}
+.bondrow{padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.bondrow:first-child{padding-top:0}
+.bondrow:last-child{border-bottom:0;padding-bottom:0}
+.bondrow .worth{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
+
+/* ================= MILESTONE RAIL ================= */
+.rail{position:relative}
+.mstone{position:relative;padding-left:26px;padding-bottom:var(--s2)}
+.mstone.last{padding-bottom:0}
+.mstone::before{content:'';position:absolute;left:6px;top:14px;bottom:0;width:1px;background:var(--ink-28)}
+.mstone.last::before{display:none}
+.mdot{position:absolute;left:0;top:3px;width:13px;height:13px;border-radius:50%;
+      border:1.5px solid var(--ink-28);background:var(--paper);display:block}
+.mstone.done .mdot{background:var(--settled);border-color:var(--settled)}
+.mstone.now .mdot{border-color:var(--live);background:var(--paper);
+                  box-shadow:0 0 6px 1px color-mix(in srgb, var(--live) 45%, transparent)}
+.mstone.later{opacity:.6}
+.mstone .det{white-space:nowrap}
+.mstone .line > span:first-child{min-width:0}
+.col.three{grid-template-rows:auto auto 1fr}
+
+/* ================= SETTINGS ================= */
+/* The rail is a selector drawn with rules, not filled chips. */
+.pane{display:grid;grid-template-columns:190px minmax(0,1fr);gap:var(--s3)}
+.railnav{font-size:var(--t-sec)}
+.railnav a{display:block;padding:var(--s1) 0 var(--s1) 12px;color:var(--ink-50);
+           text-decoration:none;border-left:2px solid transparent}
+.railnav a.on{color:var(--ink);font-weight:600;border-left-color:var(--ink)}
+.railnav .sep{border-top:1px solid var(--ink-13);margin:var(--s1) 0;padding-top:var(--s1)}
+.panetitle{font-family:var(--font-text);font-weight:600;font-size:17px;letter-spacing:-.02em;margin:0}
+.paneback{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.kv{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);font-size:var(--t-sec)}
+/* The label holds one line; the value wraps into whatever is left. Letting the
+   label wrap produced two half-lines each with its own ellipsis, and letting the
+   value stay nowrap pushed the label out entirely. */
+.kv > span:first-child{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;
+                       text-overflow:ellipsis}
+.kv .v{display:flex;align-items:center;justify-content:flex-end;gap:8px;color:var(--ink-50);
+       font-size:var(--t-detail);flex:1 1 auto;min-width:0;text-align:right}
+.grouplabel{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;
+            text-transform:uppercase;color:var(--ink-50);margin:0 0 var(--s2)}
+/* stacked sections share the anatomy's rule, so a group break is never a floating label */
+.cmain + .cmain{border-top:1px solid var(--ink-13)}
+.avatar{width:52px;height:52px;background:var(--paper-2);border:1px solid var(--ink-28);
+        display:flex;align-items:center;justify-content:center;font-weight:600;font-size:17px;flex-shrink:0}
+.mono{font-family:var(--font-mono);font-size:var(--t-detail)}
+
+/* ================= QUICK ACTIONS FAN ================= */
+.qafan{position:absolute;bottom:80px;right:var(--s2);display:flex;flex-direction:column;
+       align-items:flex-end;gap:var(--s1)}
+.qaitem{height:40px;padding:0 var(--s2);display:flex;align-items:center;background:var(--paper-2);
+        border:1px solid var(--ink-28);font-size:var(--t-sec);font-weight:500;white-space:nowrap;
+        border-radius:var(--radius-pill)}
+.navfab.open svg{transform:rotate(45deg)}
+
+/* ================= SEND ================= */
+.searchrow{display:flex;gap:var(--s1);align-items:center}
+.field{flex:1;min-width:0;height:44px;padding:0 var(--s2);border:1px solid var(--ink-28);
+       background:var(--paper-2);color:var(--ink-50);font-family:var(--font-text);
+       font-size:var(--t-sec);border-radius:var(--radius-none)}
+.btn.iconsq{width:44px;height:44px;padding:0;flex-shrink:0}
+.btn.icon36{width:36px;height:36px;padding:0;flex-shrink:0}
+.searchrow .btn{height:44px}
+.cbarline{padding-bottom:var(--s2);border-bottom:1px solid var(--ink-13);margin-bottom:var(--s3)}
+/* viewfinder — corners only, drawn with the same hairlines as everything else */
+.viewfinder{position:relative;aspect-ratio:1;background:var(--ink);border:1px solid var(--ink-28)}
+.vf{position:absolute;width:34px;height:34px;border:2px solid var(--paper)}
+.vf.tl{top:16px;left:16px;border-right:0;border-bottom:0}
+.vf.tr{top:16px;right:16px;border-left:0;border-bottom:0}
+.vf.bl{bottom:16px;left:16px;border-right:0;border-top:0}
+.vf.br{bottom:16px;right:16px;border-left:0;border-top:0}
+
+/* ================= CARD ================= */
+/* Hardware is rounded, software is square. The card face is a picture of a
+   physical object, so it takes the object's radius, like the phone bezel. */
+.cardface{background:var(--ink);color:var(--paper);aspect-ratio:1.586;border-radius:12px;
+          padding:var(--s2);display:flex;flex-direction:column;justify-content:space-between}
+.cardface .wm{color:var(--paper)}
+.cardface.virtual{background:linear-gradient(160deg,#1E2C27 0%,#16211D 70%)}
+.cardface.frozen{background:var(--ink-70)}
+.cchip{width:36px;height:27px;border-radius:4px;background:var(--ink-28);display:block;position:relative}
+.cchip::after{content:'';position:absolute;inset:6px 4px;border-left:1px solid var(--ink-70);
+              border-right:1px solid var(--ink-70)}
+.pan{font-family:var(--font-mono);font-size:15px;letter-spacing:.06em;color:var(--paper);margin:0}
+.cmeta{font-size:11px;color:var(--ink-28);font-family:var(--font-text)}
+.ctag{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--ink-28)}
+/* the wallet: the selected card in front, the rest behind it and slightly below.
+   The stack is swiped, so the cards behind only have to say that they exist. */
+.cardstack{position:relative;padding-bottom:18px}
+.cardstack .cardface{position:absolute;top:0;left:0;right:0}
+.cardstack .cardface.sel{position:relative;z-index:3}
+.cardstack .cardface.b1{top:9px;left:9px;right:9px;opacity:.62;z-index:2}
+.cardstack .cardface.b2{top:18px;left:18px;right:18px;opacity:.4;z-index:1}
+/* the marker for the card you are on stretches rather than just filling in */
+.stackdots{display:flex;gap:5px;justify-content:center;margin-top:10px}
+.stackdots span{width:5px;height:5px;background:var(--ink-28);display:block;
+                transition:width .22s ease, background-color .22s ease}
+.stackdots span.on{width:17px;background:var(--ink);animation:dotgrow .28s ease}
+@keyframes dotgrow{from{width:5px}to{width:17px}}
+@media (prefers-reduced-motion:reduce){
+  .stackdots span{transition:none}
+  .stackdots span.on{animation:none}
+}
+.cstate{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+        color:var(--paper);border:1px solid var(--ink-28);padding:2px 8px;border-radius:var(--radius-pill)}
+
+/* a switch is neither a button nor a status chip, so it is square like everything drawn */
+.sw{width:38px;height:22px;background:var(--ink-28);border:1px solid var(--ink-28);
+    display:inline-flex;align-items:center;padding:2px;flex-shrink:0;cursor:pointer}
+.sw .knob{width:16px;height:16px;background:var(--paper);display:block;margin-left:0}
+.sw.on{background:var(--settled);border-color:var(--settled)}
+.sw.on .knob{margin-left:auto}
+
+.ord{display:inline-block;width:26px;font-family:var(--font-mono);font-size:var(--t-label);color:var(--ink-50)}
+.cell.tall{grid-row:span 2}
+
+/* four digits, not a text field — one box per digit, caret on the live one */
+.pinbox{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s1)}
+.pinbox span{height:56px;background:var(--paper-2);border:1px solid var(--ink-28);
+             display:flex;align-items:center;justify-content:center;
+             font-family:var(--font-text);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums}
+.pinbox span.live{border-color:var(--ink)}
+.pinbox span.live::after{content:'';width:1px;height:24px;background:var(--ink);animation:caret 1.1s step-end infinite}
+@keyframes caret{50%{opacity:0}}
+.listctl{flex-wrap:wrap}
+
+/* the rail sits inside .cbar, which already provides the padding — a margin here
+   doubles the space under the buttons, and .qc's own top margin pushes the
+   chips out of line with the button beside them */
+.cardsel{display:flex;align-items:center;gap:var(--s1)}
+.cardsel .qc{flex:1;min-width:0;margin-top:0}
+.btn.linkish{border-color:transparent;color:var(--ink-50);padding:0 12px;flex-shrink:0}
+.btn.linkish:hover{border-color:var(--ink-28);color:var(--ink)}
+
+/* the waterfall runs left to right on desktop: order is the fact, so it reads
+   as an order rather than a stack of rows in a wide column */
+.wf{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+/* the waterfall is not always five steps */
+.wf.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.wf > div{padding:0 var(--s2);border-left:1px solid var(--ink-13);min-width:0}
+.wf > div:first-child{padding-left:0;border-left:0}
+.wf > div:last-child{padding-right:0}
+.wf .ord{display:block;width:auto;margin-bottom:6px}
+
+/* ================= ACTIVITY ================= */
+.searchfield{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:var(--s1);height:36px;
+             padding:0 12px;border:1px solid var(--ink-28);background:var(--paper-2)}
+.searchfield .ic{color:var(--ink-50);display:flex;flex-shrink:0}
+.field.bare{border:0;background:transparent;height:auto;padding:0;flex:1;min-width:0}
+.listctl .btn{flex-shrink:0}
+.ctlstack{display:flex;flex-direction:column;gap:var(--s1)}
+.ctlstack .searchfield{flex:none;width:100%}
+.listctl.nowrap{flex-wrap:nowrap}
+.listctl.nowrap .btn{min-width:0}
+
+/* ================= AUTH AND ONBOARDING ================= */
+/* A sign-in screen is a screen: one height for every step, with the content
+   spaced inside it rather than the frame shrinking to whatever the step holds. */
+.authshell{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:1px;background:var(--seam);
+           border:1px solid var(--seam);max-width:880px;height:600px;overflow:hidden}
+.authshell > .cell{min-height:0;overflow:hidden}
+.authshell .cmain{flex:1 1 auto;overflow-y:auto;min-height:0}
+.authshell .cmain::-webkit-scrollbar{width:0}
+.brandpanel{background:var(--paper-2);padding:var(--s5) var(--s4);display:flex;flex-direction:column;justify-content:space-between}
+.brandpanel .statement{font-family:var(--font-display);font-weight:800;font-size:32px;letter-spacing:-.035em;
+                       line-height:1.05;margin:var(--s5) 0 var(--s2);max-width:16ch}
+.authshell .cell{background:var(--paper)}
+.ordiv{display:flex;align-items:center;gap:var(--s2);margin:var(--s2) 0;color:var(--ink-50);font-size:var(--t-detail)}
+.ordiv::before,.ordiv::after{content:'';flex:1;height:1px;background:var(--ink-13)}
+.pinbox.six{grid-template-columns:repeat(6,1fr)}
+.pinbox.six span{height:48px;font-size:19px}
+.pinbox span.done{border-color:var(--ink)}
+.pinbox.err span{border-color:var(--absent)}
+.errline{color:var(--absent)}
+.pending{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);
+         padding:var(--s1) var(--s2);border:1px solid var(--ink-28);background:var(--paper-2);
+         margin-bottom:var(--s2);font-size:var(--t-sec)}
+.scanbox{border:1px dashed var(--ink-28);padding:var(--s4) var(--s2);text-align:center}
+
+/* a chooser mark is square, like every other drawn control */
+.pick{width:20px;height:20px;border:1px solid var(--ink-28);background:var(--paper);
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pick.on{background:var(--ink);border-color:var(--ink)}
+
+/* destructive: distinct, never the heaviest thing on the screen */
+.btn-danger{border-color:var(--absent);color:var(--absent)}
+.btn-danger:hover{border-color:var(--absent);background:transparent}
+
+.mapbox{aspect-ratio:16/10;background:var(--paper-2);border:1px solid var(--ink-28);
+        display:flex;align-items:center;justify-content:center;
+        font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;color:var(--ink-50)}
+
+/* a swiped row slides, it does not shrink. The body keeps its full width so
+   nothing reflows; the actions sit over its right end at full row height. */
+.rows > div.swiped{padding:0;position:relative;overflow:hidden}
+.rows > div.swiped .sbody{padding:var(--s2) 0}
+.sacts{position:absolute;top:0;right:0;bottom:0;display:flex}
+.sact{width:78px;flex-shrink:0;border:0;cursor:pointer;font-family:var(--font-mono);font-size:10.5px;
+      letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center}
+/* the leading action is whatever this notification is for, so it takes the ink;
+   clearing is incidental and stays quiet */
+.sact.lead{background:var(--ink);color:var(--paper)}
+.sact.dismiss{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
+/* red marks irreversible, not disapproved — the same distinction the short
+   withdrawal makes. Archive is reversible and stays quiet. */
+.sact.danger{background:var(--absent);color:var(--paper)}
+.sacts.three .sact{width:62px}
+
+/* two header actions, separated by a rule rather than running together */
+.headacts{display:flex;align-items:center;gap:var(--s2)}
+.headacts span{cursor:pointer;white-space:nowrap}
+.headacts span + span{border-left:1px solid var(--ink-13);padding-left:var(--s2)}
+
+/* ================= MESSAGES ================= */
+/* No bubbles. A message is a square block: theirs on paper-2, yours in ink. */
+.msgrow{margin-bottom:14px}
+.msgrow:last-child{margin-bottom:0}
+.msg{background:var(--paper-2);border:1px solid var(--ink-28);padding:11px var(--s2);
+     font-size:var(--t-sec);line-height:1.55;max-width:82%;display:inline-block}
+.msg.me{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.msgrow.me{text-align:right}
+.msgrow.me .msg{text-align:left}
+.msgtime{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;color:var(--ink-50);
+         margin:4px 0 0}
+.sysmsg{display:flex;align-items:flex-start;gap:9px;font-size:var(--t-detail);color:var(--ink-50);
+        line-height:1.55;border-top:1px solid var(--ink-13);border-bottom:1px solid var(--ink-13);
+        padding:var(--s2) 0;margin-bottom:var(--s2)}
+.sysmsg .ic{color:var(--settled);display:flex;flex-shrink:0;margin-top:1px}
+.composer{display:flex;gap:var(--s1);align-items:center}
+.composer .field{flex:1;min-width:0}
+/* a selected row is marked with a rule, like the settings rail — not a fill
+   that ignores where the dividers sit. The mark is centred on the row and sits
+   flush to the cell edge, rather than being a border that inherits the row's
+   asymmetric padding. */
+.rows > div.on{position:relative}
+.rows > div.on::before{content:'';position:absolute;left:calc(var(--s2) * -1);
+                       top:50%;transform:translateY(-50%);height:calc(100% - var(--s2));
+                       width:2px;background:var(--ink)}
+.rows > div.on .det{color:var(--ink-70)}
+/* thread kind reads from the avatar ground; the open thread states it in words */
+/* the kind is one signal, not two: a badge beside the name, avatars all equal.
+   A fixed square centres predictably against a text line; a bare glyph does not. */
+.kindbadge{width:18px;height:18px;border:1px solid var(--ink-28);color:var(--ink-50);
+           display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px}
+.kindbadge svg{width:11px;height:11px;display:block}
+.kindbadge.support{border-color:var(--settled);color:var(--settled)}
+
+/* A phone is a screen, not a box that grows to fit. Fixed height, one size for
+   every screen in a set, and the body scrolls inside while the footer holds. */
+.phone.fixed{height:700px;display:flex;flex-direction:column;overflow:hidden}
+/* A page is a different thing from a screen. One height so a set of them reads
+   as one device, but the whole page scrolls — clipping a multi-cell page just
+   hides the bottom of it. */
+.phone.page{height:700px;overflow-y:auto;scrollbar-width:none}
+.phone.page::-webkit-scrollbar{width:0}
+.phone.fixed > .slab{flex:1 1 auto;min-height:0}
+.phone.fixed > .slab > .cell{min-height:0}
+.phone.fixed .cmain{overflow-y:auto;min-height:0}
+.phone.fixed .cmain::-webkit-scrollbar{width:0}
+
+
+.panehint{display:flex;flex-direction:column;align-items:center;justify-content:center;
+          height:100%;text-align:center;padding:var(--s4) var(--s3)}
+
+/* no physical card yet — a card-shaped absence, not a filled box */
+.cardslot{aspect-ratio:1.586;border:1px dashed var(--ink-28);border-radius:12px;
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
+          text-align:center;padding:var(--s3);gap:var(--s1)}
+/* a field we do not own: the issuer's SDK renders inside it. The frame is ours,
+   the field is theirs, and the label says so. */
+.hosted{border:1px solid var(--ink-28);background:var(--paper-2);padding:var(--s3) var(--s2) var(--s2)}
+.hosted .pinbox{max-width:232px;margin:0 auto}
+.hosted .note-hosted{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;
+                     text-transform:uppercase;color:var(--ink-50);text-align:center;
+                     margin:var(--s2) 0 0}
+
+/* the header a flow uses instead of the nav: close, what this is, who is on shift */
+.mc-flowtop{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);
+            padding-bottom:var(--s2);margin-bottom:var(--s3);border-bottom:1px solid var(--ink-13)}
+.mc-flowtop .t{display:flex;align-items:center;gap:10px;font-size:var(--t-body);font-weight:500}
+.mc-flowtop .t svg{color:var(--ink-50)}
+
+/* ============================================================
+   MERCHANT ADDITIONS. Same brand, same components. What is new
+   here is the frame (a tablet in a stand) and the handful of
+   things only a counter needs.
+   ============================================================ */
+
+/* a tablet is hardware, so it takes a real-world radius like the phone */
+.mc-tablet{background:var(--paper);border:1px solid var(--ink-28);border-radius:22px;
+        padding:var(--s3);width:100%;max-width:1000px;color:var(--ink)}
+.mc-tablet.mc-portrait{max-width:640px}
+
+/* A tablet is a screen, not a box that grows: a landscape iPad's proportions, with
+   the slab stretching to fill what the header leaves. Cells keep their footers on
+   the floor of the screen and scroll inside if they have to. */
+.mc-tablet{display:flex;flex-direction:column;aspect-ratio:1180/820;overflow:hidden}
+.mc-tablet.mc-portrait{aspect-ratio:820/1180}
+.mc-tablet > *{flex-shrink:0}
+.mc-tablet > .slab{flex:1 1 auto;min-height:0}
+.mc-tablet > .slab.one{display:flex;flex-direction:column}
+.mc-tablet > .slab.one > :last-child{flex:1 1 auto}
+.mc-tablet > .slab > .cell,.mc-tablet > .slab > .col,
+.mc-tablet > .slab > .col > .cell{min-height:0;overflow:hidden}
+.mc-tablet .cmain{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none}
+/* Side-by-side cells share their rows — header, body, footer — so the rules under
+   a header and above a footer are one line across the seam, whatever each cell
+   holds. (A column of stacked cells opts out; it has its own rows.) */
+.mc-tablet > .slab:not(.one):not(:has(> .col)){grid-template-rows:auto minmax(0,1fr) auto;row-gap:0}
+.mc-tablet > .slab:not(.one):not(:has(> .col)) > .cell,
+.mc-tablet > .slab:not(.one):not(:has(> .col)) > .panel{display:grid;grid-row:span 3;
+                                                         grid-template-rows:subgrid}
+/* two screens in a row are two devices, not one long one */
+.mc-tablet + .mc-tablet{margin-top:var(--s4)}
+
+/* ---- phone: 308px of content, so anything laid out for a tablet stacks ---- */
+/* the figure and its action are a column, and the action is full width */
+.phone .mc-hero{flex-direction:column;align-items:stretch;gap:var(--s2);margin:var(--s2) 0 var(--s3)}
+.phone .mc-hero .btn{width:100%;height:44px}
+/* two footer items side by side leave ~130px each — they stack, and the divider
+   becomes the rule between them */
+.phone .foot2{grid-template-columns:minmax(0,1fr)}
+.phone .foot2 > div:first-child{padding-right:0;padding-bottom:10px}
+.phone .foot2 > div:last-child{padding-left:0;padding-top:10px;border-left:0;
+                               border-top:1px solid var(--ink-13)}
+/* a row that ends in a button: the button keeps its size, the text gives way */
+.phone .cfoot .line > .btn,.phone .rows .line > .btn{flex-shrink:0}
+.phone .rows .line > div:first-child,.phone .cfoot .line > div:first-child{min-width:0}
+/* the two-up button pair is too wide to sit in one row at this width */
+.phone .cfoot .pair{flex-direction:column}
+.phone .cfoot .pair .btn{width:100%}
+/* A page is not a screen. Home keeps the iPad's height, but when there is more on
+   it than fits, the whole page scrolls — exactly as the member app's phone pages
+   do — rather than squeezing each cell until its content is cut off. The charge
+   flow stays a screen: footers pinned, the body filling what is left. */
+.mc-tablet.mc-page{overflow-y:auto;scrollbar-width:none}
+.mc-tablet.mc-page::-webkit-scrollbar{width:0}
+.mc-tablet.mc-page > .slab{flex:1 0 auto;min-height:auto}
+.mc-tablet.mc-page > .slab > .cell,.mc-tablet.mc-page > .slab > .col,
+.mc-tablet.mc-page > .slab > .col > .cell,.mc-tablet.mc-page .cmain{overflow:visible}
+.mc-tablet .cmain::-webkit-scrollbar{width:0}
+.mc-frames{display:flex;flex-direction:column;gap:var(--s4)}
+
+.mc-top{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);
+        padding-bottom:var(--s2);margin-bottom:var(--s2);border-bottom:1px solid var(--ink-13)}
+/* the shop's name follows the wordmark after a thin divider, and trims if it is long */
+.mc-who{display:flex;align-items:center;gap:6px;min-width:0}
+.mc-for{font-size:var(--t-sec);color:var(--ink-70);white-space:nowrap;line-height:18px;height:18px;margin-left:2px;padding-left:8px;border-left:1px solid var(--ink-28);min-width:0;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.mc-top nav{display:flex;gap:var(--s3);font-size:var(--t-sec);color:var(--ink-50)}
+.mc-top nav span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.mc-top nav .on{color:var(--ink);font-weight:500}
+.mc-top nav .mc-lock{color:var(--ink-28)}
+.mc-right{display:flex;align-items:center;gap:var(--s1)}
+/* who is on the counter is a status, so it is a pill — and tapping it changes shift */
+.mc-shift{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px 0 10px;
+          border:1px solid var(--ink-28);border-radius:var(--radius-pill);background:var(--paper);
+          font-family:var(--font-text);font-size:var(--t-detail);color:var(--ink-50);cursor:pointer;
+          white-space:nowrap}
+.mc-shift b{font-weight:500;color:var(--ink)}
+/* on a phone the pill keeps the dot and the name; "on shift" is what the dot says */
+.mc-shift.sm{height:28px;padding:0 10px 0 9px;gap:7px}
+.mc-phonetop{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);
+             margin-bottom:var(--s3)}
+.mc-phonetop .mc-for{font-size:var(--t-detail)}
+.mc-shift i{width:7px;height:7px;border-radius:50%;background:var(--settled);display:block;
+            box-shadow:0 0 6px 1px color-mix(in srgb, var(--settled) 55%, transparent)}
+
+/* the hero sits on paper, left-aligned, with New charge beside it */
+.mc-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--s3);
+         margin:var(--s3) 0;text-align:left}
+.mc-hero .btn-primary{height:48px;padding:0 var(--s4);font-size:var(--t-body);flex-shrink:0}
+
+/* The waiting charge is Home's temporary slot, exactly as on the member Home: its
+   own block between the hero and the slab, absent when nothing is waiting. It is
+   never a bordered box inside a column, which doubles the border against the seam. */
+.mc-slot{margin-bottom:var(--s2)}
+.panel.act.mc-wait{border-color:var(--underway)}
+/* stacked profiles: solid, each ringed in paper, the first on top. Nothing is
+   translucent — a face you can see through reads as a rendering fault. */
+.mc-faces{display:flex;flex-shrink:0}
+.mc-faces .avatarbtn{cursor:default;position:relative;background:var(--paper-2);
+                     box-shadow:0 0 0 2px var(--paper)}
+.mc-faces .avatarbtn + .avatarbtn{margin-left:-10px}
+.mc-faces .avatarbtn:nth-child(1){z-index:3}
+.mc-faces .avatarbtn:nth-child(2){z-index:2}
+.mc-faces .avatarbtn:nth-child(3){z-index:1}
+/* The count sits at the back of the stack with the faces, not on top of them:
+   people first, the remainder behind. It keeps the paper ground and the dashed
+   border so it still reads as a count rather than a person. */
+.mc-faces .avatarbtn.more{background:var(--paper);border-style:dashed;
+                          color:var(--ink-70);font-weight:500}
+/* one row at every width: faces, what is going on, the action. The text wraps;
+   nothing reflows into a different shape on a phone. */
+.mc-g2{display:flex;align-items:center;gap:var(--s2)}
+.mc-g2 > .txt{min-width:0;flex:1 1 auto}
+.mc-g2 > .act{flex-shrink:0}
+
+/* waiting rows: one grid so every column lines up down the list */
+.mc-wrow{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) minmax(0,1.2fr) auto 14px;
+         gap:var(--s2);align-items:center}
+.mc-wrow > .det{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-wrow > .det:nth-child(3){text-align:right}
+.mc-wrow > .fig{text-align:right}
+/* on a phone it folds to two lines rather than five columns */
+.phone .mc-wrow{grid-template-columns:minmax(0,1fr) auto;row-gap:4px}
+.phone .mc-wrow > :nth-child(1){grid-area:1/1}
+.phone .mc-wrow > :nth-child(4){grid-area:1/2}
+.phone .mc-wrow > :nth-child(2){grid-area:2/1}
+.phone .mc-wrow > :nth-child(3){grid-area:2/2}
+.phone .mc-wrow > :nth-child(5){display:none}
+
+/* delivery receipts — the thing a card terminal cannot show */
+.mc-rcpt{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s3);margin-top:var(--s2)}
+.mc-rcpt span{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-detail);color:var(--ink-50)}
+.mc-rcpt span svg{flex-shrink:0}
+.mc-rcpt span.mc-ok{color:var(--ink-70)}
+.mc-rcpt span.mc-now{color:var(--live)}
+
+/* the owner-only nav items stay visible on a counter shift, marked, so a writer
+   learns where things are and an owner knows where to sign in */
+.mc-lockg{display:inline-flex;color:var(--ink-28)}
+
+.mc-tip .keyline{margin:0}
+
+.mc-filters{display:flex;gap:var(--s1);align-items:center}
+.mc-filters .btn{height:36px}
+/* the split uses the member app's segment bar — one block per payment, cleared
+   blocks settled and the rest quiet. A count made visible, not a ratio. */
+.segs.mc-prog > div{background:var(--ink-28)}
+.segs.mc-prog > div.done{background:var(--settled)}
+.mc-who2{display:flex;align-items:center;gap:10px;font-size:var(--t-sec)}
+.mc-who2 .avatarbtn{cursor:default}
+
+/* CHARGES — the figures form one column: every "$" at the same left edge and every
+   amount right-aligned in tabular numerals, so cents line up down the list. Status
+   chips share one width, so a longer word never pushes its amount out of line. */
+.ch-amt{display:inline-block;width:9.5ch;text-align:left;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rows .line .chip{min-width:92px;justify-content:center}
+/* filters: three equal parts rather than one long pill and two small ones */
+.mc-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s1)}
+.mc-filters .btn{height:36px;width:100%;padding:0 10px}
+.mc-filters .btn:disabled{color:var(--ink-28);cursor:default}
+.mc-filters .btn svg{margin-left:4px}
+.phone .ch-amt{width:9ch}
+/* phone: the amount and its status stack at the right, so the name and detail keep the width */
+.phone .rows .line > span:last-child{flex-direction:column;align-items:flex-end!important;gap:6px!important}
+.phone .rows .line .chip{min-width:0;height:18px;font-size:9.5px;padding:0 7px}
+.phone .mc-filters{grid-template-columns:1fr 1fr 1.3fr;gap:6px}
+.phone .mc-filters .btn{font-size:var(--t-detail);padding:0 4px;height:34px}
+
+/* CHARGES, grouped: waiting first, then what was confirmed today, then yesterday.
+   Each group is labelled where it starts, on a full-width band with its count and
+   total, so the list answers "what needs chasing" and "what came in" without a filter. */
+.mc-tablet .cmain.ch-list,.phone .cmain.ch-list{padding-top:0}
+.ch-sec{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);
+        margin:0 calc(-1 * var(--s2));padding:10px var(--s2);border-bottom:1px solid var(--ink-13)}
+.ch-list > .ch-sec:not(:first-child){border-top:1px solid var(--ink-13)}
+.ch-sec .label{margin:0}
+.ch-sec .det{font-variant-numeric:tabular-nums}
+.ch-list > .rows{padding:2px 0 6px}
+.ch-list > .rows > div:first-child{padding-top:14px}
+.ch-list > .rows > div:last-child{padding-bottom:14px}
+.ch-more{display:inline-flex;align-items:center;gap:4px;font-size:var(--t-detail);color:var(--ink);cursor:pointer}
+
+/* the list's tools: filter and sort as two small buttons in the header, each saying
+   what it is set to; the pager in the footer, range first, then round arrows */
+.ch-tools{display:inline-flex;align-items:center;gap:6px}
+.ch-tool{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--ink-28);border-radius:var(--radius-pill);
+         background:transparent;font-family:var(--font-text);font-size:var(--t-detail);color:var(--ink);cursor:pointer;white-space:nowrap}
+.ch-tool svg{color:var(--ink-50);flex-shrink:0}
+.ch-pager{display:inline-flex;align-items:center;gap:var(--s1);flex-shrink:0}
+.ch-pager .det{margin-right:4px;font-variant-numeric:tabular-nums}
+.ch-arrow{width:28px;height:28px;border-radius:50%;border:1px solid var(--ink-28);background:transparent;color:var(--ink-70);
+          display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.ch-arrow:disabled{color:var(--ink-28);border-color:var(--ink-13);cursor:default}
+.phone .ch-tool span{max-width:90px;overflow:hidden;text-overflow:ellipsis}
+/* phone: sort keeps its icon only; filter keeps its label, since it says what is shown */
+.phone .ch-tool.sort{padding:0;width:30px;justify-content:center}
+.phone .ch-tool.sort span,.phone .ch-tool.sort svg:last-child{display:none}
+.phone .cfoot .ch-pager .det{display:none}
+/* the menus the two buttons open */
+.ch-menu{width:300px}
+.ch-menu .grp{padding:12px var(--s2);border-bottom:1px solid var(--ink-13)}
+.ch-menu .grp:last-child{border-bottom:0}
+.ch-menu .grp .label{margin:0 0 8px}
+.ch-opt{display:flex;align-items:center;justify-content:space-between;padding:7px 0;font-size:var(--t-sec);cursor:pointer}
+.ch-opt .det{margin-left:auto;margin-right:10px;font-variant-numeric:tabular-nums}
+.ch-opt svg{color:var(--ink)}
+.ch-opt.off{color:var(--ink-28);cursor:default}
+.ch-opt.on{font-weight:500}
+.ch-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ch-chips .btn{height:30px;padding:0 12px;font-size:var(--t-detail)}
+.ch-chips .btn.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* cleanup: the header's title sits centred on its two buttons */
+.chead .sechead:has(.ch-tools){height:auto;min-height:30px;align-items:center}
+/* hierarchy: the cell title is the mono label; the groups under it are quieter,
+   sentence case, so the list reads Charges > Waiting > Nina, not three labels in a row */
+.ch-sec{padding:9px var(--s2)}
+.ch-sec .label{text-transform:none}
+.ch-sec .det{font-size:var(--t-detail)}
+/* rows: the name leads, the amount is the figure, the status is a small tag */
+.ch-list .rows .line > div > p:first-child{font-weight:500}
+.ch-list .rows .line .chip{height:20px;font-size:9.5px;min-width:84px;padding:0 8px}
+.ch-list .ch-amt{font-weight:500}
+
+
+.phone .kbars i{flex:1;width:auto}
+.phone .kbars.hours i{flex:1;width:auto}
+
+
+/* RAISED TODAY — one bar for everything raised today, split by what happened to it:
+   approved in green, waiting in amber, expired hatched. A thin ruled key underneath
+   gives each state its amount and count. The approval share is by amount. */
+.panel.sa{margin-bottom:var(--s2)}
+.sa p{margin:0}
+.sa .f{font-family:var(--font-text);font-weight:600;font-size:22px;line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.sa-top{padding:16px var(--s2) 18px}
+.sa-head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+.sa-top .f{margin-top:8px}
+.sa-bar{display:flex;gap:3px;height:10px;margin-top:14px}
+.sa-bar i{display:block;min-width:4px}
+.sa-bar i.ok{background:var(--settled)} .sa-bar i.wait{background:var(--underway)}
+.sa-key{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--ink-13)}
+.sa-key > div{display:flex;align-items:center;gap:8px;padding:10px var(--s2);min-width:0;font-size:var(--t-detail);color:var(--ink-70);white-space:nowrap}
+.sa-key > div + div{border-left:1px solid var(--ink-13)}
+.sa-key .sw{width:8px;height:8px;flex-shrink:0} .sw.ok{background:var(--settled)} .sw.wait{background:var(--underway)} .sw.exp{background:var(--ink-28)}
+.sa-key .v{margin-left:auto;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.sa-key .v.muted{color:var(--ink-50);font-weight:400}
+.sa-bar i.exp{background:repeating-linear-gradient(135deg,var(--ink-28) 0 2px,transparent 2px 5px);border:1px solid var(--ink-28)}
+.sa-bar.empty{border:1px dashed var(--ink-28);height:10px}
+.sa-top .f.muted{color:var(--ink-50)}
+.sa-key > div.off .k{color:var(--ink-50)}
+.sa-key .sw.exp{background:repeating-linear-gradient(135deg,var(--ink-50) 0 1.5px,transparent 1.5px 3.5px);border:1px solid var(--ink-50)}
+.sa-key .c{color:var(--ink-50);font-variant-numeric:tabular-nums;margin-left:-2px}
+.phone .sa .f{font-size:19px}
+.phone .sa-key,.phone .sb,.phone .sc-steps{grid-template-columns:repeat(3,minmax(0,1fr))}
+.phone .sa-key{grid-template-columns:minmax(0,1fr)}
+.phone .sa-key > div + div{border-left:0;border-top:1px solid var(--ink-13)}
+.phone .sa-key > div{padding:9px 12px}
+
+/* phone: the amount sits flush right over its status, not in a fixed-width column */
+.phone .ch-amt{width:auto;text-align:right}
+.phone .ch-sec .det{white-space:nowrap}
+.phone .ph-x{display:none}
+
+/* portrait: the nav takes its own line under the lockup */
+.mc-tablet.mc-portrait .mc-top{flex-wrap:wrap;row-gap:var(--s2)}
+.mc-tablet.mc-portrait .mc-top nav{order:3;width:100%;justify-content:flex-start}
+
+/* ================= RETAIL CHARGES ================= */
+.ch-pm{width:28px;height:28px;border:1px solid var(--ink-13);background:var(--paper-2);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:12px;color:var(--ink-70)}
+.ch-pm.clear{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.ch-list .line > .ch-pm + div{flex:1}
+.ch-col{display:flex;flex-direction:column}
+.ch-col p{margin:0}
+.ch-hero .f{margin-top:10px;font-weight:600;font-size:40px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ch-hero .det{margin-top:8px}
+.ch-lns{margin-top:var(--s3);border-top:1px solid var(--ink-13)}
+.ch-lns .kv{padding:10px 0;border-bottom:1px solid var(--ink-13);font-size:var(--t-sec)} .ch-lns .kv .v{color:var(--ink);font-variant-numeric:tabular-nums}
+.ch-small{margin-top:auto;padding-top:var(--s2)}
+.ch-small .kv{padding:4px 0;font-size:var(--t-detail);color:var(--ink-50)} .ch-small .kv .v{font-variant-numeric:tabular-nums}
+.ch-legs{border-top:1px solid var(--ink-13)}
+.ch-leg{display:flex;align-items:center;gap:0;padding:12px 0;border-bottom:1px solid var(--ink-13)}
+.ch-leg > div{flex:1;min-width:0} .ch-leg p{margin:0} .ch-leg .t{font-size:var(--t-sec);font-weight:500} .ch-leg .det{margin-top:2px}
+.ch-leg .v{font-size:var(--t-sec);font-weight:600;font-variant-numeric:tabular-nums;margin-right:12px}
+.ch-bleed{margin:var(--s2) calc(-1 * var(--s2)) calc(-1 * var(--s2));padding:14px var(--s2);border-top:1px solid var(--ink-13)}
+.ch-bleed .t{font-size:var(--t-sec);font-weight:500} .ch-bleed .det{margin-top:2px}
+.ch-pair{display:inline-flex;gap:var(--s1);flex-shrink:0} .ch-pair .btn{height:44px}
+.ch-pair.wide{display:flex;width:100%} .ch-pair.wide .btn{flex:1}
+/* sheets */
+.ch-sheet{width:400px} .ch-sheet.wide{width:460px;border-radius:26px}
+.ch-sheet .modal > .chead,.ch-sheet .modal > .cmain,.ch-sheet .modal > .cfoot{padding:var(--s2)}
+.ch-sheet .modal > .cfoot{border-top:1px solid var(--ink-13)}
+.ch-sheet p{margin:0}
+.ch-fl{margin:var(--s2) 0 6px!important}
+.ch-rets{border-top:1px solid var(--ink-13)}
+.ch-ret{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--ink-13)}
+.ch-ret > div{flex:1} .ch-ret .t{font-size:var(--t-sec)} .ch-ret.on .t{font-weight:500} .ch-ret .det{margin-top:2px}
+.ch-ret:not(.on){opacity:.55}
+.ch-ret .v{font-size:var(--t-sec);font-variant-numeric:tabular-nums}
+.ch-check{width:18px;height:18px;border:1.5px solid var(--ink-50);margin-top:1px;flex-shrink:0;position:relative}
+.ch-check.on{background:var(--ink);border-color:var(--ink)}
+.ch-check.on::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid var(--paper);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.ch-stock{display:inline-flex;align-items:center;gap:8px;margin-top:8px;font-size:var(--t-detail);color:var(--ink-70)}
+.ch-toggle{width:30px;height:18px;border-radius:9px;background:var(--ink-28);position:relative;display:inline-block}
+.ch-toggle.on{background:var(--settled)}
+.ch-toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--paper)}
+.ch-toggle.on::after{left:14px}
+.ch-total{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;font-size:var(--t-sec)}
+.ch-total b{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.ch-was{display:grid;grid-template-columns:repeat(3,1fr);margin:calc(-1 * var(--s2)) calc(-1 * var(--s2)) 0;border-bottom:1px solid var(--ink-13)}
+.ch-was.two{grid-template-columns:1fr 1fr;margin-top:0;border-top:1px solid var(--ink-13)}
+.ch-was > div{padding:12px var(--s2) 14px} .ch-was > div + div{border-left:1px solid var(--ink-13)}
+.ch-was .f{margin-top:6px;font-weight:600;font-size:20px;font-variant-numeric:tabular-nums}
+.ch-was .ok .f{color:var(--settled)}
+.ch-list2 .kv{padding:10px 0;border-bottom:1px solid var(--ink-13);font-size:var(--t-sec)} .ch-list2 .kv .v{color:var(--ink);text-align:right;max-width:60%}
+.ch-list2{margin-top:4px}
+.ch-pin{display:flex;justify-content:space-between;align-items:center;margin-top:var(--s2)}
+.ch-pin .dots{display:flex;gap:10px} .ch-pin .dots i{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--ink-50)} .ch-pin .dots i.f{background:var(--ink);border-color:var(--ink)}
+.ch-tipq{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:var(--s2)}
+.ch-tipq .btn{height:36px;padding:0;font-size:var(--t-detail)} .ch-tipq .btn.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.doc > .mc-tablet + .mc-tablet,.doc > .row + .mc-tablet,.doc > .mc-tablet + .row,.doc > .row + .row{margin-top:var(--s3)}
+
+/* ---- the top row: raised today, and how it was paid ---- */
+.sa-row{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:var(--s2);align-items:stretch}
+.sa-row > .panel{margin-bottom:var(--s2)}
+.panel.dn{display:flex;flex-direction:column;padding:16px var(--s2)}
+.dn-head{display:flex;justify-content:space-between;align-items:baseline} .dn-head p{margin:0}
+.dn-body{display:flex;align-items:center;gap:var(--s2);margin-top:12px;flex:1}
+.dn-ring{position:relative;width:104px;height:104px;flex-shrink:0}
+.dn-ring svg{width:100%;height:100%}
+.dn-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dn-mid b{font-size:24px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.dn-mid span{margin-top:3px;font-size:var(--t-detail);color:var(--ink-50)}
+.dn-leg{flex:1;min-width:0}
+.dn-r{display:grid;grid-template-columns:10px minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:6px 0;font-size:var(--t-detail);border-bottom:1px solid var(--ink-13)}
+.dn-r:last-child{border-bottom:0}
+.dn-r .sw{width:10px;height:10px}
+.dn-r .c{color:var(--ink-50);font-variant-numeric:tabular-nums}
+.dn-r .v{font-weight:600;font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
+.mc-portrait .sa-row,.phone .sa-row{grid-template-columns:minmax(0,1fr);gap:0}
+/* how it was paid, in colour: the row's mark and the words in its detail line */
+.ch-pm.card{background:var(--land);color:var(--paper);border-color:var(--land)}
+.ch-pm.cash{background:#A3AE95;color:var(--ink);border-color:#A3AE95}
+.ch-pm.split{background:var(--land-ink);color:var(--paper);border-color:var(--land-ink)}
+.pm-t{font-weight:500}
+.pm-t.clear{color:var(--ink)} .pm-t.card{color:var(--land-ink)} .pm-t.cash{color:var(--land-ink)}
+.pm-tip{color:var(--settled);font-weight:500}
+/* ---- the sheets, tidied ---- */
+.ch-check.on::after{left:50%;top:50%;width:6px;height:6px;border:0;border-radius:50%;background:var(--paper);transform:translate(-50%,-50%)}
+.ch-ret{align-items:center}
+.ch-ret > .ch-check{align-self:flex-start;margin-top:2px}
+.ch-ret .v{align-self:flex-start}
+.ch-sheet .ch-legs .ch-leg .v{margin-right:0}
+.ch-sheet .ch-legs .chip{display:none}
+.ch-was.two.top{margin-top:calc(-1 * var(--s2));border-top:0}
+.ch-list2{margin-top:8px;border-top:1px solid var(--ink-13)}
+
+/* the top row: two panels of one build, their key strips level at the foot */
+.sa-row > .panel.sa{display:flex;flex-direction:column;padding:0}
+.sa-row > .panel.sa > .sa-top{flex:1}
+.sa-row > .panel.sa > .sa-key{align-items:stretch;min-height:60px}
+.sa-row > .panel.sa > .sa-key > div{padding-top:8px;padding-bottom:8px}
+.sa-row > .panel.sa > .sa-key > div{display:flex;align-items:center}
+.dn-body{display:flex;align-items:center;gap:var(--s2);margin-top:10px}
+.dn-ring{position:relative;width:64px;height:64px;flex-shrink:0}
+.dn-ring svg{position:absolute;inset:0;width:100%;height:100%}
+.dn-ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.dn-fig p{margin:0} .dn-fig .f{font-size:26px!important;margin:0!important} .dn-fig .det{margin-top:4px}
+.panel.dn .sa-key > div{flex-direction:column;align-items:flex-start!important;justify-content:center;gap:3px;padding-top:8px;padding-bottom:8px}
+.panel.dn .sa-key .t{display:flex;align-items:center;gap:8px}
+.panel.dn .sa-key .b{display:flex;gap:4px;align-items:baseline}
+.panel.dn .sa-key .v{margin:0}
+.panel.dn .sa-key .c{margin:0}
+
+/* the tick is a small square, like the box it sits in */
+.ch-check.on::after{border-radius:0!important;width:6px!important;height:6px!important}
+
+/* the ring panel: a little wider, a bigger ring; the list sits the same distance below as the panels sit apart */
+.sa-row{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)!important;margin-bottom:var(--s2)!important}
+.sa-row > .panel{margin-bottom:0!important}
+.dn-ring{width:88px!important;height:88px!important}
+.dn-ring b{font-size:22px!important}
+.dn-body{margin-top:8px!important}
+
+/* the bar settles onto the key, so the space falls between the figure and the bar */
+.sa-row > .panel.sa:not(.dn) > .sa-top{display:flex;flex-direction:column}
+.sa-row > .panel.sa:not(.dn) .sa-bar{margin-top:auto;flex-shrink:0}
+.sa-row > .panel.sa:not(.dn) .sa-top > .f{margin-bottom:var(--s2)}
+.sa-row > .panel.sa:not(.dn) .sa-key > div{white-space:nowrap}
+
+/* how it was paid, as a bar: the same build as Raised today, split by method */
+.sa-row > .panel.dn > .sa-top{display:flex;flex-direction:column}
+.sa-row > .panel.dn > .sa-top > .f{margin-bottom:var(--s2)}
+.sa-row > .panel.dn .dn-bar{margin-top:auto;flex-shrink:0}
+
+/* Raised today's other states, three to a row under its note */
+.rs-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2);margin-top:var(--s2);align-items:start}
+.rs-st .panel.sa{margin:0}
+.rs-st .sa-key{grid-template-columns:minmax(0,1fr)}
+.rs-st .sa-key > div + div{border-left:0;border-top:1px solid var(--ink-13)}
+</style></head>
+<body><div class="doc">
+<h1>Charges.</h1>
+<p class="lede">The list a writer opens to answer two questions &mdash; who has not confirmed, and what did we run &mdash; a charge opened, and the refund that needs two people.</p>
+
+<h2>What the list is for</h2>
+<ul class="chg">
+  <li><b>Two questions, one screen.</b> Who has not confirmed, and what did we run. Waiting sorts to the top whatever time it was raised, because those are the only rows with anything to do.</li>
+  <li><b>Every row names who raised it.</b> Not surveillance &mdash; it is how an owner works out which writer is actually offering it, and who needs another fifteen minutes.</li>
+  <li><b>Expired is a state, not a disappearance.</b> A charge that timed out is a lost sale, and a shop that can see it can chase it.</li>
+</ul>
+
+<h2>Charges &middot; owner &middot; tablet</h2>
+<p class="note">The split shows on confirmed rows because it is the shop&rsquo;s only signal of how a customer is managing it &mdash; useful context with no action attached. <strong>The header counts confirmed money only</strong>, the same rule as Home: the waiting $940.00 is a row, not a total.</p>
+<div class="mc-tablet mc-page">
+  <div class="mc-top">
+    <span class="mc-who"><span class="lockup"><svg class="mk" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg><span class="wm">Clear</span></span><span class="mc-for">Mike&rsquo;s Tire</span></span>
+    <nav><span>Home</span><span class="on">Charges</span><span>Inventory</span><span>Payouts</span><span>Staff</span><span>Overview</span></nav>
+    <span class="mc-right"><button class="mc-shift" aria-label="Change shift"><i></i><span><b>Mike</b> on shift</span></button><button class="avatarbtn" aria-label="Profile">MR</button></span>
+  </div>
+  <div class="mc-slot sa-row"><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised today</p><p class="det">40% approved so far</p></div><p class="f">$2,250.00</p><div class="sa-bar"><i class="ok" style="flex-grow:900"></i><i class="wait" style="flex-grow:1350"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Approved</span><span class="v">$900.00</span><span class="c">&middot; 3</span></div><div class=""><span class="sw wait"></span><span class="k">Waiting</span><span class="v">$1,350.00</span><span class="c">&middot; 2</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div><div class="panel sa dn"><div class="sa-top"><div class="sa-head"><p class="label">How it was paid</p><p class="det">3 charges</p></div><p class="f">$900.00</p><div class="sa-bar dn-bar"><i style="flex-grow:900;background:var(--ink)"></i></div></div><div class="sa-key"><div><span class="t"><span class="sw" style="background:var(--ink)"></span><span class="k">Clear</span></span><span class="b"><span class="v">$900.00</span><span class="c">&middot; 3</span></span></div><div class="off"><span class="t"><span class="sw" style="background:var(--land)"></span><span class="k">Card</span></span><span class="b"><span class="v muted">&mdash;</span></span></div><div class="off"><span class="t"><span class="sw" style="background:#A3AE95"></span><span class="k">Cash</span></span><span class="b"><span class="v muted">&mdash;</span></span></div></div></div></div>
+  <div class="slab one">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">Charges</p><span class="ch-tools"><button class="ch-tool"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>This month</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><button class="ch-tool sort" aria-label="Sort: newest first"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></svg><span>Newest</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span></div></div>
+  <div class="cmain ch-list"><div class="ch-sec"><p class="label">Waiting</p><span class="det">2 &middot; $1,350.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Nina P.</p><p class="det" style="margin-top:3px">2:26pm &middot; Jen &middot; sent 2 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$410.00</span><span class="chip underway">Waiting</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Dana R.</p><p class="det" style="margin-top:3px">2:14pm &middot; Jen &middot; opened 6 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$940.00</span><span class="chip underway">Waiting</span></span></div></div></div><div class="ch-sec"><p class="label">Confirmed today</p><span class="det">3 &middot; $900.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Marcus T.</p><p class="det" style="margin-top:3px">11:02am &middot; Jen &middot; 4 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$412.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Priya S.</p><p class="det" style="margin-top:3px">9:47am &middot; Luis &middot; paid now</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$188.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ana V.</p><p class="det" style="margin-top:3px">8:30am &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$300.00</span><span class="chip settled">Confirmed</span></span></div></div></div><div class="ch-sec"><p class="label">Yesterday</p><span class="det">$1,240.00<span class="ph-x"> confirmed</span> &middot; 1 expired</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ray C.</p><p class="det" style="margin-top:3px">4:12pm &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$1,240.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Tom B.</p><p class="det" style="margin-top:3px">1:40pm &middot; Jen &middot; not approved in 24 hours</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$310.00</span><span class="chip absent">Expired</span></span></div></div></div></div>
+  <div class="cfoot"><div class="line" style="align-items:center"><span class="det">Expired charges stay listed, so you can follow them up.</span><span class="ch-pager"><span class="det">1&ndash;7 of 31</span><button class="ch-arrow" disabled aria-label="Newer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><button class="ch-arrow" aria-label="Older"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></span></div></div>
+</div>
+  </div>
+</div>
+
+<p class="note" style="margin-top:var(--s3)"><strong>Raised today, above the list.</strong> One bar for everything raised today, split by what happened to it: approved in green, still waiting in amber, and expired hatched once a charge times out. The header carries the total and the approval share, by amount; the key is a thin ruled footer with each state&rsquo;s amount and count. <strong>A counter shift sees its own</strong>: raised by you, and how yours were paid. Its other states are below: <strong>end of the day</strong>, when an expired charge takes its hatched place in the bar; <strong>everything approved</strong>, one green run; and <strong>nothing yet</strong>, a grey figure over an empty dashed bar.</p>
+<div class="rs-row"><div class="rs-st"><p class="statelab" style="margin:0 0 8px">End of the day</p><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised today</p><p class="det">72% approved</p></div><p class="f">$2,560.00</p><div class="sa-bar"><i class="ok" style="flex-grow:1840"></i><i class="wait" style="flex-grow:410"></i><i class="exp" style="flex-grow:310"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Approved</span><span class="v">$1,840.00</span><span class="c">&middot; 5</span></div><div class=""><span class="sw wait"></span><span class="k">Waiting</span><span class="v">$410.00</span><span class="c">&middot; 1</span></div><div class=""><span class="sw exp"></span><span class="k">Expired</span><span class="v">$310.00</span><span class="c">&middot; 1</span></div></div></div></div><div class="rs-st"><p class="statelab" style="margin:0 0 8px">Everything approved</p><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised today</p><p class="det">All approved</p></div><p class="f">$1,500.00</p><div class="sa-bar"><i class="ok" style="flex-grow:1500"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Approved</span><span class="v">$1,500.00</span><span class="c">&middot; 4</span></div><div class="off"><span class="sw wait"></span><span class="k">Waiting</span><span class="v muted">&mdash;</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div></div><div class="rs-st"><p class="statelab" style="margin:0 0 8px">Nothing yet</p><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised today</p><p class="det">No charges yet</p></div><p class="f muted">$0.00</p><div class="sa-bar empty"></div></div><div class="sa-key"><div class="off"><span class="sw ok"></span><span class="k">Approved</span><span class="v muted">&mdash;</span></div><div class="off"><span class="sw wait"></span><span class="k">Waiting</span><span class="v muted">&mdash;</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div></div></div>
+
+<p class="statelab">Late in the day, every way to pay</p>
+<p class="note">Above the list, Raised today now says paid rather than approved, and beside it <strong>how it was paid</strong>, built the same way: what was paid, one bar split by method, and a key with each method&rsquo;s amount and count. <strong>Each row starts with how it was paid</strong>, in the bar&rsquo;s colours: the Clear mark, a card, cash, or a split, so a writer scanning for &ldquo;the card sale at 4:41&rdquo; finds it by shape. Card and cash sales are named Walk-in unless a name was given, and the detail line names the way to pay in its colour, with any tip in green, then what matters for each: the card&rsquo;s last four, what was sold for cash, or how a split divided. Everything paid today sits in one group, whatever paid it; only Clear has a Waiting group, because only Clear can wait. The figures are the ones Close the day adds up.</p>
+<div class="mc-tablet mc-page" style="aspect-ratio:auto">
+  <div class="mc-top">
+    <span class="mc-who"><span class="lockup"><svg class="mk" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg><span class="wm">Clear</span></span><span class="mc-for">Mike&rsquo;s Tire</span></span>
+    <nav><span>Home</span><span class="on">Charges</span><span>Inventory</span><span>Payouts</span><span>Staff</span><span>Overview</span></nav>
+    <span class="mc-right"><button class="mc-shift" aria-label="Change shift"><i></i><span><b>Mike</b> on shift</span></button><button class="avatarbtn" aria-label="Profile">MR</button></span>
+  </div>
+  <div class="mc-slot sa-row"><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised today</p><p class="det">58% paid so far</p></div><p class="f">$3,249.52</p><div class="sa-bar"><i class="ok" style="flex-grow:1899.52"></i><i class="wait" style="flex-grow:1350"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Paid</span><span class="v">$1,899.52</span><span class="c">&middot; 6</span></div><div class=""><span class="sw wait"></span><span class="k">Waiting</span><span class="v">$1,350.00</span><span class="c">&middot; 2</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div><div class="panel sa dn"><div class="sa-top"><div class="sa-head"><p class="label">How it was paid</p><p class="det">6 charges</p></div><p class="f">$1,899.52</p><div class="sa-bar dn-bar"><i style="flex-grow:900;background:var(--ink)"></i><i style="flex-grow:937.52;background:var(--land)"></i><i style="flex-grow:62;background:#A3AE95"></i></div></div><div class="sa-key"><div><span class="t"><span class="sw" style="background:var(--ink)"></span><span class="k">Clear</span></span><span class="b"><span class="v">$900.00</span><span class="c">&middot; 3</span></span></div><div><span class="t"><span class="sw" style="background:var(--land)"></span><span class="k">Card</span></span><span class="b"><span class="v">$937.52</span><span class="c">&middot; 1</span></span></div><div><span class="t"><span class="sw" style="background:#A3AE95"></span><span class="k">Cash</span></span><span class="b"><span class="v">$62.00</span><span class="c">&middot; 2</span></span></div></div></div></div>
+  <div class="slab one"><div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">Charges</p><span class="det">Today &middot; 5:40pm</span></div></div>
+  <div class="cmain ch-list">
+    <div class="ch-sec"><p class="label">Waiting</p><span class="det">2 &middot; $1,350.00</span></div><div class="rows">
+      <div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Nina P.</p><p class="det" style="margin-top:3px">2:26pm &middot; Jen &middot; sent 3 hours ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$410.00</span><span class="chip underway">Waiting</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Dana R.</p><p class="det" style="margin-top:3px">2:14pm &middot; Jen &middot; opened</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$940.00</span><span class="chip underway">Waiting</span></span></div></div></div>
+    <div class="ch-sec"><p class="label">Paid today</p><span class="det">6 &middot; $1,899.52</span></div><div class="rows">
+      <div><div class="line" style="align-items:center"><span class="ch-pm card" title="Card" aria-label="Card"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="1.5"/><path d="M3 10h18M7 15h3"/></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Walk-in</p><p class="det" style="margin-top:3px">4:41pm &middot; Jen &middot; <span class="pm-t card">Card ••4242</span> &middot; <span class="pm-tip">$10.00 tip</span></p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$937.52</span><span class="chip settled">Paid</span></span></div></div>
+      
+      <div><div class="line" style="align-items:center"><span class="ch-pm cash" title="Cash" aria-label="Cash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="1"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Walk-in</p><p class="det" style="margin-top:3px">1:10pm &middot; Luis &middot; <span class="pm-t cash">Cash</span> &middot; patch &middot; <span class="pm-tip">$5.00 tip</span></p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$23.00</span><span class="chip settled">Paid</span></span></div></div>
+      <div><div class="line" style="align-items:center"><span class="ch-pm cash" title="Cash" aria-label="Cash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="1"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Walk-in</p><p class="det" style="margin-top:3px">12:40pm &middot; Jen &middot; <span class="pm-t cash">Cash</span> &middot; valve stems</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$39.00</span><span class="chip settled">Paid</span></span></div></div>
+      <div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Marcus T.</p><p class="det" style="margin-top:3px">11:02am &middot; Jen &middot; <span class="pm-t clear">Clear</span> &middot; 4 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$412.00</span><span class="chip settled">Confirmed</span></span></div></div>
+      <div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Priya S.</p><p class="det" style="margin-top:3px">9:47am &middot; Luis &middot; <span class="pm-t clear">Clear</span> &middot; paid now</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$188.00</span><span class="chip settled">Confirmed</span></span></div></div>
+      <div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ana V.</p><p class="det" style="margin-top:3px">8:30am &middot; Luis &middot; <span class="pm-t clear">Clear</span> &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$300.00</span><span class="chip settled">Confirmed</span></span></div></div></div>
+  </div>
+  <div class="cfoot"><p class="det">The mark at the start of a row is how it was paid. Filter by it under Paid by.</p></div>
+  </div></div>
+</div>
+
+<h2>Charges &middot; counter shift &middot; tablet</h2>
+<p class="note">A writer needs this list to do their job, so they get it in full. <strong>This month is the one thing locked</strong>, because monthly totals are an owner&rsquo;s figure, and the header drops the money and counts charges instead.</p>
+<div class="mc-tablet mc-page">
+  <div class="mc-top">
+    <span class="mc-who"><span class="lockup"><svg class="mk" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg><span class="wm">Clear</span></span><span class="mc-for">Mike&rsquo;s Tire</span></span>
+    <nav><span>Home</span><span class="on">Charges</span><span>Inventory</span><span class="mc-lock">Payouts<span class="mc-lockg"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span></span><span>Staff</span><span class="mc-lock">Overview<span class="mc-lockg"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span></span></nav>
+    <span class="mc-right"><button class="mc-shift" aria-label="Change shift"><i></i><span><b>Jen</b> on shift</span></button><button class="avatarbtn" aria-label="Profile">JR</button></span>
+  </div>
+  <div class="mc-slot sa-row"><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised by you</p><p class="det">23% approved so far</p></div><p class="f">$1,762.00</p><div class="sa-bar"><i class="ok" style="flex-grow:412"></i><i class="wait" style="flex-grow:1350"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Approved</span><span class="v">$412.00</span><span class="c">&middot; 1</span></div><div class=""><span class="sw wait"></span><span class="k">Waiting</span><span class="v">$1,350.00</span><span class="c">&middot; 2</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div><div class="panel sa dn"><div class="sa-top"><div class="sa-head"><p class="label">How yours were paid</p><p class="det">1 charge</p></div><p class="f">$412.00</p><div class="sa-bar dn-bar"><i style="flex-grow:412;background:var(--ink)"></i></div></div><div class="sa-key"><div><span class="t"><span class="sw" style="background:var(--ink)"></span><span class="k">Clear</span></span><span class="b"><span class="v">$412.00</span><span class="c">&middot; 1</span></span></div><div class="off"><span class="t"><span class="sw" style="background:var(--land)"></span><span class="k">Card</span></span><span class="b"><span class="v muted">&mdash;</span></span></div><div class="off"><span class="t"><span class="sw" style="background:#A3AE95"></span><span class="k">Cash</span></span><span class="b"><span class="v muted">&mdash;</span></span></div></div></div></div>
+  <div class="slab one">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">Charges</p><span class="ch-tools"><button class="ch-tool"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Today and yesterday</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><button class="ch-tool sort" aria-label="Sort: newest first"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></svg><span>Newest</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span></div></div>
+  <div class="cmain ch-list"><div class="ch-sec"><p class="label">Waiting</p><span class="det">2 &middot; $1,350.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Nina P.</p><p class="det" style="margin-top:3px">2:26pm &middot; Jen &middot; sent 2 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$410.00</span><span class="chip underway">Waiting</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Dana R.</p><p class="det" style="margin-top:3px">2:14pm &middot; Jen &middot; opened 6 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$940.00</span><span class="chip underway">Waiting</span></span></div></div></div><div class="ch-sec"><p class="label">Confirmed today</p><span class="det">3 &middot; $900.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Marcus T.</p><p class="det" style="margin-top:3px">11:02am &middot; Jen &middot; 4 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$412.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Priya S.</p><p class="det" style="margin-top:3px">9:47am &middot; Luis &middot; paid now</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$188.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ana V.</p><p class="det" style="margin-top:3px">8:30am &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$300.00</span><span class="chip settled">Confirmed</span></span></div></div></div><div class="ch-sec"><p class="label">Yesterday</p><span class="det">$1,240.00<span class="ph-x"> confirmed</span> &middot; 1 expired</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ray C.</p><p class="det" style="margin-top:3px">4:12pm &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$1,240.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Tom B.</p><p class="det" style="margin-top:3px">1:40pm &middot; Jen &middot; not approved in 24 hours</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$310.00</span><span class="chip absent">Expired</span></span></div></div></div></div>
+  <div class="cfoot"><div class="line" style="align-items:center"><span class="det">Expired charges stay listed, so you can follow them up.</span><span class="det">All 7 shown</span></div></div>
+</div>
+  </div>
+</div>
+
+<h2>One column, and the phone</h2>
+<div class="mc-frames">
+<div class="mc-tablet mc-page mc-portrait">
+  <div class="mc-top">
+    <span class="mc-who"><span class="lockup"><svg class="mk" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg><span class="wm">Clear</span></span><span class="mc-for">Mike&rsquo;s Tire</span></span>
+    <nav><span>Home</span><span class="on">Charges</span><span>Inventory</span><span>Payouts</span><span>Staff</span><span>Overview</span></nav>
+    <span class="mc-right"><button class="mc-shift" aria-label="Change shift"><i></i><span><b>Mike</b> on shift</span></button><button class="avatarbtn" aria-label="Profile">MR</button></span>
+  </div>
+  <div class="mc-slot"><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised today</p><p class="det">40% approved so far</p></div><p class="f">$2,250.00</p><div class="sa-bar"><i class="ok" style="flex-grow:900"></i><i class="wait" style="flex-grow:1350"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Approved</span><span class="v">$900.00</span><span class="c">&middot; 3</span></div><div class=""><span class="sw wait"></span><span class="k">Waiting</span><span class="v">$1,350.00</span><span class="c">&middot; 2</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div></div>
+  <div class="slab one">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">Charges</p><span class="ch-tools"><button class="ch-tool"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>This month</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><button class="ch-tool sort" aria-label="Sort: newest first"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></svg><span>Newest</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span></div></div>
+  <div class="cmain ch-list"><div class="ch-sec"><p class="label">Waiting</p><span class="det">2 &middot; $1,350.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Nina P.</p><p class="det" style="margin-top:3px">2:26pm &middot; Jen &middot; sent 2 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$410.00</span><span class="chip underway">Waiting</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Dana R.</p><p class="det" style="margin-top:3px">2:14pm &middot; Jen &middot; opened 6 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$940.00</span><span class="chip underway">Waiting</span></span></div></div></div><div class="ch-sec"><p class="label">Confirmed today</p><span class="det">3 &middot; $900.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Marcus T.</p><p class="det" style="margin-top:3px">11:02am &middot; Jen &middot; 4 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$412.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Priya S.</p><p class="det" style="margin-top:3px">9:47am &middot; Luis &middot; paid now</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$188.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ana V.</p><p class="det" style="margin-top:3px">8:30am &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$300.00</span><span class="chip settled">Confirmed</span></span></div></div></div><div class="ch-sec"><p class="label">Yesterday</p><span class="det">$1,240.00<span class="ph-x"> confirmed</span> &middot; 1 expired</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ray C.</p><p class="det" style="margin-top:3px">4:12pm &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$1,240.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Tom B.</p><p class="det" style="margin-top:3px">1:40pm &middot; Jen &middot; not approved in 24 hours</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$310.00</span><span class="chip absent">Expired</span></span></div></div></div></div>
+  <div class="cfoot"><div class="line" style="align-items:center"><span class="det">Expired charges stay listed, so you can follow them up.</span><span class="ch-pager"><span class="det">1&ndash;7 of 31</span><button class="ch-arrow" disabled aria-label="Newer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><button class="ch-arrow" aria-label="Older"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></span></div></div>
+</div>
+  </div>
+</div>
+</div>
+<div class="row" style="margin-top:var(--s3)">
+  <div class="phone page">
+    <div class="mc-phonetop">
+      <span class="mc-who"><span class="lockup sm"><svg class="mk" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg><span class="wm">Clear</span></span><span class="mc-for">Mike&rsquo;s Tire</span></span>
+      <span class="mc-right"><button class="mc-shift sm" aria-label="Mike on shift, change shift"><i></i><b>Mike</b></button><button class="avatarbtn sm" aria-label="Profile">MR</button></span>
+    </div>
+    <div class="mc-slot"><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised today</p><p class="det">40% approved so far</p></div><p class="f">$2,250.00</p><div class="sa-bar"><i class="ok" style="flex-grow:900"></i><i class="wait" style="flex-grow:1350"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Approved</span><span class="v">$900.00</span><span class="c">&middot; 3</span></div><div class=""><span class="sw wait"></span><span class="k">Waiting</span><span class="v">$1,350.00</span><span class="c">&middot; 2</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div></div>
+  <div class="slab one">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">Charges</p><span class="ch-tools"><button class="ch-tool"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>This month</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><button class="ch-tool sort" aria-label="Sort: newest first"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></svg><span>Newest</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span></div></div>
+  <div class="cmain ch-list"><div class="ch-sec"><p class="label">Waiting</p><span class="det">2 &middot; $1,350.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Nina P.</p><p class="det" style="margin-top:3px">2:26pm &middot; Jen &middot; sent 2 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$410.00</span><span class="chip underway">Waiting</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Dana R.</p><p class="det" style="margin-top:3px">2:14pm &middot; Jen &middot; opened 6 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$940.00</span><span class="chip underway">Waiting</span></span></div></div></div><div class="ch-sec"><p class="label">Confirmed today</p><span class="det">3 &middot; $900.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Marcus T.</p><p class="det" style="margin-top:3px">11:02am &middot; Jen &middot; 4 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$412.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Priya S.</p><p class="det" style="margin-top:3px">9:47am &middot; Luis &middot; paid now</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$188.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ana V.</p><p class="det" style="margin-top:3px">8:30am &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$300.00</span><span class="chip settled">Confirmed</span></span></div></div></div><div class="ch-sec"><p class="label">Yesterday</p><span class="det">$1,240.00<span class="ph-x"> confirmed</span> &middot; 1 expired</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ray C.</p><p class="det" style="margin-top:3px">4:12pm &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$1,240.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Tom B.</p><p class="det" style="margin-top:3px">1:40pm &middot; Jen &middot; not approved in 24 hours</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$310.00</span><span class="chip absent">Expired</span></span></div></div></div></div>
+  <div class="cfoot"><div class="line" style="align-items:center"><span class="det">Expired charges stay listed, so you can follow them up.</span><span class="ch-pager"><span class="det">1&ndash;7 of 31</span><button class="ch-arrow" disabled aria-label="Newer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><button class="ch-arrow" aria-label="Older"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></span></div></div>
+</div>
+    </div>
+    <div class="navwrap">
+      <nav class="navbar" aria-label="Main"><a href="#" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></a><a href="#" class="on" aria-label="Charges"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></a><a href="#" aria-label="Inventory"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg></a><a href="#" aria-label="Payouts"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 10h14"/><path d="M12 3 4 7h16z"/><path d="M7 10v8M12 10v8M17 10v8"/></svg></a><a href="#" aria-label="Staff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.8c1.9.6 3 2.4 3 4.7"/></svg></a><a href="#" aria-label="Overview"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V11M10 20V5M16 20v-6M22 20H2"/></svg></a></nav>
+      <button class="navfab" aria-label="New charge"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div>
+  </div>
+  <div class="phone page">
+    <div class="mc-phonetop">
+      <span class="mc-who"><span class="lockup sm"><svg class="mk" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg><span class="wm">Clear</span></span><span class="mc-for">Mike&rsquo;s Tire</span></span>
+      <span class="mc-right"><button class="mc-shift sm" aria-label="Jen on shift, change shift"><i></i><b>Jen</b></button><button class="avatarbtn sm" aria-label="Profile">JR</button></span>
+    </div>
+    <div class="mc-slot"><div class="panel sa"><div class="sa-top"><div class="sa-head"><p class="label">Raised by you</p><p class="det">23% approved so far</p></div><p class="f">$1,762.00</p><div class="sa-bar"><i class="ok" style="flex-grow:412"></i><i class="wait" style="flex-grow:1350"></i></div></div><div class="sa-key"><div class=""><span class="sw ok"></span><span class="k">Approved</span><span class="v">$412.00</span><span class="c">&middot; 1</span></div><div class=""><span class="sw wait"></span><span class="k">Waiting</span><span class="v">$1,350.00</span><span class="c">&middot; 2</span></div><div class="off"><span class="sw exp"></span><span class="k">Expired</span><span class="v muted">&mdash;</span></div></div></div></div>
+  <div class="slab one">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">Charges</p><span class="ch-tools"><button class="ch-tool"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Today and yesterday</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><button class="ch-tool sort" aria-label="Sort: newest first"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></svg><span>Newest</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span></div></div>
+  <div class="cmain ch-list"><div class="ch-sec"><p class="label">Waiting</p><span class="det">2 &middot; $1,350.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Nina P.</p><p class="det" style="margin-top:3px">2:26pm &middot; Jen &middot; sent 2 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$410.00</span><span class="chip underway">Waiting</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Dana R.</p><p class="det" style="margin-top:3px">2:14pm &middot; Jen &middot; opened 6 minutes ago</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$940.00</span><span class="chip underway">Waiting</span></span></div></div></div><div class="ch-sec"><p class="label">Confirmed today</p><span class="det">3 &middot; $900.00</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Marcus T.</p><p class="det" style="margin-top:3px">11:02am &middot; Jen &middot; 4 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$412.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Priya S.</p><p class="det" style="margin-top:3px">9:47am &middot; Luis &middot; paid now</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$188.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ana V.</p><p class="det" style="margin-top:3px">8:30am &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$300.00</span><span class="chip settled">Confirmed</span></span></div></div></div><div class="ch-sec"><p class="label">Yesterday</p><span class="det">$1,240.00<span class="ph-x"> confirmed</span> &middot; 1 expired</span></div><div class="rows"><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Ray C.</p><p class="det" style="margin-top:3px">4:12pm &middot; Luis &middot; 2 payments</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$1,240.00</span><span class="chip settled">Confirmed</span></span></div></div><div><div class="line" style="align-items:center"><span class="ch-pm clear" title="Clear" aria-label="Clear"><svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/></g></svg></span><div style="min-width:0"><p style="margin:0;font-size:var(--t-sec)">Tom B.</p><p class="det" style="margin-top:3px">1:40pm &middot; Jen &middot; not approved in 24 hours</p></div><span style="display:flex;align-items:center;gap:var(--s2);flex-shrink:0"><span class="fig fig-row ch-amt">$310.00</span><span class="chip absent">Expired</span></span></div></div></div></div>
+  <div class="cfoot"><div class="line" style="align-items:center"><span class="det">Expired charges stay listed, so you can follow them up.</span><span class="det">All 7 shown</span></div></div>
+</div>
+    </div>
+    <div class="navwrap">
+      <nav class="navbar" aria-label="Main"><a href="#" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></a><a href="#" class="on" aria-label="Charges"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></a><a href="#" aria-label="Inventory"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg></a><a href="#" aria-label="Payouts" style="color:var(--ink-28)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 10h14"/><path d="M12 3 4 7h16z"/><path d="M7 10v8M12 10v8M17 10v8"/></svg></a><a href="#" aria-label="Staff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.8c1.9.6 3 2.4 3 4.7"/></svg></a><a href="#" aria-label="Overview" style="color:var(--ink-28)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V11M10 20V5M16 20v-6M22 20H2"/></svg></a></nav>
+      <button class="navfab" aria-label="New charge"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<h2>Filter, sort, and pages</h2>
+<p class="note"><strong>Two small buttons in the header, each saying what it is set to</strong>, so the list never looks unfiltered when it is. Filter opens when, status and who raised it; sort opens four orders, with Waiting first for the owner who wants to chase. <strong>The groups follow the sort</strong>: newest first labels the list by day, with waiting charges at the top. <strong>Pages live in the footer</strong>, the range and two round arrows, as on Payouts. A counter shift&rsquo;s filter stops at today and yesterday, and This month shows its lock rather than disappearing.</p>
+<div class="row" style="align-items:flex-start;gap:var(--s3)">
+<div class="sheet menu ch-menu"><div class="modal">
+  <div class="grp"><p class="label">When</p><div class="ch-opt"><span>Today</span><span class=det>5</span><span></span></div><div class="ch-opt"><span>Yesterday</span><span class=det>2</span><span></span></div><div class="ch-opt on"><span>This month</span><span class=det>31</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div><div class="ch-opt"><span>Pick dates</span><span></span></div></div>
+  <div class="grp"><p class="label">Status</p><div class="ch-chips"><button class="btn on">All</button><button class="btn">Waiting &middot; 2</button><button class="btn">Confirmed</button><button class="btn">Expired</button><button class="btn">Refunded</button></div></div>
+  <div class="grp"><p class="label">Paid by</p><div class="ch-chips"><button class="btn on">Any way</button><button class="btn">Clear</button><button class="btn">Card</button><button class="btn">Cash</button><button class="btn">Split</button></div></div>
+  <div class="grp"><p class="label">Raised by</p><div class="ch-chips"><button class="btn on">Anyone</button><button class="btn">Jen</button><button class="btn">Luis</button><button class="btn">Mike</button></div></div>
+</div></div>
+<div class="sheet menu ch-menu" style="width:240px"><div class="modal">
+  <div class="grp"><p class="label">Sort by</p><div class="ch-opt on"><span>Newest first</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div><div class="ch-opt"><span>Oldest first</span><span></span></div><div class="ch-opt"><span>Largest first</span><span></span></div><div class="ch-opt"><span>Waiting first</span><span></span></div></div>
+</div></div>
+<div class="sheet menu ch-menu"><div class="modal">
+  <div class="grp"><p class="label">When</p><div class="ch-opt"><span>Today</span><span class=det>5</span><span></span></div><div class="ch-opt"><span>Yesterday</span><span class=det>2</span><span></span></div><div class="ch-opt on"><span>Today and yesterday</span><span class=det>7</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div><div class="ch-opt off"><span>This month</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div></div>
+  <div class="grp"><p class="label">Status</p><div class="ch-chips"><button class="btn on">All</button><button class="btn">Waiting &middot; 2</button><button class="btn">Confirmed</button><button class="btn">Expired</button></div></div>
+</div></div>
+</div>
+
+<h2>A charge, opened</h2>
+<p class="note">The fee, the payout date and what the customer chose. <strong>On a counter shift the money rows go</strong> and the amount, who raised it and the status take their place &mdash; a writer can still answer every question a customer asks them, just not the ones about the shop&rsquo;s margin.</p>
+<div class="mc-tablet">
+  <div class="mc-flowtop"><span class="t"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>Marcus T. &middot; $412.00</span><span class="mc-right"><button class="mc-shift"><i></i><span><b>Mike</b> on shift</span></button></span></div>
+  <div class="slab">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">What the shop gets</p><span class="det">Owner</span></div></div>
+  <div class="cmain"><div class="rows"><div><div class="kv"><span>You receive</span><span class="v">$403.76</span></div></div><div><div class="kv"><span>Fee &middot; 2.0%, over time</span><span class="v">$8.24</span></div></div><div><div class="kv"><span>Paid out</span><span class="v">Dec 14</span></div></div></div></div>
+  <div class="cfoot"><p class="det">The fee is shown on every charge, not only at the moment it is raised.</p></div>
+</div>
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">What they chose</p><span class="det">Their phone</span></div></div>
+  <div class="cmain"><p style="margin:0;font-size:var(--t-body);font-weight:500">4 payments</p><p class="det" style="margin-top:4px">$108.15 a cycle</p><div class="segs mc-prog"><div class="done"></div><div></div><div></div><div></div></div><p class="segcap"><span class="t-sav">1 cleared</span><span class="sep">&middot;</span>3 to go</p><p class="det" style="margin-top:var(--s3)">Context, not an action. How a customer is managing it is the shop&rsquo;s only signal, and there is nothing here to do about it.</p></div>
+  <div class="cfoot"><button class="btn btn-lg">Start a refund</button></div>
+</div>
+  </div>
+</div>
+<div class="mc-tablet">
+  <div class="mc-flowtop"><span class="t"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>Marcus T. &middot; $412.00</span><span class="mc-right"><button class="mc-shift"><i></i><span><b>Jen</b> on shift</span></button></span></div>
+  <div class="slab">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">This charge</p><span class="det">Counter</span></div></div>
+  <div class="cmain"><div class="rows"><div><div class="kv"><span>Amount</span><span class="v">$412.00</span></div></div><div><div class="kv"><span>Raised by</span><span class="v">You, at 11:02am</span></div></div><div><div class="kv"><span>Status</span><span class="v">Confirmed</span></div></div></div></div>
+  <div class="cfoot"><p class="det">The fee and the payout date are for an owner.</p></div>
+</div>
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">What they chose</p><span class="det">Their phone</span></div></div>
+  <div class="cmain"><p style="margin:0;font-size:var(--t-body);font-weight:500">4 payments</p><p class="det" style="margin-top:4px">$108.15 a cycle</p><div class="segs mc-prog"><div class="done"></div><div></div><div></div><div></div></div><p class="segcap"><span class="t-sav">1 cleared</span><span class="sep">&middot;</span>3 to go</p><p class="det" style="margin-top:var(--s3)">Context, not an action. How a customer is managing it is the shop&rsquo;s only signal, and there is nothing here to do about it.</p></div>
+  <div class="cfoot"><button class="btn btn-lg">Start a refund</button></div>
+</div>
+  </div>
+</div>
+<div class="row" style="margin-top:var(--s3)">
+  <div class="phone page" style="padding-bottom:var(--s3)">
+    <div class="paneback" style="margin-bottom:var(--s3)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg><p class="panetitle" style="font-size:15px">Marcus T. &middot; $412.00</p></div>
+    <div class="slab one">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">What the shop gets</p><span class="det">Owner</span></div></div>
+  <div class="cmain"><div class="rows"><div><div class="kv"><span>You receive</span><span class="v">$403.76</span></div></div><div><div class="kv"><span>Fee &middot; 2.0%, over time</span><span class="v">$8.24</span></div></div><div><div class="kv"><span>Paid out</span><span class="v">Dec 14</span></div></div></div></div>
+  <div class="cfoot"><p class="det">The fee is shown on every charge, not only at the moment it is raised.</p></div>
+</div>
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">What they chose</p><span class="det">Their phone</span></div></div>
+  <div class="cmain"><p style="margin:0;font-size:var(--t-body);font-weight:500">4 payments</p><p class="det" style="margin-top:4px">$108.15 a cycle</p><div class="segs mc-prog"><div class="done"></div><div></div><div></div><div></div></div><p class="segcap"><span class="t-sav">1 cleared</span><span class="sep">&middot;</span>3 to go</p><p class="det" style="margin-top:var(--s3)">Context, not an action. How a customer is managing it is the shop&rsquo;s only signal, and there is nothing here to do about it.</p></div>
+  <div class="cfoot"><button class="btn btn-lg">Start a refund</button></div>
+</div>
+    </div>
+  </div>
+</div>
+
+<p class="statelab">A split charge, opened</p>
+<p class="note"><strong>What was sold on the left, how it was paid on the right.</strong> The left is the cart as checkout drew it, with discount and tip shown even when there are none, as dashes. The right lists each payment with its own time and state, then the receipt and when the card part settles. <strong>Refund only</strong> closes the cell here, because this sale was Saturday&rsquo;s and its card part has settled; a same-day charge offers Void beside it.</p>
+<div class="mc-tablet" style="aspect-ratio:auto">
+  <div class="mc-flowtop"><span class="t"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>Walk-in &middot; $227.79</span><span class="mc-right"><button class="mc-shift"><i></i><span><b>Mike</b> on shift</span></button></span></div>
+  <div class="slab">
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">What was sold</p><span class="det">Sat, Sep 20 &middot; 3:20pm &middot; Luis</span></div></div>
+  <div class="cmain ch-col"><div class="ch-hero"><p class="label">Total</p><p class="f">$227.79</p><p class="det">3 items &middot; tax included</p></div>
+    <div class="ch-lns"><div class="kv "><span>1 &times; Goodyear Assurance &middot; disposal</span><span class="v">$165.00</span></div><div class="kv "><span>1 &times; Mount and balance</span><span class="v">$25.00</span></div><div class="kv "><span>1 &times; Tire rotation</span><span class="v">$25.00</span></div></div>
+    <div class="ch-small"><div class="kv "><span>Parts and tires</span><span class="v">$165.00</span></div><div class="kv "><span>Labour</span><span class="v">$50.00</span></div><div class="kv "><span>Sales tax &middot; 7.75% on parts</span><span class="v">$12.79</span></div><div class="kv "><span>Discount</span><span class="v">&mdash;</span></div><div class="kv "><span>Tip</span><span class="v">&mdash;</span></div></div></div>
+  <div class="cfoot"><p class="det">Stock came off the shelf when it was paid.</p></div>
+</div>
+<div class="cell">
+  <div class="chead"><div class="sechead"><p class="label">How it was paid</p><span class="det">2 ways</span></div></div>
+  <div class="cmain ch-col"><div class="ch-legs"><div class="ch-leg"><span class="ch-pm cash" title="Cash" aria-label="Cash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="1"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><div><p class="t">Cash</p><p class="det">3:18pm &middot; $20.00 change</p></div><span class="v">$200.00</span><span class="chip settled">Paid</span></div><div class="ch-leg"><span class="ch-pm card" title="Card" aria-label="Card"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="1.5"/><path d="M3 10h18M7 15h3"/></svg></span><div><p class="t">Visa ••4242</p><p class="det">3:20pm &middot; contactless</p></div><span class="v">$27.79</span><span class="chip settled">Paid</span></div></div>
+    <div class="ch-small"><div class="kv "><span>Receipt</span><span class="v">Printed</span></div><div class="kv "><span>Card part</span><span class="v">Settled Saturday night</span></div></div>
+    <div class="ch-bleed"><div><p class="t">Refund only</p><p class="det">A void is same-day, before the card batch settles. This one settled on Saturday.</p></div></div></div>
+  <div class="cfoot"><div class="line" style="align-items:center"><span class="det">A refund needs a manager</span><span class="ch-pair"><button class="btn btn-primary">Start a refund</button></span></div></div>
+</div>
+  </div>
+</div>
+
+<h2>Refunds by how it was paid</h2>
+<p class="note"><strong>Goods come back, and the money goes back the way it came.</strong> The sheet starts with what is coming back, item by item, each tire with a switch to put it back in stock; labour that is already done cannot be returned. Then where the money goes: <strong>to the card first</strong>, up to what the card paid, then <strong>cash from the drawer</strong> for the rest, which is counted at close like any other cash. It goes to a manager exactly as a Clear refund does, drawn below.</p>
+<div class="row" style="align-items:flex-start"><div class="sheet ch-sheet wide"><div class="modal"><div class="chead"><div class="line" style="align-items:center"><span class="mtitle">Start a refund</span><span class="mclose" style="display:flex;color:var(--ink-50)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div></div><div class="cmain"><p class="det" style="margin:0 0 var(--s1)">Walk-in &middot; Sat, Sep 20 &middot; $227.79 &middot; $200.00 cash, $27.79 card</p>
+  <p class="label ch-fl">What is coming back</p>
+  <div class="ch-rets"><div class="ch-ret on"><span class="ch-check on"></span><div><p class="t">1 &times; Goodyear Assurance</p><p class="det">$162.00 + $3.00 disposal + tax</p><label class="ch-stock"><span class="ch-toggle on"></span>Back in stock</label></div><span class="v">$177.79</span></div><div class="ch-ret"><span class="ch-check"></span><div><p class="t">1 &times; Mount and balance</p><p class="det">Labour, already done</p></div><span class="v">$25.00</span></div><div class="ch-ret"><span class="ch-check"></span><div><p class="t">1 &times; Tire rotation</p><p class="det">Labour, already done</p></div><span class="v">$25.00</span></div></div>
+  <p class="label ch-fl">Where the money goes</p>
+  <div class="ch-legs"><div class="ch-leg"><span class="ch-pm card" title="Card" aria-label="Card"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="1.5"/><path d="M3 10h18M7 15h3"/></svg></span><div><p class="t">Back to Visa ••4242</p><p class="det">First: everything the card paid</p></div><span class="v">$27.79</span><span class="chip neutral">First</span></div><div class="ch-leg"><span class="ch-pm cash" title="Cash" aria-label="Cash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="1"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><div><p class="t">Cash from the drawer</p><p class="det">Then the rest, counted at today&rsquo;s close</p></div><span class="v">$150.00</span><span class="chip neutral">Then</span></div></div></div><div class="cfoot"><div class="ch-total"><span>Refund</span><b>$177.79</b></div><button class="btn btn-primary btn-lg" style="width:100%">Send to a manager</button></div></div></div></div>
+
+<h2>Void, and adjusting a tip</h2>
+<p class="note"><strong>A void is a same-day undo</strong>: the card is never charged, cash comes back from the drawer, everything goes back in stock, and there is no fee. It needs a manager&rsquo;s PIN, and after the card batch settles it is gone and only a refund remains. <strong>A tip can change until the day is closed</strong>, for a tip written on a printed slip after the card was taken.</p>
+<div class="row" style="align-items:flex-start"><div class="sheet ch-sheet "><div class="modal"><div class="chead"><div class="line" style="align-items:center"><span class="mtitle">Void this charge?</span><span class="mclose" style="display:flex;color:var(--ink-50)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div></div><div class="cmain"><div class="ch-was two top"><div><p class="label">Charge</p><p class="f">$937.52</p></div><div><p class="label">Of it, tip</p><p class="f">$10.00</p></div></div><p class="det" style="margin-top:12px">Walk-in &middot; Visa ••4242 &middot; 4:41pm &middot; Jen</p>
+  <div class="ch-list2"><div class="kv "><span>The card</span><span class="v">Never charged. They see nothing.</span></div><div class="kv "><span>The items</span><span class="v">All 9 back in stock</span></div><div class="kv "><span>Jen&rsquo;s tip</span><span class="v">Goes with it</span></div><div class="kv "><span>Fees</span><span class="v">&mdash;</span></div></div>
+  <p class="det" style="margin-top:var(--s2);line-height:1.5">A void undoes the whole charge as if it never happened. It is only possible the same day, before the card batch settles tonight.</p>
+  <div class="ch-pin"><span class="det">Luis&rsquo;s manager PIN</span><span class="dots"><i class="f"></i><i class="f"></i><i class="f"></i><i></i></span></div></div><div class="cfoot"><div class="ch-pair wide"><button class="btn btn-lg">Keep it</button><button class="btn btn-primary btn-lg">Void $937.52</button></div></div></div></div><div class="sheet ch-sheet "><div class="modal"><div class="chead"><div class="line" style="align-items:center"><span class="mtitle">Adjust the tip</span><span class="mclose" style="display:flex;color:var(--ink-50)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div></div><div class="cmain"><p class="det" style="margin:0 0 var(--s2)">Walk-in &middot; Visa ••4242 &middot; 4:41pm &middot; Jen</p>
+  <div class="ch-was two"><div><p class="label">On the card</p><p class="f">$10.00</p></div><div class="ok"><p class="label">Change to</p><p class="f">$15.00</p></div></div>
+  <div class="ch-tipq"><button class="btn">$10.00</button><button class="btn on">$15.00</button><button class="btn">$20.00</button><button class="btn">Other</button></div>
+  <p class="det" style="margin-top:var(--s2);line-height:1.5">For a tip written on a printed slip. Tips can change until the day is closed; after that they are part of the day&rsquo;s figures.</p></div><div class="cfoot"><div class="ch-total"><span>New total</span><b>$942.52</b></div><button class="btn btn-primary btn-lg" style="width:100%">Save the tip</button></div></div></div></div>
+
+<h2>A Clear refund</h2>
+<p class="note">Two people, three steps, and <strong>every screen says whose it is.</strong> It is the manager-override every retail till already has, so nobody needs training &mdash; and it is why the button says <em>Start a refund</em> rather than <em>Refund</em>. A writer who thinks they have done it will promise the customer, and that is the worst conversation at a counter.</p>
+<div class="row">
+<div class="sheet">
+<div class="modal">
+  <div class="chead"><div class="line" style="align-items:center"><span class="mtitle">Refund $412.00 to Marcus T.?</span><span class="mc-who2"><span class="avatarbtn sm">JR</span>Jen <span class="det">counter</span></span></div></div>
+  <div class="cmain"><div class="rows"><div><div class="kv"><span>His plan closes</span><span class="v">$412.00</span></div></div><div><div class="kv"><span>He gets back</span><span class="v" style="color:var(--ink);font-weight:500">$99.91</span></div></div><div><div class="kv"><span>Carry he already paid</span><span class="v">$8.24 &mdash; kept</span></div></div></div></div>
+  <div class="cfoot"><div class="footnote" style="border-top:0;margin-top:0;padding-top:0"><p>Nothing moves yet, and Marcus is told nothing. Mike gets this on his phone, or types his code here.</p></div><div class="pair" style="margin-top:var(--s2)"><button class="btn btn-primary">Send to an owner</button><button class="btn">Cancel</button></div></div>
+</div>
+</div>
+<div class="sheet">
+<div class="modal">
+  <div class="chead"><div class="line" style="align-items:center"><span class="mtitle">Waiting on Mike</span><span class="chip underway">Needs an owner</span></div></div>
+  <div class="cmain"><p class="det">Jen requested a $412.00 refund for Marcus T. at 2:31pm.</p><div class="rows" style="margin-top:var(--s3)"><div><div class="kv"><span>Sent to Mike</span><span class="v">Delivered</span></div></div><div><div class="kv"><span>Marcus has been told</span><span class="v">Nothing, yet</span></div></div></div><p class="label" style="margin:var(--s3) 0 6px">Manager or owner PIN &middot; under $500.00</p><div class="pinbox"><span>&bull;</span><span>&bull;</span><span class="live"></span><span></span></div><p class="det" style="margin-top:var(--s1)">Under $500.00 Luis can clear this with his PIN. Above it, only Mike &mdash; here or from his phone.</p></div>
+  <div class="cfoot"><button class="btn btn-lg">Cancel the request</button></div>
+</div>
+</div>
+</div>
+<div class="row" style="margin-top:var(--s3)">
+<div class="sheet">
+<div class="modal">
+  <div class="chead"><div class="line" style="align-items:center"><span class="mtitle">Approve this refund?</span><span class="mc-who2"><span class="avatarbtn sm">MR</span>Mike <span class="det">owner</span></span></div></div>
+  <div class="cmain"><p class="det" style="margin-bottom:var(--s2)">Jen requested this for Marcus T.</p><div class="rows"><div><div class="kv"><span>Refund</span><span class="v">$412.00</span></div></div><div><div class="kv"><span>Off your next payout</span><span class="v">$403.76</span></div></div><div><div class="kv"><span>Next payout becomes</span><span class="v" style="color:var(--ink);font-weight:500">$3,815.15</span></div></div></div></div>
+  <div class="cfoot"><div class="footnote" style="border-top:0;margin-top:0;padding-top:0"><p>Declining tells Jen, not the customer.</p></div><div class="pair" style="margin-top:var(--s2)"><button class="btn btn-primary">Approve refund</button><button class="btn">Decline</button></div></div>
+</div>
+</div>
+<div class="sheet">
+<div class="modal">
+  <div class="chead"><div class="line" style="align-items:center"><span class="mtitle">&nbsp;</span><span class="mclose" role="button" tabindex="0" aria-label="Close"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div></div>
+  <div class="cmain"><p class="fig fig-sec">Refunded</p><p class="det" style="margin-top:4px">Marcus has been told. His plan is closed.</p><div class="rows" style="margin-top:var(--s3)"><div><div class="kv"><span>Refunded</span><span class="v">$412.00</span></div></div><div><div class="kv"><span>Marcus gets back</span><span class="v">$99.91</span></div></div><div><div class="kv"><span>Asked by</span><span class="v">Jen &middot; 2:31pm</span></div></div><div><div class="kv"><span>Approved by</span><span class="v">Mike &middot; 2:36pm</span></div></div></div></div>
+  <div class="cfoot"><p class="det" style="margin-bottom:var(--s2)">The record keeps both names. An owner reviewing the month needs to know who asked as well as who approved.</p><button class="btn btn-lg">Done</button></div>
+</div>
+</div>
+</div>
+<p class="note" style="margin-top:var(--s3)"><strong>The owner sees a different number from the writer, and that is the point.</strong> Jen sees what Marcus gets back. Mike sees what it does to his payout &mdash; $3,815.15 instead of $4,218.91 &mdash; which is the figure the person authorising actually decides on. <strong>Nothing is said to the customer until step three completes</strong>, so a refund a writer asked for and an owner declined never became a promise.</p>
+<p class="note">Escalate by size, as retail already does, and the owner sets the line: under their figure a manager PIN clears it at the till, above it approval comes from the owner&rsquo;s phone. Set to Off, every refund waits. The code authorises one displayed action and expires with it &mdash; it is never a session and never an owner sign-in.</p>
+
+<h2>Fixed from the old reference</h2>
+<ul class="chg">
+  <li><b>Step one showed the writer the payout.</b> The old review screen put <em>Off your next payout $403.76</em> in front of Jen, which the staff rules do not allow and which the reference&rsquo;s own commentary contradicts two paragraphs later. Jen sees what the customer gets back; the payout figure appears in step three, to Mike.</li>
+  <li><b>Charge detail showed the writer the fee.</b> Same correction as the charge flow: the money rows are an owner&rsquo;s.</li>
+  <li><b>The list totalled money that was not confirmed.</b> $1,840.00 counted the waiting charge. The header says $900.00 confirmed, and the waiting one is a row.</li>
+</ul>
+
+<h2>Open</h2>
+<ul class="chg">
+  <li><b>Partial refunds.</b> Everything here refunds the whole charge. A returned part on a $412 ticket is the common case in a tyre shop, and it changes the customer&rsquo;s plan rather than closing it.</li>
+  <li><b>Refunding an expired charge.</b> Nothing moved, so there is nothing to refund &mdash; but a writer may well try. Tom B.&rsquo;s row should open something that says so and offers to send it again.</li>
+  <li><b>Where a dispute goes.</b> A customer who disputes a charge with Clear is the merchant-side mirror of the member app&rsquo;s dispute page, and it does not exist here yet.</li>
+</ul>
+
+</div>
+</body></html>

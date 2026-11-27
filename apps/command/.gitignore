@@ -1,0 +1,4 @@
+node_modules
+dist
+e2e/.results
+e2e/__screenshots__

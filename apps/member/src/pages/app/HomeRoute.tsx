@@ -1,0 +1,233 @@
+import PendingFigures from '@/components/clear/PendingFigures';
+import { useEffect, useState } from 'react';
+import HomePage from './HomePage';
+import { useLogout } from '@/hooks/useLogout';
+import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
+import { useClearBalances } from '@/hooks/useClearBalances';
+import { useClearTransactions } from '@/hooks/useClearTransactions';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { mergedActivityRows } from '@/lib/activityMapping';
+import { useCreditRepayments } from '@/hooks/useCreditRepayments';
+import { useChargePayments } from '@/hooks/useChargePayments';
+import { useShopPurchases, useYourShops } from '@/hooks/useRewards';
+import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
+import { onChainStale } from '@/lib/chainStale';
+import { keepLastGood } from '@/lib/keepLastGood';
+import { useAutoPledge } from '@/hooks/useAutoPledge';
+import { useCreditRepay, usePayPlan, useRepayFromSavings, useRepayWrittenOff, useSetPlanSplit } from '@/hooks/useCreditRepay';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
+import {
+  getCardTransactions,
+  getCredit,
+  getPaySummary,
+  readAutopay,
+  type AutopaySummary,
+  type CardTransaction,
+  type CreditState,
+  type PaySummary,
+} from '@/utils/apiClient';
+import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
+
+/*
+ * Day-one, not in-use.
+ *
+ * The `*_IN_USE` datasets are the DESIGN PREVIEW's populated fixtures -- a fully furnished account
+ * used to show what the page looks like with money in it. Falling back to them in the real app
+ * meant a member with nothing, or one whose fetch had not landed, was shown somebody else's
+ * balances rendered as their own. That is not a placeholder, it is a fabrication.
+ *
+ * `*_DAY_ONE` is the honest base: zeros, empty lists, and products in their locked or
+ * not-yet-activated state. Real figures are spread over it as they arrive, so a member who does
+ * have money still never watches it flash to zero -- each field only overrides once it has been
+ * read.
+ */
+
+/**
+ * Live Home.
+ *
+ * Balances, savings, equity credits, recent activity and now the credit tiers are all real. The tiers come from /api/credit, which reads the
+ * contracts rather than recomputing what they already decide.
+ *
+ * Carry cost, the cycle and the limit backing are read too. All three were assumed to need
+ * contract changes and none did -- `carryOf`, `creditPeriods` and `collateralValueOf` were already
+ * there, which is worth remembering before proposing an upgrade next time.
+ *
+ * Term plans are real too now, which is what makes day one's two arrivals reachable: the page
+ * reverses its order for a member who has an active plan, and a counter member who approved a
+ * charge now has one. The locked rows beneath are kept — partner credit and Clear Cash are products
+ * nobody has unlocked yet, not fields that failed to load.
+ *
+ * The account numbers are not read here at all. Spendable's details surface (AccountDetailsDialog)
+ * reads them from Lithic when it opens and drops them when it closes; holding them for the session
+ * on Home would keep bank details in memory that nobody asked to see.
+ */
+export default function HomeRoute() {
+  const { address } = useAppKitAccount();
+  const { cash, savings, loading: balancesLoading } = useClearBalances();
+  const { items, loading: txLoading } = useClearTransactions();
+  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
+  // The auto-save rule, for the savings card's "On track for" date. Same key as Savings.
+  const [autopay, setAutopay] = useRemembered<AutopaySummary | null>(`autosave:${walletKey(address)}`, null);
+  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
+  const [creditTried, setCreditTried] = useState(false);
+  const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${walletKey(address)}`, []);
+  // Every repayment, whichever way it was made, listed alongside what it paid for.
+  const repayments = useCreditRepayments(address);
+  // Shops paid now: one row each, in place of the transfers they were made of.
+  const chargePayments = useChargePayments(address);
+  const shopPurchases = useShopPurchases(address);
+  // Your shops (rewards spec, section 6): shown on Home once they've joined one.
+  const yourShops = useYourShops(address);
+  const repay = useCreditRepay();
+  // Spendable's full number, for a member without Face ID: a fresh sign-in, as the lock screen does.
+  const logout = useLogout();
+  const payPlan = usePayPlan();
+  const setSplit = useSetPlanSplit();
+  const payBack = useRepayWrittenOff();
+  const repayFromSavings = useRepayFromSavings();
+
+  useEffect(() => {
+    let cancelled = false;
+    // Recent activity is both halves of what a member spent, so this page needs the card's side of
+    // it too. Without this the preview showed sends and withdrawals and no purchases at all.
+    void getCardTransactions().then(({ value }) => {
+      if (!cancelled) setCards(value ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /*
+   * Everything on this page a move can change, read together.
+   *
+   * One effect and one listener on purpose. As two, the credit read refreshed after a deposit and
+   * the equity ledger did not — so the limit moved while the credits feeding the savings card and
+   * the milestone path sat at their old figures until the member changed page. They are downstream of
+   * the same deposit; splitting them was splitting one fact into two that could disagree.
+   */
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+
+    // Null covers both "no credit line" and "could not read the chain", and the route distinguishes
+    // them with a 503 for the second. Either way the placeholder stands rather than a zeroed line:
+    // telling a member their credit is gone because an RPC timed out is the worse mistake.
+    const read = () => {
+      void getCredit(address).then((result) => {
+        if (!cancelled) setCredit((prev) => keepLastGood(prev, result));
+        if (!cancelled) setCreditTried(true);
+      });
+      void getPaySummary(address).then((result) => {
+        if (!cancelled) setPay(result);
+      });
+      // A failed read keeps the last rule rather than dropping the date.
+      void readAutopay(address).then((summary) => {
+        if (!cancelled && summary) setAutopay(summary);
+      });
+    };
+    read();
+
+    // Re-read after a move. The backoff and the reasoning live in `chainStale`, because this was
+    // not the only reader and the copies drifted — the savings move signalled, the pool and bond
+    // moves did not, and nothing outside this file was listening at all.
+    const stopListening = onChainStale(read);
+
+    return () => {
+      cancelled = true;
+      stopListening();
+    };
+  }, [address]);
+
+  // Savings and Earn the member already holds back their line without a prompt (Settings can turn it
+  // off). Waits for the credit read to show a line; refreshes it through chainStale when one lands.
+  useAutoPledge(address, credit);
+
+  // Only override a figure once it has been read. A zero balance mid-fetch tells a member their
+  // money is gone, which is a worse thing to show than the placeholder it would replace.
+  const haveBalances = Boolean(address) && !balancesLoading;
+
+  const data = {
+    ...HOME_DAY_ONE,
+    // NOT the USDC balance. `cash` is what can settle a card authorization and nothing else --
+    // availableToSpend adds it straight to the credit line -- and USDC on the member's own smart
+    // wallet cannot do that until it has been moved to the card float. Counting it here would
+    // offer somebody spend the float cannot fund, which is the same mistake the snapshot service
+    // is careful to avoid on the authorization side.
+    //
+    // Left at zero until a card balance is actually readable. The USDC is not hidden: it appears
+    // as readyToAllocate below, which is the row that exists to say "yours, not spendable here".
+    // The "On track for" date is Savings' rule, from the same auto-save: one date on both pages.
+    savings: withOnTrack(
+      {
+        ...HOME_DAY_ONE.savings,
+        ...(haveBalances ? { cash: savings } : {}),
+        ...(pay
+          ? { credits: pay.totalEquity, vested: pay.vestedEquity, vesting: pay.pendingEquity }
+          : {}),
+      },
+      autopay ? autoSaveFromRules(autopay.rules, autopay.savedThisYear) : undefined,
+    ),
+    cashAccount: {
+      ...HOME_DAY_ONE.cashAccount,
+      // USDC on the member's own smart wallet: theirs, in the cash account, and able to go to
+      // Savings or Earn but never to the card. This is where that balance belongs -- leaving it at
+      // zero told a member holding 35 USDC that they had nothing to place.
+      ...(haveBalances ? { readyToAllocate: cash } : {}),
+    },
+    /*
+     * Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,
+     * and the page has a state for it.
+     *
+     * The newest four of EVERYTHING, not the newest four transfers. A member who paid for lunch on
+     * the card and then sent a friend $20 should see both, in the order they happened.
+     */
+    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards, undefined, repayments, chargePayments, [], shopPurchases).slice(0, 4) }),
+    ...(credit?.complete
+      ? {
+          // Pending card holds count as used: a live authorization is money this member cannot
+          // spend again, whatever the contracts have settled.
+          credit: toCredit(
+            credit.tiers,
+            HOME_DAY_ONE.credit,
+            credit.term?.carryOwedCents ?? 0,
+            credit.pendingCardDraws ?? {},
+          ),
+          cycle: toCycle(credit.cycle, HOME_DAY_ONE.cycle),
+          backing: toLimitBacking(credit.tiers, HOME_DAY_ONE.backing),
+          // The last placeholder on this page, and the one that made day one's two arrivals
+          // unreachable: HomePage already reverses its order for a member who has a plan, and
+          // until now no member could have one it could see.
+          // No ELPA here: it is not a term plan (Addendum 3), and Savings shows it from the books.
+          termPlans: toTermPlans(credit.plans, HOME_DAY_ONE.termPlans, credit.term),
+        }
+      : {}),
+  };
+
+  // What of their savings a member can move: CLRUSD refuses to transfer what backs drawn credit.
+  const savingsFree =
+    haveBalances && credit?.savingsEncumberedCents != null
+      ? Math.max(0, savings - credit.savingsEncumberedCents / 100)
+      : 0;
+
+  // Nothing to show yet: no remembered figures and the first reads still out. Placeholders, not zeros.
+  const pending = balancesLoading || (credit === null && !creditTried);
+
+  return (
+    <PendingFigures pending={pending}>
+    <HomePage
+      pending={pending}
+      standing={credit?.standing}
+      data={data}
+      onRepay={repay}
+      onRepayFromSavings={repayFromSavings}
+      onPayPlan={payPlan}
+      onSetSplit={setSplit}
+      onPayBack={payBack}
+      savingsFree={savingsFree}
+      yourShops={yourShops}
+      onSignInAgain={() => void logout({ sendCode: true })}
+    />
+    </PendingFigures>
+  );
+}

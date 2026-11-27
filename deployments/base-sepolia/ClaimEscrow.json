@@ -8,6 +8,36 @@
       "inputs": []
     },
     {
+      "type": "error",
+      "name": "ClaimEscrowBadClaimSignature",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ClaimEscrowExpired",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "expiry"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClaimEscrowInvalidClaimSigner",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ClaimEscrowSignatureRequired",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ClaimEscrowTermsNotAuthorized",
+      "inputs": []
+    },
+    {
       "type": "event",
       "anonymous": false,
       "name": "AdminChanged",
@@ -39,11 +69,50 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "ClaimSignerSet",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "transferId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "claimSigner",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Initialized",
       "inputs": [
         {
           "type": "uint8",
           "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PayoutClaimAuthorized",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "transferId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "payoutRefHash",
           "indexed": false
         }
       ]
@@ -297,8 +366,9 @@
     },
     {
       "type": "function",
-      "name": "claimToPayoutTreasury",
-      "constant": false,
+      "name": "claimAuthorityOf",
+      "constant": true,
+      "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
@@ -306,11 +376,111 @@
           "name": "transferId"
         }
       ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "claimDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "transferId"
+        },
+        {
+          "type": "address",
+          "name": "recipientWallet"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "claimSignerOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "claimToPayoutTreasury",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "claimToPayoutTreasuryWithSignature",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "transferId"
+        },
+        {
+          "type": "bytes32",
+          "name": "payoutRefHash"
+        },
+        {
+          "type": "bytes",
+          "name": "signature"
+        }
+      ],
       "outputs": []
     },
     {
       "type": "function",
       "name": "claimToWallet",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "claimToWalletWithSignature",
       "constant": false,
       "payable": false,
       "inputs": [
@@ -321,6 +491,10 @@
         {
           "type": "address",
           "name": "recipientWallet"
+        },
+        {
+          "type": "bytes",
+          "name": "signature"
         }
       ],
       "outputs": []
@@ -413,6 +587,132 @@
     },
     {
       "type": "function",
+      "name": "createTransferWithAuthorizationAndClaimKey",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "sender"
+        },
+        {
+          "type": "tuple",
+          "name": "terms",
+          "components": [
+            {
+              "type": "bytes32",
+              "name": "transferId"
+            },
+            {
+              "type": "uint256",
+              "name": "principalUsdc"
+            },
+            {
+              "type": "uint256",
+              "name": "sponsorFeeUsdc"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "bytes32",
+              "name": "recipientHintHash"
+            },
+            {
+              "type": "address",
+              "name": "claimSigner"
+            }
+          ]
+        },
+        {
+          "type": "tuple",
+          "name": "auth",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "validAfter"
+            },
+            {
+              "type": "uint256",
+              "name": "validBefore"
+            },
+            {
+              "type": "bytes32",
+              "name": "nonce"
+            },
+            {
+              "type": "uint8",
+              "name": "v"
+            },
+            {
+              "type": "bytes32",
+              "name": "r"
+            },
+            {
+              "type": "bytes32",
+              "name": "s"
+            }
+          ]
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "createTransferWithClaimKey",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "tuple",
+          "name": "terms",
+          "components": [
+            {
+              "type": "bytes32",
+              "name": "transferId"
+            },
+            {
+              "type": "uint256",
+              "name": "principalUsdc"
+            },
+            {
+              "type": "uint256",
+              "name": "sponsorFeeUsdc"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "bytes32",
+              "name": "recipientHintHash"
+            },
+            {
+              "type": "address",
+              "name": "claimSigner"
+            }
+          ]
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "domainSeparator",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "getRoleAdmin",
       "constant": true,
       "stateMutability": "view",
@@ -493,6 +793,29 @@
     },
     {
       "type": "function",
+      "name": "payoutClaimDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "transferId"
+        },
+        {
+          "type": "bytes32",
+          "name": "payoutRefHash"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "proxiableUUID",
       "constant": true,
       "stateMutability": "view",
@@ -567,6 +890,51 @@
       "outputs": [
         {
           "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferTermsHash",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "tuple",
+          "name": "terms",
+          "components": [
+            {
+              "type": "bytes32",
+              "name": "transferId"
+            },
+            {
+              "type": "uint256",
+              "name": "principalUsdc"
+            },
+            {
+              "type": "uint256",
+              "name": "sponsorFeeUsdc"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "bytes32",
+              "name": "recipientHintHash"
+            },
+            {
+              "type": "address",
+              "name": "claimSigner"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
           "name": ""
         }
       ]

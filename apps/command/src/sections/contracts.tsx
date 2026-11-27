@@ -1,0 +1,2068 @@
+// @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { Fragment } from 'react';
+import { css } from '../runtime/dom';
+import { footItem, head, ic, money } from './core';
+import {
+  AGR,
+  AGR_T,
+  AST,
+  CH,
+  CHAIN,
+  CH_DONE,
+  CODE,
+  CS,
+  CTR,
+  CTR_NOTE,
+  DAY,
+  EDGES,
+  KEY_ROLES,
+  LAYERS,
+  MON,
+  NOW,
+  PENDING,
+  REL,
+  RELEASES,
+  RK,
+  SIGNED,
+  SIGNERS,
+  SIGN_W,
+  SW,
+  TODAY,
+  TTL,
+  TXD,
+  TXO,
+  YEAR,
+  vars,
+} from './data';
+import { G, chart, columns, figHtml, fmtD, gCell, px } from './growth';
+import { mkey, vizTrack } from './home';
+import { ddHtml } from './kit';
+import { evRows, strip } from './money';
+import CHAIN_ABIS from '@clear/command-types/src/chain/base-sepolia.json';
+import { live } from '../live/actions';
+import { LIVE, REAL } from '../live/env';
+import { ago } from '../live/feeds';
+import { safeWaitingOn } from '../live/safe';
+import { modalShell, onKey } from './shell';
+export function D(m, d, y = 2026, h = 0) {
+  return Date.UTC(y, m - 1, d, h);
+}
+export function agrOf(id) {
+  return AGR.find((a) => a.id === id);
+}
+export function acnt(f) {
+  return AGR.filter(f).length;
+}
+export function ctrOf(id) {
+  return CTR.find((c) => c[0] === id);
+}
+/* projected, once you sign */
+/* changes: events drawn on a lane. seg: done | open | proj | wait | block. mark: draft | check | sign | live | due | auto */
+/**
+ * The merchant partner agreements: one per transacting shop (signed the day it was added to
+ * MerchantRegistry) and one per signed shop, the one out for signature included. The template's
+ * v1.1 (NET-14) started 15 Sep.
+ */
+export function merchantAgreements() {
+  const out = TXO.map((m, i) => ({
+    id: m.id,
+    name: 'Merchant partner agreement',
+    party: m.name,
+    type: 'merchant',
+    st: 'signed',
+    a: TXD[i],
+    b: TXD[i] + YEAR,
+    note: `${m.terms}, ${m.fee ? m.fee.toFixed(1) + '% fee' : 'no fee'}, ${money(m.cap)} cap per sale.${m.founding ? ' Founding partner.' : ''}`,
+  }));
+  SIGNED.forEach((s, i) => {
+    const sent = s[4] === 'signing',
+      a = sent ? null : TODAY - (4 + i * 3) * DAY;
+    out.push({
+      id: s[0],
+      name: 'Merchant partner agreement',
+      party: s[1],
+      type: 'merchant',
+      st: sent ? 'out' : 'signed',
+      a,
+      b: a ? a + YEAR : null,
+      sent: sent ? D(10, 18) : null,
+      note: sent ? 'They signed 20 Oct. Founding seat 4 of 5 once you sign.' : 'Takes $10 redemptions. Clear payments not on yet.',
+      // out for signature: sent, the shop signed, then you, a check and it's filed
+      ...(sent
+        ? {
+            ev: [
+              ['seg', 'done', D(10, 18, 2026, 10), D(10, 20, 2026, 15)],
+              ['seg', 'open', D(10, 20, 2026, 15), NOW],
+              ['seg', 'proj', NOW, D(10, 24)],
+              ['draft', D(10, 18, 2026, 10)],
+              ['sign', D(10, 20, 2026, 15), 'IC'],
+              ['sign', NOW, 'K', 1],
+              ['check', D(10, 23), 1],
+              ['live', D(10, 24), 1],
+            ],
+          }
+        : {}),
+    });
+  });
+  for (const x of out) x.ver = !x.a || x.a >= D(9, 15) ? 'v1.1' : 'v1.0';
+  return out;
+}
+/** A deployed contract's functions that change something, as "name(type,type)". */
+function writeFns(name) {
+  const fns = CHAIN_ABIS.contracts[name]?.functions || [];
+  return fns.filter((f) => f.stateMutability !== 'view' && f.stateMutability !== 'pure').map((f) => ({ sig: `${f.name}(${f.inputs.map((i) => i.type).join(',')})` }));
+}
+/** When the other side signed an agreement that's out for signature. */
+/* live, the lanes are drawn around the API's now, not the prototype's */
+const liveNow = () => vars.contractsNow ?? NOW;
+export const theySigned = (a) => a.ev?.find((e) => e[0] === 'sign' && e[2] !== 'K')?.[1];
+/** A signer by key, and how many signatures wait on them. */
+export const signer = (k) => SIGNERS.find((s) => s[0] === k);
+export const waitingOn = (k) => (LIVE && safeWaitingOn(k)) || CH.filter((c) => c.ev.some((e) => e[0] === 'sign' && e[2] === k && e[3]));
+/**
+ * Live: what's on its way to the Safe. On-chain acts in the outbox wait for their first signature;
+ * transactions in the Safe's queue wait for more, or to be executed in Safe{Wallet}.
+ */
+function safeCell() {
+  const s = vars.safe,
+    mine = (s.owners.find((o) => o.you) || {}).address,
+    out = (vars.safeOutbox || []).filter((o) => o.status === 'queued'),
+    rows = [
+      ...out.map((o) => [o.summary, `Asked for by ${o.requested_by}`, <button key={o.id} type="button" className="btn btn-p btn-s" data-safeprep={o.id}>Sign and send</button>]),
+      ...s.pending.map((t) => {
+        const signed = t.confirmations.some((c) => c.owner === mine),
+          ready = t.confirmations.length >= t.confirmationsRequired;
+        return [
+          `${t.method || 'Transaction'} · nonce ${t.nonce}`,
+          `${t.confirmations.length} of ${t.confirmationsRequired} signed`,
+          ready ? (
+            <a key={t.safeTxHash} className="btn btn-g btn-s" href={s.link} target="_blank" rel="noopener noreferrer">Execute in Safe{'{'}Wallet{'}'}</a>
+          ) : signed || !mine ? (
+            <span key={t.safeTxHash} className="small quiet">{signed ? 'You’ve signed' : 'Waiting on the others'}</span>
+          ) : (
+            <button key={t.safeTxHash} type="button" className="btn btn-p btn-s" data-safesign={t.safeTxHash}>Sign</button>
+          ),
+        ];
+      }),
+    ];
+  return gCell(
+    's-12',
+    'For the Safe',
+    `${CHAIN.safe} · ${s.threshold} of ${s.owners.length}`,
+    figHtml(String(rows.length), rows.length ? 'waiting on signatures or to be executed · your wallet signs, Command never holds a key' : 'nothing waiting'),
+    <div className="pn-list">
+      {rows.map(([a, b, act], i) => (
+        <div key={i} className="pn-r">
+          <span className="pn-k">
+            <b>{a}</b>
+            <span className="small quiet">{b}</span>
+          </span>
+          {act}
+        </div>
+      ))}
+    </div>,
+    safeFoot(),
+  );
+}
+/** Live: the Ops Safe's own link, and linking the wallet you sign with if you haven't. */
+function safeFoot() {
+  return (
+    <div className="c-ft split">
+      <a href={vars.safe.link} target="_blank" rel="noopener noreferrer">
+        <span className="t">Open the Safe</span>
+        {ic('out', 'sm')}
+      </a>
+      <span className="rule" aria-hidden="true" />
+      {vars.me?.wallet ? (
+        footItem({ t: `Signing as ${vars.me.wallet.slice(0, 6)}…${vars.me.wallet.slice(-4)}` })
+      ) : (
+        <button type="button" data-linkwallet="">
+          <span className="t">Link the wallet you sign with</span>
+          {ic('chev', 'sm')}
+        </button>
+      )}
+    </div>
+  );
+}
+/** "today", "yesterday" or the date, for an event. */
+export function dayWord(t) {
+  const d = Math.round((TODAY - (t - (t % DAY))) / DAY);
+  return d === 0 ? 'today' : d === 1 ? 'yesterday' : 'on ' + fmtD(t);
+}
+const safeRule = () =>
+  REAL && !CHAIN.threshold
+    ? 'No Ops Safe yet · the deployer wallet signs alone'
+    : `${SIGNERS.length ? `${CHAIN.threshold} of ${SIGNERS.length}` : CHAIN.threshold} sign${REAL && !CHAIN.delayHours ? '' : `, then a ${CHAIN.delayHours}-hour wait`}`;
+const noneYet = <span className="small quiet">None yet.</span>;
+const median = (v) => {
+  const s = [...v].sort((a, b) => a - b),
+    m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+export function H(m, d, h) {
+  return D(m, d, 2026, h);
+}
+/* ── shared drawing ───────────────────────────────────────────────────── */
+export function pctX(t, a, b) {
+  return Math.max(0, Math.min(100, ((t - a) / (b - a)) * 100));
+}
+export function axisHtml(from, to, step) {
+  /* step: 'month' | days */
+  const out = [];
+  if (step === 'month') {
+    const d = new Date(from);
+    d.setUTCDate(1);
+    if (d.getTime() < from) d.setUTCMonth(d.getUTCMonth() + 1);
+    for (; d.getTime() <= to; d.setUTCMonth(d.getUTCMonth() + 1)) {
+      const m = d.getUTCMonth();
+      out.push([d.getTime(), m === 0 ? `Jan ${String(d.getUTCFullYear()).slice(2)}` : MON[m]]);
+    }
+  } else for (let t = from; t <= to; t += step * DAY) out.push([t, fmtD(t)]);
+  return out;
+}
+export function laneFrame(rows, from, to, step, cls) {
+  /* label column + lanes, with month/day grid, today and the next-90-days shade */
+  const ax = axisHtml(from, to, step),
+    tX = pctX(NOW, from, to);
+  return (
+    <div className={`ln ${cls || ''}`}>
+      <div className="ln-ax">
+        <span />
+        <span className="ln-axl">
+          {ax.map(([t, l], __k) => (
+            <span key={__k} style={css(`left:${pctX(t, from, to)}%`)}>
+              {l}
+            </span>
+          ))}
+          <span className="now" style={css(`left:${tX}%`)}>
+            Today
+          </span>
+        </span>
+      </div>
+      <div className="ln-bd">
+        <div className="ln-ov">
+          {ax.map(([t], __k) => (
+            <i key={__k} className="g" style={css(`left:${pctX(t, from, to)}%`)} />
+          ))}
+          <i className="t" style={css(`left:${tX}%`)} />
+        </div>
+        {rows}
+      </div>
+    </div>
+  );
+}
+
+/* agreement terms as bars */
+export function gantt(list, from, to, agg) {
+  const tX = pctX(NOW, from, to);
+  const row = (x) => {
+    let lane = '';
+    if (x.st === 'draft')
+      lane = (
+        <i className="gb-draft" style={css(`left:${tX}%`)}>
+          {'Draft '}
+          {x.ver}
+        </i>
+      );
+    else if (x.st === 'out')
+      lane = (
+        <>
+          <i className="gb out" style={css(`left:${pctX(x.sent, from, to)}%;width:${tX - pctX(x.sent, from, to)}%`)} />
+          <i className="gb-tag live" style={css(`left:${tX}%`)}>
+            Waiting on you
+          </i>
+        </>
+      );
+    else {
+      const a = pctX(x.a, from, to),
+        b = x.b ? pctX(x.b, from, to) : 100,
+        soon = x.b && x.b - NOW < 90 * DAY;
+      lane = (
+        <>
+          <i className={`gb${x.b ? '' : ' open'}${x.a < from ? ' cut' : ''}`} style={css(`left:${a}%;width:${b - a}%`)} />
+          {x.b && x.b <= to ? (
+            <>
+              <i className={`gb-end${soon ? ' soon' : ''}`} style={css(`left:${b}%`)} />
+              {soon ? (
+                <i className="gb-tag" style={css(`left:${b}%`)}>
+                  {fmtD(x.b)}
+                </i>
+              ) : (
+                ''
+              )}
+            </>
+          ) : (
+            ''
+          )}
+        </>
+      );
+    }
+    return (
+      <button type="button" className="ln-r" data-agr={x.id}>
+        <span className="ln-k">
+          <b>{x.party}</b>
+          <span>{x.name}</span>
+        </span>
+        <span className="ln-l">{lane}</span>
+      </button>
+    );
+  };
+  let rows = list.map(row);
+  if (agg && AGR.some((x) => x.type === 'merchant' && x.a)) {
+    const ms = AGR.filter((x) => x.type === 'merchant' && x.a),
+      s0 = Math.min(...ms.map((x) => x.a)),
+      e0 = Math.min(...ms.map((x) => x.b)),
+      e1 = Math.max(...ms.map((x) => x.b));
+    rows = (
+      <>
+        {rows}
+        <button type="button" className="ln-r agg" data-cpane="agreements">
+          <span className="ln-k">
+            <b>
+              {ms.length + 1}
+              {' merchant partners'}
+            </b>
+            <span>12-month terms</span>
+          </span>
+          <span className="ln-l">
+            <i className="gb-band" style={css(`left:${pctX(s0, from, to)}%;width:${pctX(e1, from, to) - pctX(s0, from, to)}%`)} />
+            {ms.map((x, __k) => (
+              <Fragment key={__k}>
+                <i className="gt-s" style={css(`left:${pctX(x.a, from, to)}%`)} />
+                <i className="gt-e" style={css(`left:${pctX(x.b, from, to)}%`)} />
+              </Fragment>
+            ))}
+            <i className="gb-brk" style={css(`left:${pctX(e0, from, to)}%;width:${pctX(e1, from, to) - pctX(e0, from, to)}%`)}>
+              <span>
+                {ms.length}
+                {' renew '}
+                {fmtD(e0)}
+                {' – '}
+                {fmtD(e1)}
+              </span>
+            </i>
+          </span>
+        </button>
+      </>
+    );
+  }
+  return laneFrame(rows, from, to, 'month', 'gt');
+}
+
+/* changes as signature lanes */
+export function sigLanes(list, from, to, step) {
+  const X = (t) => pctX(t, from, to),
+    inW = (t) => t >= from && t <= to;
+  const row = (r) => {
+    const segs = r.ev
+      .filter((e) => e[0] === 'seg')
+      .map(([, k, a, b], __k) => <i key={__k} className={`sl-seg ${k}`} style={css(`left:${X(a)}%;width:${Math.max(0.4, X(b) - X(a))}%`)} />);
+    const marks = r.ev
+      .filter((e) => e[0] !== 'seg' && inW(e[1]))
+      .map((e, __k) => {
+        const [k, t, w, f] = e,
+          l = X(t);
+        return k === 'sign' ? (
+          <i key={__k} className={`sl-sg${f ? ' me' : ''}`} style={css(`left:${l}%`)} title={w}>
+            {w}
+          </i>
+        ) : k === 'due' ? (
+          <i key={__k} className="sl-due" style={css(`left:${l}%`)}>
+            <span>{w}</span>
+          </i>
+        ) : k === 'auto' ? (
+          <i key={__k} className="sl-auto" style={css(`left:${l}%`)} />
+        ) : (
+          <i key={__k} className={`sl-${k}${f ? ' proj' : ''}`} style={css(`left:${l}%`)} />
+        );
+      });
+    return (
+      <button type="button" className="ln-r" data-cflow={r.flow || (r.mine ? 'sign' : 'view')} data-cid={r.id}>
+        <span className="ln-k">
+          <b>{r.t}</b>
+          <span className={r.mine ? 'me' : ''}>{r.state}</span>
+        </span>
+        <span className="ln-l">
+          {segs}
+          {marks}
+        </span>
+      </button>
+    );
+  };
+  return laneFrame(list.map(row), from, to, step, 'sl');
+}
+export function sigKey() {
+  return (
+    <div className="mkey sl-key">
+      <span>
+        <i className="k-sq h" />
+        Drafted
+      </span>
+      <span>
+        <i className="k-sq" />
+        Checked
+      </span>
+      <span>
+        <i className="k-sg">K</i>Signed
+      </span>
+      <span>
+        <i className="k-wait" />
+        24-hour wait
+      </span>
+      <span>
+        <i className="k-sq f" />
+        Live
+      </span>
+      <span>
+        <i className="k-open" />
+        Waiting on you
+      </span>
+    </div>
+  );
+}
+/* the protocol, drawn */
+export function protoMap() {
+  const N = (id) => ctrOf(id),
+    W = 15,
+    HN = 3.0; /* node half-width and half-height, in % */
+  /* fan lines out where several leave or meet the same side of a box, so they never stack */
+  const fan = {},
+    offA = [],
+    offB = [];
+  EDGES.forEach((e, i) => {
+    const A = N(e[0]),
+      B = N(e[1]);
+    if (A[7] === B[7]) return;
+    const fw = B[7] > A[7];
+    (fan[e[0] + (fw ? 'R' : 'L')] = fan[e[0] + (fw ? 'R' : 'L')] || []).push([i, 'A', B[8]]);
+    (fan[e[1] + (fw ? 'L' : 'R')] = fan[e[1] + (fw ? 'L' : 'R')] || []).push([i, 'B', A[8]]);
+  });
+  Object.values(fan).forEach((l) => {
+    l.sort((x, y) => x[2] - y[2]);
+    l.forEach(([i, w], j) => {
+      const o = (j - (l.length - 1) / 2) * 1.5;
+      (w === 'A' ? offA : offB)[i] = o;
+    });
+  });
+  EDGES.forEach((e, i) => {
+    const A = N(e[0]),
+      B = N(e[1]);
+    if (A[7] !== B[7] && A[8] === B[8]) {
+      const o = offA[i] || 0 || offB[i] || 0;
+      offA[i] = o;
+      offB[i] = o;
+    }
+  });
+  const geo = (e, i) => {
+    const A = N(e[0]),
+      B = N(e[1]),
+      fw = B[7] > A[7];
+    return {
+      x1: A[7] + (fw ? W / 2 : -W / 2),
+      x2: B[7] - (fw ? W / 2 : -W / 2),
+      y1: A[8] + (offA[i] || 0),
+      y2: B[8] + (offB[i] || 0),
+    };
+  };
+  const path = (e, i) => {
+    const [a, b, k] = e,
+      A = N(a),
+      B = N(b);
+    if (A[7] === B[7]) {
+      const dn = B[8] > A[8];
+      return <path d={`M${A[7] * 10},${A[8] + (dn ? HN : -HN)} L${B[7] * 10},${B[8] + (dn ? -HN : HN)}`} className={`mp-e ${k}`} />;
+    }
+    const g = geo(e, i),
+      mx = ((g.x1 + g.x2) / 2) * 10;
+    return <path d={`M${g.x1 * 10},${g.y1} C${mx},${g.y1} ${mx},${g.y2} ${g.x2 * 10},${g.y2}`} className={`mp-e ${k}`} />;
+  };
+  const lbl = (e, i) => {
+    const [a, b, k, , l, lx] = e;
+    if (!l) return '';
+    const A = N(a),
+      B = N(b);
+    if (A[7] === B[7]) return '';
+    const g = geo(e, i),
+      x = lx != null ? lx : (g.x1 + g.x2) / 2,
+      y = lx != null ? g.y1 : (g.y1 + g.y2) / 2;
+    return (
+      <span className={`mp-el ${k}`} style={css(`left:${x}%;top:${y}%`)}>
+        {l}
+      </span>
+    );
+  };
+  const pend = CTR_NOTE;
+  return (
+    <>
+      <div className="mp" role="img" aria-label="How the contracts connect">
+        <div className="mp-safe">
+          <b>{CHAIN.safe}</b>
+          <span>
+            {REAL && !CHAIN.threshold ? (
+              'The deployer wallet holds admin and pause until the handover'
+            ) : (
+              <>
+                {CHAIN.threshold} of {SIGNERS.length}
+                {' · admin and pause on every live contract'}
+              </>
+            )}
+          </span>
+        </div>
+        <div className="mp-in">
+          {LAYERS.map((l, i) => (
+            <Fragment key={i}>
+              <span className="mp-lay" style={css(`left:${10 + i * 20}%`)}>
+                {l}
+              </span>
+              <i className="mp-drop" style={css(`left:${10 + i * 20}%`)} />
+            </Fragment>
+          ))}
+          <i className="mp-sep" style={css('top:7.5%')} />
+          <span className="mp-band" style={css('top:7.5%')}>
+            Credit and money
+          </span>
+          <i className="mp-sep" style={css('top:77%')} />
+          <span className="mp-band" style={css('top:77%')}>
+            Deeds and real assets
+          </span>
+          <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
+            {EDGES.map(path)}
+          </svg>
+          {EDGES.map(lbl)}
+          {CTR.map((c, __k) => (
+            <button
+              key={__k}
+              type="button"
+              className={`mp-n ${c[4]}${pend[c[0]] && !['bb', 'lp', 'bv'].includes(c[0]) ? ' pend' : ''}${c[0] === 'ap' ? ' me' : ''}${['bb', 'lp', 'bv'].includes(c[0]) ? ' info' : ''}`}
+              data-ctr={c[0]}
+              style={css(`left:${c[7]}%;top:${c[8]}%`)}
+            >
+              <span className="mp-h">
+                <b>{c[1]}</b>
+                <span className="mono">{c[2]}</span>
+              </span>
+              {pend[c[0]] ? <span className="mp-t">{pend[c[0]]}</span> : ''}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mp-list">
+        {[
+          ['c', 'Credit and money'],
+          ['d', 'Deeds and real assets'],
+        ].map(([b, bn], __k) => (
+          <Fragment key={__k}>
+            <div className="mp-lb">{bn}</div>
+            {LAYERS.map((l, i) => {
+              const cs = CTR.filter((c) => c[3] === i && c[9] === b);
+              return cs.length ? (
+                <div key={i} className="ph-c">
+                  <span className="lbl">{l}</span>
+                  {cs.map((c, __k) => (
+                    <button key={__k} type="button" className="ph-r" data-ctr={c[0]}>
+                      <i className={c[4]} />
+                      <span>
+                        {c[1]}
+                        {pend[c[0]] ? <em>{pend[c[0]]}</em> : ''}
+                      </span>
+                      <span className="mono quiet">{c[2]}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                ''
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+    </>
+  );
+}
+export function mapKey() {
+  return (
+    <div className="mp-keys">
+      {mkey([
+        ['var(--fg)', 'Live on Base Sepolia'],
+        ['var(--line)', 'In the repo, not deployed'],
+        ['var(--underway)', 'Change in the wait'],
+        ['var(--live)', 'Change waiting on you'],
+      ])}
+      <div className="mkey">
+        <span>
+          <i className="lk reads" />
+          Reads from
+        </span>
+        <span>
+          <i className="lk money" />
+          Moves money
+        </span>
+        <span>
+          <i className="lk mint" />
+          Mints tokens
+        </span>
+      </div>
+    </div>
+  );
+}
+/* renewals per month, stacked by type */
+export function renewCols(h = 132) {
+  const months = Array.from(
+    {
+      length: 12,
+    },
+    (_, i) => D(11 + i > 12 ? i - 1 : 11 + i, 1, 11 + i > 12 ? 2027 : 2026),
+  );
+  const col = ['merchant', 'company', 'provider'],
+    colr = {
+      merchant: 'var(--fg)',
+      company: 'var(--land)',
+      provider: 'var(--fg-50)',
+    };
+  const bins = months.map((m) => {
+    const e = new Date(m);
+    e.setUTCMonth(e.getUTCMonth() + 1);
+    return col.map((t) => AGR.filter((x) => x.type === t && x.b && x.b >= m && x.b < e.getTime()).length);
+  });
+  const max = Math.max(...bins.map((b) => b.reduce((a, c) => a + c, 0)));
+  return (
+    <>
+      <div className="scol" style={css(`--colh:${h}px`)}>
+        {bins.map((b, i) => {
+          const tot = b.reduce((a, c) => a + c, 0),
+            m = new Date(months[i]).getUTCMonth();
+          return (
+            <div key={i} className="mcol">
+              <span className="cv2">{tot || ''}</span>
+              <span className="mcol-s">
+                {b.map((v, k) => (v ? <i key={k} style={css(`height:${((v / max) * h).toFixed(1)}px;background:${colr[col[k]]}`)} /> : ''))}
+              </span>
+              <span className="ck">{MON[m]}</span>
+            </div>
+          );
+        })}
+      </div>
+      {mkey([
+        ['var(--fg)', 'Merchant partners'],
+        ['var(--land)', 'Company'],
+        ['var(--fg-50)', 'Providers'],
+      ])}
+    </>
+  );
+}
+
+/* signer activity */
+export function signerHeat() {
+  const max = 4;
+  return (
+    <div className="hm">
+      <div className="hm-r hm-h">
+        <span />
+        {SW.map((w) => w.split(' ')[0]).map((w, __k) => (
+          <span key={__k}>{w}</span>
+        ))}
+        <span>Median</span>
+      </div>
+      {SIGNERS.map(([k, n, r, med], __k) => (
+        <div key={__k} className="hm-r">
+          <span className="hm-k">
+            <b>{n}</b>
+          </span>
+          {SIGN_W[k].map((v, __k) => (
+            <i key={__k} className="hm-c" style={css(`--v:${v / max};${v / max >= 0.5 ? 'color:var(--ground)' : ''}`)} title={`${v} signed`}>
+              {v || ''}
+            </i>
+          ))}
+          <b className="num">
+            {med.toFixed(1)}
+            {' h'}
+          </b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── page ─────────────────────────────────────────────────────────────── */
+const codeTitle = () => {
+  const n = CODE.pulls.filter((p) => p.state === 'open').length;
+  return n === 0 ? 'No pull requests open on the contracts.' : n === 1 ? 'One pull request is open on the contracts.' : `${n} pull requests are open on the contracts.`;
+};
+export function contractsPage() {
+  const P = CS.pane,
+    mine = CH.filter((c) => c.mine).length + acnt((a) => a.st === 'out');
+  const title =
+    P === 'overview'
+      ? mine === 1
+        ? 'One signature is waiting on you.'
+        : `${mine} signatures are waiting on you.`
+      : P === 'agreements'
+        ? `${AGR.length} agreements on file.`
+        : P === 'chain'
+          ? `${CTR.filter((c) => c[4] === 'live').length} contracts live on testnet.`
+          : P === 'code'
+            ? codeTitle()
+            : `${CH.length} changes in flight.`;
+  const tools = (
+    <button className="btn btn-p" type="button" data-cflow="propose">
+      <span className="dot pulse" style={css('color:var(--btn-dot)')} aria-hidden="true" />
+      Propose a change
+    </button>
+  );
+  const tabs = [
+    ['overview', 'Overview'],
+    ['agreements', 'Agreements'],
+    ['chain', 'On-chain'],
+    ['changes', 'Changes'],
+    // live only: the prototype has no Code tab
+    ...(REAL ? [['code', 'Code']] : []),
+  ];
+  const body = {
+    overview: cOverview,
+    agreements: cAgreements,
+    chain: cChain,
+    changes: cChanges,
+    code: cCode,
+  }[P]();
+  return (
+    <>
+      {head(
+        <>
+          {'Contracts · Testnet · '}
+          <b>{REAL ? 'Real data' : 'Demo data'}</b>
+        </>,
+        title,
+        tools,
+      )}
+      <nav className="ptabs" aria-label="Contracts panes">
+        {tabs.map(([v, t], __k) => (
+          <button key={__k} type="button" data-cpane={v} aria-current={P === v ? 'page' : 'false'}>
+            {t}
+          </button>
+        ))}
+      </nav>
+      {body}
+      {contractsPane()}
+    </>
+  );
+}
+export function cOverview() {
+  const live = CTR.filter((c) => c[4] === 'live').length,
+    mine = CH.find((c) => c.mine);
+  const map = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">The protocol</span>
+        <span className="tag">
+          {CHAIN.network}
+          {' · block '}
+          {(CHAIN.block ?? 0).toLocaleString('en-US')}
+        </span>
+      </header>
+      <div className="c-fig">
+        {figHtml(`${live} of ${CTR.length}`, `contracts live${mine ? ` · ${mine.t} waits on your signature${mine.short ? ' and ' + mine.short : ''}` : ''}`)}
+      </div>
+      <div className="c-body">
+        {CTR.length ? (
+          <>
+            {protoMap()}
+            {mapKey()}
+          </>
+        ) : (
+          noneYet
+        )}
+      </div>
+      {strip([
+        ['Live', live],
+        ['Not deployed', CTR.filter((c) => c[4] !== 'live').length],
+        ['Not funded yet', String(Object.values(CTR_NOTE).filter((n) => n === 'Not funded yet').length)],
+        ['Changes in flight', CH.length],
+        ['Paused', String(CTR.filter((c) => c[4] === 'paused').length || 'None')],
+      ])}
+    </section>
+  );
+  const from = D(7, 1),
+    to = D(10, 31, 2027);
+  const terms = gantt(
+    AGR.filter((a) => a.type !== 'merchant' && a.st !== 'draft').sort((x, y) => (x.b || 9e15) - (y.b || 9e15)),
+    from,
+    to,
+    true,
+  );
+  const renew = AGR.filter((a) => a.st === 'renew').sort((x, y) => x.b - y.b);
+  const ms = AGR.filter((x) => x.type === 'merchant' && x.b),
+    cluster = ms.filter((x) => x.b >= D(8, 1, 2027)).length;
+  const agr = (
+    <section className="cell s-8">
+      <header className="c-hd">
+        <span className="lbl">Agreement terms</span>
+        <span className="tag">Jul 26 – Oct 27</span>
+      </header>
+      <div className="c-fig">
+        {figHtml(String(renew.length), `renewals in the next 90 days${renew[0] ? ` · the first is ${renew[0].party} on ${fmtD(renew[0].b)}` : ''}`)}
+      </div>
+      <div className="c-body">
+        {AGR.length ? (
+          <>
+            {terms}
+            {mkey([
+              ['var(--fg)', 'Term'],
+              ['var(--underway)', 'Renews within 90 days'],
+              ['var(--live)', 'Waiting on you'],
+            ])}
+          </>
+        ) : (
+          noneYet
+        )}
+      </div>
+      {strip([
+        ['On file', AGR.length],
+        ['Renewal due', acnt((a) => a.st === 'renew'), '', 'warn'],
+        ['Waiting on you', acnt((a) => a.st === 'out')],
+        ['Drafts', acnt((a) => a.st === 'draft')],
+      ])}
+    </section>
+  );
+  const ren = gCell(
+    's-4 wt',
+    'Renewals by month',
+    'Next 12 months',
+    figHtml(String(cluster), ms.length ? `of ${ms.length + 1} merchant agreements renew in the same three months · worth staggering` : 'merchant agreements renew in the same three months'),
+    renewCols(250),
+    <div className="c-ft">
+      <button type="button" data-cpane="agreements">
+        <span className="t">Every agreement</span>
+        {ic('chev', 'sm')}
+      </button>
+    </div>,
+  );
+  // the last signature on the change that waits on you, by someone else
+  const other = mine && [...mine.ev].reverse().find((e) => e[0] === 'sign' && !e[3] && e[2] !== 'K');
+  const flight = (
+    <section className="cell s-8">
+      <header className="c-hd">
+        <span className="lbl">Changes in flight</span>
+        <span className="tag">{safeRule()}</span>
+      </header>
+      <div className="c-fig">{figHtml(String(waitingOn('K').length), `waiting on your signature${other ? ` · ${signer(other[2])[1]} signed ${mine.t} ${dayWord(other[1])}` : ''}`)}</div>
+      <div className="c-body">
+        {REAL ? (
+          CH.length || CH_DONE.length ? (
+            <>
+              {sigLanes([...CH.slice(0, 5), ...CH_DONE.slice(0, 1)], liveNow() - 8 * DAY, liveNow() + 10 * DAY, 3)}
+              {sigKey()}
+            </>
+          ) : (
+            noneYet
+          )
+        ) : (
+          <>
+            {sigLanes([CH[0], CH[1], CH[2], CH[3], CH[4], CH_DONE[0]], D(10, 13), D(10, 31), 3)}
+            {sigKey()}
+          </>
+        )}
+      </div>
+      <div className="c-ft split">
+        <button type="button" data-cpane="changes">
+          <span className="t">Every change</span>
+          {ic('chev', 'sm')}
+        </button>
+        <span className="rule" aria-hidden="true" />
+        {footItem({
+          t: 'No keys live in this app',
+        })}
+      </div>
+    </section>
+  );
+  const tot30 = Object.values(SIGN_W).reduce((a, v) => a + v.slice(4).reduce((x, y) => x + y, 0), 0);
+  const me = signer('K');
+  const signers = gCell(
+    's-4 wt',
+    'Signers',
+    SIGNERS.length ? `${CHAIN.safe} · ${CHAIN.threshold} of ${SIGNERS.length}` : CHAIN.safe,
+    me
+      ? figHtml(
+          `${me[3].toFixed(1)} h`,
+          `your median time to sign${SIGNERS.every((s) => s[3] >= me[3]) ? ` · the fastest of the ${['', 'one', 'two', 'three', 'four', 'five'][SIGNERS.length]}` : ''}`,
+        )
+      : figHtml('0.0 h', 'your median time to sign'),
+    SIGNERS.length ? (
+      <>
+        <div className="ablock">
+          <span className="lbl">Signatures a week · Sep – Oct</span>
+          {signerHeat()}
+        </div>
+        <div className="ablock">
+          <span className="lbl">Waiting on each</span>
+          {evRows(
+            SIGNERS.map(([k, n, , , next]) => {
+              const w = waitingOn(k);
+              return [k, n, w.length ? w.map((c) => c.t).join(', ') : next, String(w.length), ...(k === 'K' ? ['me'] : [])];
+            }),
+          )}
+        </div>
+      </>
+    ) : (
+      noneYet
+    ),
+    LIVE && vars.safe?.configured ? safeFoot() : strip([
+      ['Signed, 30 days', String(tot30)],
+      ['Waiting on you', String(waitingOn('K').length)],
+    ]),
+  );
+  return (
+    <>
+      {LIVE && vars.safe?.configured ? G('The Safe', 'Sign here with your own wallet', '', safeCell()) : ''}
+      {G('On-chain', 'Every live contract answers to the Ops Safe', '', map)}
+      {G(
+        'Paper',
+        '',
+        '',
+        <>
+          {agr}
+          {ren}
+        </>,
+      )}
+      {G(
+        'Changes',
+        '',
+        '',
+        <>
+          {flight}
+          {signers}
+        </>,
+      )}
+    </>
+  );
+}
+export function cAgreements() {
+  const opts = [
+    ['all', 'All', AGR.length],
+    ['company', 'Company', acnt((a) => a.type === 'company')],
+    ['provider', 'Providers', acnt((a) => a.type === 'provider')],
+    ['member', 'Members', acnt((a) => a.type === 'member')],
+    ['merchant', 'Merchant partners', acnt((a) => a.type === 'merchant')],
+  ];
+  const order = ['company', 'provider', 'member', 'merchant'];
+  const list = AGR.filter((a) => (CS.af === 'all' ? a.type !== 'merchant' : a.type === CS.af)).sort(
+    (x, y) => order.indexOf(x.type) - order.indexOf(y.type) || (x.a || NOW) - (y.a || NOW),
+  );
+  const full = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">Every agreement</span>
+        <span className="hd-tools">{ddHtml('caf', opts, CS.af, 'Show')}</span>
+      </header>
+      <div className="c-fig">
+        {figHtml(
+          String(CS.af === 'all' ? AGR.length : list.length),
+          `${CS.af === 'all' ? 'agreements · merchant partners grouped, pick them in the menu' : AGR_T[CS.af].toLowerCase()} · each bar is a term, each square a renewal`,
+        )}
+      </div>
+      <div className="c-body">
+        {list.length || (CS.af === 'all' && AGR.length) ? (
+          <>
+            {gantt(list, D(7, 1), D(10, 31, 2027), CS.af === 'all')}
+            {mkey([
+              ['var(--fg)', 'Term'],
+              ['var(--underway)', 'Renews within 90 days'],
+              ['var(--live)', 'Waiting on you'],
+              ['var(--line)', 'Draft'],
+            ])}
+          </>
+        ) : (
+          noneYet
+        )}
+      </div>
+      {strip([
+        ['Signed', acnt((a) => a.st === 'signed')],
+        ['Renewal due', acnt((a) => a.st === 'renew'), '', 'warn'],
+        ['Waiting on you', acnt((a) => a.st === 'out')],
+        ['Drafts', acnt((a) => a.st === 'draft')],
+      ])}
+    </section>
+  );
+
+  /* merchant template adoption, cumulative by week */
+  const wk = Array.from(
+      {
+        length: 12,
+      },
+      (_, i) => D(8, 3) + i * 7 * DAY,
+    ),
+    ms = AGR.filter((a) => a.type === 'merchant' && a.a);
+  const v0 = wk.map((t) => ms.filter((a) => a.a <= t + 6 * DAY && a.ver === 'v1.0').length),
+    v1 = wk.map((t, i) => v0[i] + ms.filter((a) => a.a <= t + 6 * DAY && a.ver === 'v1.1').length);
+  const max = 30,
+    area = (top, bot, cls) => (
+      <path
+        d={`M${top.map((y, i) => `${px(i, 12) * 10},${(1 - y / max) * 100}`).join(' L')} L${bot.map((y, i) => `${px(11 - i, 12) * 10},${(1 - bot[11 - i] / max) * 100}`).join(' L')} Z`}
+        className={cls}
+      />
+    );
+  const zero = wk.map(() => 0);
+  const tmpl = gCell(
+    's-6',
+    'Merchant template',
+    'Signed partners by version',
+    figHtml(String(v0[11]), 'shops still on v1.0 · v1.1 added NET-14 on 15 Sep'),
+    <>
+      {chart({
+        h: 132,
+        max,
+        yTicks: [0, 10, 20, 30],
+        x: wk
+          .map((t, i) => ({
+            t: fmtD(t),
+            x: px(i, 12),
+          }))
+          .filter((_, i) => i % 3 === 0 || i === 11),
+        paths: (
+          <>
+            {area(v1, v0, 'ar-2')}
+            {area(v0, zero, 'ar-1')}
+          </>
+        ),
+        notes: [
+          {
+            x: pctX(D(9, 15), wk[0], wk[11]),
+            t: 'v1.1',
+          },
+        ],
+      })}
+      {mkey([
+        ['var(--fg)', 'v1.0'],
+        ['var(--land)', 'v1.1'],
+      ])}
+    </>,
+    strip([
+      ['On v1.1', String(v1[11] - v0[11])],
+      ['On v1.0', String(v0[11])],
+      ['Member', AGR.find((a) => a.type === 'member' && a.st === 'signed')?.ver ?? '—'],
+    ]),
+  );
+  const icw = AGR.find((a) => a.st === 'out' && a.ev);
+  const sig = icw ? gCell(
+    's-6',
+    'Out for signature',
+    'E-signature',
+    figHtml(icw.party, `${(icw.note.match(/founding seat \d+ of \d+/i)?.[0] ?? 'merchant agreement').toLowerCase()} · your signature is next`),
+    <>
+      {sigLanes(
+        [
+          {
+            id: icw.id,
+            t: 'Merchant agreement',
+            state: 'Waiting on you',
+            flow: 'esign',
+            ev: icw.ev,
+          },
+        ],
+        D(10, 16),
+        D(10, 26),
+        3,
+      )}
+      <div className="how two">
+        <span className="k">Sent</span>
+        <b>{fmtD(icw.sent)}</b>
+        <span className="k">Shop signed</span>
+        <b>{fmtD(theySigned(icw))}</b>
+        <span className="k">After you sign</span>
+        <b>Filed, then terms go to the Ops Safe</b>
+      </div>
+    </>,
+    <div className="c-ft">
+      <button type="button" data-cflow="esign" data-cid={icw.id}>
+        <span className="t">Sign in your e-signature tool</span>
+        {ic('out', 'sm')}
+      </button>
+    </div>,
+  )
+    : '';
+  return (
+    <>
+      {G('Terms', 'Select a row for the agreement', '', full)}
+      {G(
+        'Paper',
+        '',
+        '',
+        <>
+          {tmpl}
+          {sig}
+        </>,
+      )}
+    </>
+  );
+}
+export function cChain() {
+  const live = CTR.filter((c) => c[4] === 'live').length;
+  const map = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">The protocol</span>
+        <span className="tag">Select a contract</span>
+      </header>
+      <div className="c-fig">{figHtml(`${live} of ${CTR.length}`, CTR.length ? 'live on Base Sepolia · CreditPool is the one still in the repo only' : 'live on Base Sepolia')}</div>
+      <div className="c-body">
+        {CTR.length ? (
+          <>
+            {protoMap()}
+            {mapKey()}
+          </>
+        ) : (
+          noneYet
+        )}
+      </div>
+      {strip([
+        ['Admin', 'Ops Safe'],
+        ['Pause', 'Ops Safe'],
+        ['Keys in this app', 'None'],
+        ['Paused', 'None'],
+      ])}
+    </section>
+  );
+  /* release lanes */
+  const from = D(8, 1),
+    to = D(10, 31),
+    ids = ['ri', 'ti', 'ap', 'pp', 'cc', 'esa', 'cu', 'lp', 'bv', 'lq', 'ce', 'si', 'mr', 'dn', 'va', 'sd', 'fz'];
+  const rows = ids.map((id, __k) => {
+    const c = ctrOf(id),
+      rel = RELEASES[id] || [],
+      p = PENDING[id];
+    if (!c) return '';
+    const first = rel[0] ? rel[0][1] : D(10, 12);
+    const lane = (
+      <>
+        {c[4] === 'build' ? (
+          <>
+            <i className="sl-seg block" style={css(`left:${pctX(D(10, 12), from, to)}%;width:${pctX(NOW, from, to) - pctX(D(10, 12), from, to)}%`)} />
+            <i className="rl-tag" style={css(`left:${pctX(D(10, 12), from, to)}%`)}>
+              In review
+            </i>
+          </>
+        ) : (
+          <i className="sl-seg done" style={css(`left:${pctX(first, from, to)}%;width:${pctX(NOW, from, to) - pctX(first, from, to)}%`)} />
+        )}
+        {rel.map(([v, t], i) => (
+          <i key={i} className={`rl-v${i === rel.length - 1 ? ' cur' : ''}`} style={css(`left:${pctX(t, from, to)}%`)}>
+            <span>{v}</span>
+          </i>
+        ))}
+        {p ? (
+          <>
+            <i className="sl-seg proj" style={css(`left:${pctX(NOW, from, to)}%;width:${pctX(p[1], from, to) - pctX(NOW, from, to)}%`)} />
+            <i className="rl-v next" style={css(`left:${pctX(p[1], from, to)}%`)}>
+              <span>{p[0]}</span>
+            </i>
+          </>
+        ) : (
+          ''
+        )}
+        {id === 'mr' ? TXD.map((t, __k) => <i key={__k} className="rl-dot" style={css(`left:${pctX(t, from, to)}%`)} />) : ''}
+      </>
+    );
+    return (
+      <button key={__k} type="button" className="ln-r" data-ctr={id}>
+        <span className="ln-k">
+          <b>{c[1]}</b>
+          <span>{c[4] === 'build' ? 'Building' : c[2] + ' live'}</span>
+        </span>
+        <span className="ln-l">{lane}</span>
+      </button>
+    );
+  });
+  const nRel = Object.values(RELEASES).reduce((a, r) => a + r.length, 0),
+    rels = Object.entries(RELEASES).flatMap(([id, r]) => r.map(([v, t]) => [id, v, t])),
+    last = rels.reduce((a, r) => (!a || r[2] > a[2] ? r : a), null),
+    fastest = rels.length ? Object.entries(RELEASES).reduce((a, r) => (r[1].length > a[1].length ? r : a)) : null;
+  const lanes = (
+    <section className="cell s-8">
+      <header className="c-hd">
+        <span className="lbl">Releases</span>
+        <span className="tag">Aug – Oct</span>
+      </header>
+      <div className="c-fig">
+        {fastest
+          ? figHtml(String(nRel), `deploys and upgrades since ${fmtD(Math.min(...rels.map((r) => r[2])))} · ${ctrOf(fastest[0])?.[1] ?? fastest[0]} moves fastest, ${fastest[1].length} versions`)
+          : figHtml('0', 'deploys and upgrades')}
+      </div>
+      <div className="c-body">
+        {CTR.length ? (
+          <>
+            {laneFrame(rows, from, to, 14, 'sl rl')}
+            {mkey([
+              ['var(--fg)', 'Live version'],
+              ['var(--live)', 'Next, waiting on you'],
+              ['var(--fg-50)', 'Shop added to MerchantRegistry'],
+            ])}
+          </>
+        ) : (
+          noneYet
+        )}
+      </div>
+      {strip([
+        ['This week', String(rels.filter((r) => r[2] > NOW - 7 * DAY).length)],
+        ['Last', last ? `${ctrOf(last[0])[1]} ${last[1]}` : '—'],
+        ['By', (last && [...CH, ...CH_DONE].find((c) => c.t === `${ctrOf(last[0])[1]} ${last[1]}`)?.by) || '—'],
+      ])}
+    </section>
+  );
+  /* who can do what */
+  const { holders, roles } = KEY_ROLES;
+  const mx = (
+    <div className="rm">
+      <div className="rm-r rm-h">
+        <span />
+        {holders.map((h, __k) => (
+          <span key={__k}>{h}</span>
+        ))}
+      </div>
+      {roles.map(([r, v], __k) => (
+        <div key={__k} className="rm-r">
+          <span className="rm-k">{r}</span>
+          {v.map((x, __k) => (
+            <span key={__k} className="rm-c">
+              {x === 1 ? <i className="on" /> : x === 2 ? <i className="later" /> : x === 3 ? <i className="risk" /> : <i className="no" />}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+  const rl = gCell(
+    's-4 wt',
+    'Who can do what',
+    'Roles',
+    figHtml(String(roles.flatMap(([, v]) => v).filter((x) => x === 3).length), roles.length ? 'open door: anyone can withdraw from the AssurancePool until v1.3' : 'open doors'),
+    roles.length ? (
+      <>
+        {mx}
+        {mkey([
+          ['var(--fg)', 'Holds it'],
+          ['var(--underway)', 'Open, closes with v1.3'],
+          ['var(--line)', 'Once funded'],
+        ])}
+      </>
+    ) : (
+      noneYet
+    ),
+    strip([
+      ['People with keys', String(SIGNERS.length)],
+      ['Keys in this app', 'None'],
+    ]),
+  );
+  return (
+    <>
+      {G('Map', '', '', map)}
+      {G(
+        'History',
+        '',
+        '',
+        <>
+          {lanes}
+          {rl}
+        </>,
+      )}
+    </>
+  );
+}
+export function cChanges() {
+  const all = [...CH, ...CH_DONE];
+  const tl = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">Every change</span>
+        <span className="tag">{REAL ? `${fmtD(liveNow() - 33 * DAY)} – ${fmtD(liveNow() + 11 * DAY)}` : '18 Sep – 1 Nov'}</span>
+      </header>
+      <div className="c-fig">{figHtml(String(CH.length), `in flight · ${CH_DONE.length} went live in the last 30 days`)}</div>
+      <div className="c-body">
+        {all.length ? (
+          <>
+            {REAL ? sigLanes(all, liveNow() - 33 * DAY, liveNow() + 11 * DAY, 7) : sigLanes(all, D(9, 18), D(11, 1), 7)}
+            {sigKey()}
+          </>
+        ) : (
+          noneYet
+        )}
+      </div>
+      {strip([
+        ['Waiting on you', String(CH.filter((c) => c.mine).length)],
+        ['In the wait', String(CH.filter((c) => c.stage === 3).length)],
+        ['Drafts', String(CH.filter((c) => c.stage === 0).length)],
+        ['Live, 30 days', String(CH_DONE.length)],
+      ])}
+    </section>
+  );
+  const bySpeed = [...SIGNERS].sort((a, b) => a[3] - b[3]);
+  const signers = gCell(
+    's-6',
+    'Signers',
+    'Signatures a week',
+    figHtml(`${(signer('K')?.[3] ?? 0).toFixed(1)} h`, 'your median time to sign'),
+    SIGNERS.length ? signerHeat() : noneYet,
+    strip(
+      bySpeed.length
+        ? [
+            ['Fastest', bySpeed[0][1]],
+            ['Slowest', `${bySpeed.at(-1)[1]} · ${bySpeed.at(-1)[3].toFixed(1)} h`],
+          ]
+        : [
+            ['Fastest', '—'],
+            ['Slowest', '—'],
+          ],
+    ),
+  );
+  const ttl = TTL,
+    avg = (k) => {
+      const v = ttl.filter((t) => t[2] === k).map((t) => t[1]);
+      return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) + ' d' : '—';
+    };
+  const speed = gCell(
+    's-6',
+    'Draft to live',
+    `Days, last ${ttl.length} changes`,
+    ttl.length
+      ? figHtml(`${median(ttl.map((t) => t[1])).toFixed(1)} days`, 'median · contract upgrades take longest, shop changes about 2 days')
+      : figHtml('0.0 days', 'median'),
+    ttl.length
+      ? columns(
+          ttl.map(([k, v]) => [k, v]),
+          {
+            h: 120,
+            hi: 0,
+            fmt: (v) => v.toFixed(1) + ' d',
+          },
+        )
+      : noneYet,
+    strip([
+      ['Upgrades', avg('upgrade')],
+      ['Shop changes', avg('shop')],
+      ['Bonds', avg('bond')],
+    ]),
+  );
+  return (
+    <>
+      {G('Changes', 'Drafted here · signed in the Ops Safe', '', tl)}
+      {G(
+        'Pace',
+        '',
+        '',
+        <>
+          {signers}
+          {speed}
+        </>,
+      )}
+    </>
+  );
+}
+
+/* ── code (live only: the prototype has no such tab) ──────────────────── */
+const PR_ST = { open: ['live', 'Open'], merged: ['settled', 'Merged'], closed: ['absent', 'Closed'] };
+const clip = (s, n = 72) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+const ctrList = (l) => (l?.length ? (l.length > 3 ? `${l.slice(0, 3).join(', ')} +${l.length - 3}` : l.join(', ')) : '—');
+const codeAge = (t) => (t ? `${ago(Math.max(0, Date.now() - t))} ago` : '—');
+const ghLink = (url) => (
+  <a href={url} target="_blank" rel="noopener">
+    GitHub {ic('out', 'sm')}
+  </a>
+);
+/** Pull requests open first, then the ones merged or closed in the last 30 days, newest first. */
+export const codePulls = () => [...CODE.pulls.filter((p) => p.state === 'open'), ...CODE.pulls.filter((p) => p.state !== 'open')];
+export function cCode() {
+  const pulls = codePulls(),
+    open = pulls.filter((p) => p.state === 'open').length,
+    merged = pulls.filter((p) => p.state === 'merged').length,
+    closed = pulls.filter((p) => p.state === 'closed').length;
+  const named = CODE.names !== 'none';
+  const pr = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">Pull requests</span>
+        <span className="tag">Touching {CODE.path || 'contracts'}/ · open, and the last 30 days</span>
+      </header>
+      <div className="c-fig">{figHtml(String(open), `open · ${merged} merged and ${closed} closed in the last 30 days`)}</div>
+      <div className="c-body flush">
+        <div className="tbl-wrap">
+          <table className="tbl compact">
+            <thead>
+              <tr>
+                <th className="l">PR</th>
+                <th className="l">Title</th>
+                <th className="l">Author</th>
+                <th className="l">Branch</th>
+                <th className="l">State</th>
+                <th className="l">Contracts</th>
+                <th>Age</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {pulls.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan="8">
+                    {noneYet}
+                  </td>
+                </tr>
+              )}
+              {pulls.map((p) => (
+                <tr key={p.number}>
+                  <td className="l mono">#{p.number}</td>
+                  <td className="l">
+                    <b>{clip(p.title)}</b>
+                    <span className="small quiet">{p.files === 1 ? '1 file' : `${p.files} files`}</span>
+                  </td>
+                  <td className="l">{named && p.login ? p.login : '—'}</td>
+                  <td className="l mono">
+                    {p.head} → {p.base}
+                  </td>
+                  <td className="l">
+                    <span className={`chip ${p.state === 'open' && p.draft ? 'plain' : PR_ST[p.state][0]}`}>{p.state === 'open' && p.draft ? 'Draft' : PR_ST[p.state][1]}</span>
+                  </td>
+                  <td className="l">{ctrList(p.contracts)}</td>
+                  <td>{codeAge(p.mergedAt ?? p.closedAt ?? p.createdAt)}</td>
+                  <td>{ghLink(p.url)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {strip([
+        ['Open', String(open)],
+        ['Drafts', String(pulls.filter((p) => p.state === 'open' && p.draft).length)],
+        ['Merged, 30 days', String(merged)],
+        ['Closed, 30 days', String(closed)],
+      ])}
+    </section>
+  );
+  const opts = [['all', 'All branches', CODE.commits.length], ...CODE.branches.map((b) => [b.name, b.name, CODE.commits.filter((c) => c.branches.includes(b.name)).length])];
+  const cb = opts.some((o) => o[0] === CS.cb) ? CS.cb : 'all';
+  const list = CODE.commits.filter((c) => cb === 'all' || c.branches.includes(cb));
+  const p = CODE.poller;
+  const fresh = p.ranAt
+    ? `Polled from GitHub ${codeAge(p.ranAt)} · ${(p.branches.length ? p.branches : ['dev']).join(', ')}${p.waiting ? ` · ${p.waiting} still to read` : ''}${p.token ? '' : ' · no token, 60 requests an hour'}`
+    : 'Not polled from GitHub yet';
+  const commits = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">{cb === 'all' ? 'Commits, newest first' : `Commits on ${cb}, newest first`}</span>
+        <span className="hd-tools">{ddHtml('ccb', opts, cb, 'Branch')}</span>
+      </header>
+      <div className="c-fig">{figHtml(String(list.length), `of the newest commits touching ${CODE.path || 'contracts'}/${cb === 'all' ? ', on any branch' : ` are on ${cb}`}`)}</div>
+      <div className="c-body flush">
+        <div className="tbl-wrap">
+          <table className="tbl compact">
+            <thead>
+              <tr>
+                <th className="l">Commit</th>
+                <th className="l">Message</th>
+                <th className="l">Author</th>
+                <th className="l">Branches</th>
+                <th className="l">Contracts</th>
+                <th>Age</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {list.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan="7">
+                    {noneYet}
+                  </td>
+                </tr>
+              )}
+              {list.map((c) => (
+                <tr key={c.url}>
+                  <td className="l mono">{c.sha}</td>
+                  <td className="l">
+                    <b>{clip(c.message)}</b>
+                    {c.pr ? <span className="small quiet">PR #{c.pr}</span> : ''}
+                  </td>
+                  <td className="l">{named ? c.login || c.author || '—' : '—'}</td>
+                  <td className="l mono">{c.branches.join(', ') || '—'}</td>
+                  <td className="l">{ctrList(c.contracts)}</td>
+                  <td>{codeAge(c.at)}</td>
+                  <td>{ghLink(c.url)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="c-ft">{footItem({ t: p.error ? `${fresh} · the last run failed: ${p.error}` : fresh })}</div>
+    </section>
+  );
+  const ppl = CODE.contributors,
+    top = ppl.reduce((a, c) => Math.max(a, c.commits + c.pulls), 0),
+    active = ppl.filter((c) => c.commits30 + c.pulls30).length;
+  const people = gCell(
+    's-8',
+    'Contributors',
+    'Commits and pull requests to the contracts',
+    figHtml(String(CODE.people), `${CODE.people === 1 ? 'person has' : 'people have'} contributed · ${active} in the last 30 days`),
+    !named ? (
+      <span className="small quiet">Names show from See up.</span>
+    ) : ppl.length ? (
+      <>
+        <div className="hbars">
+          {ppl.map((c) => (
+            <div key={c.who} className="hb">
+              <span className="hb-k">{c.who}</span>
+              <span className="hb-bar">
+                <i style={css(`width:${top ? (c.commits / top) * 100 : 0}%;background:var(--fg)`)} />
+                <i style={css(`width:${top ? (c.pulls / top) * 100 : 0}%;background:var(--underway)`)} />
+              </span>
+              <b className="num">
+                {c.commits} · {c.pulls}
+              </b>
+            </div>
+          ))}
+        </div>
+        {mkey([
+          ['var(--fg)', 'Commits'],
+          ['var(--underway)', 'Pull requests opened'],
+        ])}
+      </>
+    ) : (
+      noneYet
+    ),
+    strip([
+      ['Commits, 30 days', String(ppl.reduce((a, c) => a + c.commits30, 0))],
+      ['PRs opened, 30 days', String(ppl.reduce((a, c) => a + c.pulls30, 0))],
+    ]),
+  );
+  const busiest = CODE.branches.reduce((a, b) => (!a || b.commits30 > a.commits30 ? b : a), null);
+  const branches = gCell(
+    's-4',
+    'Branches',
+    'Commits, 30 days',
+    busiest ? figHtml(String(busiest.commits30), `commits on ${busiest.name} in the last 30 days`) : figHtml('0', 'commits in the last 30 days'),
+    CODE.branches.length ? evRows(CODE.branches.map((b) => [b.lastAt ? fmtD(b.lastAt) : '—', b.name, b.lastAt ? `last commit ${codeAge(b.lastAt)}` : 'No commits yet', String(b.commits30)])) : noneYet,
+    <div className="c-ft">
+      <a href={`https://github.com/${CODE.repo || 'Deed3Labs/Protocol-Contracts'}/branches`} target="_blank" rel="noopener">
+        <span className="t">Every branch on GitHub</span>
+        {ic('out', 'sm')}
+      </a>
+    </div>,
+  );
+  return (
+    <>
+      {G('Pull requests', p.error ? 'The last poll failed' : p.ranAt ? `Polled ${codeAge(p.ranAt)}` : 'Not polled yet', '', pr)}
+      {G('Commits', CODE.repo, '', commits)}
+      {G(
+        'People',
+        '',
+        '',
+        <>
+          {people}
+          {branches}
+        </>,
+      )}
+    </>
+  );
+}
+
+/* ── detail panes ─────────────────────────────────────────────────────── */
+export function contractsPane() {
+  let sub, chip, body, foot;
+  if (CS.ag) {
+    const a = agrOf(CS.ag);
+    if (!a) return '';
+    sub = 'Agreement';
+    chip = <span className={`chip ${AST[a.st][0]}`}>{AST[a.st][1]}</span>;
+    const trail =
+      a.st === 'out'
+        ? [
+            ['Sent', 1],
+            ['Shop signed', 1],
+            ['You sign', 2],
+            ['Filed', 0],
+          ]
+        : a.st === 'draft'
+          ? [
+              ['Draft', 2],
+              ['Review', 0],
+              ['Sign', 0],
+              ['Filed', 0],
+            ]
+          : a.st === 'sent'
+            ? [
+                ['Sent', 2],
+                ['Signed', 0],
+                ['Filed', 0],
+              ]
+            : [
+                ['Sent', 1],
+                ['Signed', 1],
+                ['Filed', 1],
+              ];
+    const lane = a.a ? gantt([a], D(7, 1), D(10, 31, 2027)) : '';
+    body = (
+      <>
+        <div>
+          <p className="h2" style={css('font-size:28px')}>
+            {a.party}
+          </p>
+          <p className="quiet" style={css('margin:8px 0 0')}>
+            {a.name}
+            {' · '}
+            {a.ver}
+          </p>
+        </div>
+        {lane ? (
+          <div>
+            <span className="lbl">Term</span>
+            {lane}
+          </div>
+        ) : (
+          ''
+        )}
+        <div>
+          <span className="lbl">Signing</span>
+          {vizTrack(trail)}
+        </div>
+        <div className="rows ledger">
+          <div className="r">
+            <span className="k">Type</span>
+            <span className="v">{AGR_T[a.type]}</span>
+          </div>
+          <div className="r">
+            <span className="k">Signed</span>
+            <span className="v">{a.a ? fmtD(a.a) + ' ' + new Date(a.a).getUTCFullYear() : 'Not yet'}</span>
+          </div>
+          <div className="r">
+            <span className="k">Renews</span>
+            <span className="v">{a.b ? fmtD(a.b) + ' ' + new Date(a.b).getUTCFullYear() : a.roll ? 'Month to month' : a.a ? 'No end' : '—'}</span>
+          </div>
+          <div className="r">
+            <span className="k">Signed copy</span>
+            <span className="v">{a.a ? 'In Records' : 'Not yet'}</span>
+          </div>
+        </div>
+        <p className="quiet" style={css('margin:0')}>
+          {a.note}
+        </p>
+      </>
+    );
+    foot =
+      a.st === 'out' ? (
+        <button className="btn btn-p" type="button" data-cflow="esign" data-cid={a.id}>
+          Sign in your e-signature tool{ic('out')}
+        </button>
+      ) : a.st === 'renew' ? (
+        <button className="btn btn-p" type="button" data-cflow="renew" data-cid={a.id}>
+          Start the renewal
+        </button>
+      ) : (
+        <button className="btn btn-g" type="button" data-go="records">
+          {a.st === 'draft' ? 'Open the draft in Records' : 'Signed copy in Records'}
+        </button>
+      );
+  } else if (CS.ct) {
+    const c = ctrOf(CS.ct);
+    if (!c) return '';
+    sub = 'Contract';
+    chip = (
+      <span
+        className={`chip ${
+          {
+            live: 'settled',
+            build: 'underway',
+            later: 'plain',
+          }[c[4]]
+        }`}
+      >
+        {
+          {
+            live: 'Live',
+            build: 'Building',
+            later: 'Not deployed',
+          }[c[4]]
+        }
+      </span>
+    );
+    const rel = RELEASES[c[0]] || [],
+      p = PENDING[c[0]];
+    const vers = rel.length ? rel.map(([v], i) => [v, i === rel.length - 1 ? 2 : 1]).concat(p ? [[p[0], 0]] : []) : [['Planned', 0]];
+    const pend = CH.filter((x) => x.c === c[1]);
+    body = (
+      <>
+        <div>
+          <p className="h2" style={css('font-size:28px')}>
+            {c[1]}
+          </p>
+          <p className="quiet" style={css('margin:8px 0 0')}>
+            {c[6]}
+          </p>
+        </div>
+        <div>
+          <span className="lbl">Versions</span>
+          {vizTrack(vers)}
+        </div>
+        {(() => {
+          const rs = REL.filter((r) => r[0] === c[0] || r[1] === c[0]);
+          return rs.length ? (
+            <div>
+              <span className="lbl">Connections</span>
+              <div className="cn-list">
+                {rs.map((r, __k) => {
+                  const out = r[0] === c[0],
+                    o = ctrOf(out ? r[1] : r[0]);
+                  return (
+                    <button key={__k} type="button" className="pn-r cn-r" data-ctr={o[0]}>
+                      <i className={`lk ${r[2]}`} />
+                      <span className="pn-k">
+                        <b>{out ? r[3] + ' · ' + o[1] : o[1] + ' · ' + r[3]}</b>
+                        <span className="small quiet">
+                          {RK[r[2]]}
+                          {' · '}
+                          {out ? 'outgoing' : 'incoming'}
+                        </span>
+                      </span>
+                      <span className="mono quiet small">{out ? '→' : '←'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            ''
+          );
+        })()}
+        <div className="rows ledger">
+          <div className="r">
+            <span className="k">Address</span>
+            <span className="v mono">{c[5]}</span>
+          </div>
+          <div className="r">
+            <span className="k">Network</span>
+            <span className="v">{c[4] === 'live' ? 'Base Sepolia' : 'Not deployed'}</span>
+          </div>
+          <div className="r">
+            <span className="k">Track</span>
+            <span className="v">{c[9] === 'd' ? 'Deeds and real assets' : 'Credit and money'}</span>
+          </div>
+          <div className="r">
+            <span className="k">Layer</span>
+            <span className="v">{LAYERS[c[3]]}</span>
+          </div>
+          <div className="r">
+            <span className="k">Admin</span>
+            <span className="v">{c[4] === 'live' ? 'Ops Safe' : '—'}</span>
+          </div>
+          <div className="r">
+            <span className="k">Paused</span>
+            <span className="v">{c[4] === 'live' ? 'No' : '—'}</span>
+          </div>
+          <div className="r">
+            <span className="k">Last release</span>
+            <span className="v">{rel.length ? fmtD(rel[rel.length - 1][1]) : '—'}</span>
+          </div>
+        </div>
+        {pend.length ? (
+          <div>
+            <span className="lbl">In flight</span>
+            {sigLanes(pend, D(10, 12), D(11, 1), 7)}
+          </div>
+        ) : (
+          ''
+        )}
+      </>
+    );
+    foot =
+      c[4] === 'live' ? (
+        <>
+          <button className="btn btn-p" type="button" data-cflow="propose" data-cid={c[0]}>
+            Propose a change
+          </button>
+          <button className="btn btn-g" type="button" data-cflow="explorer" data-cid={c[0]}>
+            Block explorer{ic('out')}
+          </button>
+        </>
+      ) : (
+        <button className="btn btn-g" type="button" data-closecpane="">
+          Close
+        </button>
+      );
+  } else return '';
+  return (
+    <>
+      <div className="pane-scrim" data-closecpane="" />
+      <aside className="pane" role="dialog" aria-label={sub}>
+        <header className="m-hd">
+          <span className="sub">{sub}</span>
+          <span style={css('display:flex;align-items:center;gap:8px')}>
+            {chip}
+            <button className="x" type="button" data-closecpane="" aria-label="Close">
+              {ic('close')}
+            </button>
+          </span>
+        </header>
+        <div className="pane-mn">{body}</div>
+        <footer className="pane-ft">{foot}</footer>
+      </aside>
+    </>
+  );
+}
+
+/* ── action flows ─────────────────────────────────────────────────────── */
+export function openCFlow(kind, id) {
+  vars.lastFocus = document.activeElement;
+  const a = id ? agrOf(id) : null,
+    c = id ? ctrOf(id) : null,
+    ch = id ? [...CH, ...CH_DONE].find((x) => x.id === id) : null;
+  const f = {
+    propose: {
+      t: 'Propose a change',
+      h: c ? c[1] : 'A contract change',
+      rows: [
+        ['Contract', c ? `${c[1]} ${c[2]}` : 'Pick one in the multisig'],
+        ['Second person', SIGNERS.filter((x) => x[0] !== 'K').map((x, i) => (i ? 'the ' + x[1].toLowerCase() : x[1])).join(' or ') || '—'],
+        ['Then', safeRule(), 1],
+      ],
+      input: true,
+      btn: 'Prepare for the multisig',
+      ext: 1,
+      after: (v) => {
+        const w = v || 'Contract change';
+        CH.push({
+          id: 'ch' + (CH.length + 5),
+          t: w,
+          c: c ? c[1] : 'Contract',
+          by: 'You',
+          stage: 2,
+          state: REAL ? `Waiting on the others · 1 of ${CHAIN.threshold}` : 'Waiting on Dana Ruiz · 1 of 2',
+          d: w,
+          ev: [
+            ['seg', 'done', NOW - 3600e3, NOW],
+            ['seg', 'open', NOW, NOW + 20 * 3600e3],
+            ['draft', NOW - 3600e3],
+            ['sign', NOW, 'K'],
+          ],
+        });
+      },
+      steps: ['Prepared the transaction', 'Opened it in the multisig', REAL ? 'Asked for the second signature' : 'Asked Dana Ruiz for the second signature'],
+      done: ['Handed to the multisig.', 'It goes live after two of three sign and the 24-hour wait. No keys live in this app.'],
+    },
+    sign: {
+      t: 'Sign a change',
+      h: ch && ch.t,
+      p: ch && ch.d,
+      rows: ch
+        ? [
+            ['Contract', ch.c],
+            ['Proposed by', ch.by],
+            ['Signatures', `${ch.ev.filter((e) => e[0] === 'sign' && !e[3]).length} of ${CHAIN.threshold} · yours is next`],
+            ['Then', REAL && !CHAIN.delayHours ? 'Live once signed' : `A ${CHAIN.delayHours}-hour wait, then live`, 1],
+          ]
+        : [],
+      rule: ch && ch.by,
+      btn: 'Sign in the multisig',
+      ext: 1,
+      steps: ['Opened it in the multisig', 'Waiting for your signature there'],
+      done: ['Over to the multisig.', 'It shows as signed here once you sign there.'],
+    },
+    view: {
+      t: 'Change',
+      h: ch && ch.t,
+      p: ch && ch.d,
+      rows: ch
+        ? [
+            ['Contract', ch.c],
+            ['Proposed by', ch.by],
+            ['Now', ch.state, 1],
+          ]
+        : [],
+      btn: null,
+    },
+    esign: {
+      t: 'Sign an agreement',
+      h: a && a.party,
+      p: a && a.note,
+      rows: a
+        ? [
+            ['Agreement', `${a.name} ${a.ver}`],
+            ['They signed', theySigned(a) ? fmtD(theySigned(a)) : '—'],
+            ['After you sign', 'Their terms go to the Ops Safe', 1],
+          ]
+        : [],
+      btn: 'Open in your e-signature tool',
+      ext: 1,
+      steps: ['Opened the agreement in your e-signature tool'],
+      done: ['Over to your e-signature tool.', 'It comes back here marked signed.'],
+    },
+    renew: {
+      t: 'Start a renewal',
+      h: a && a.party,
+      rows: a
+        ? [
+            ['Agreement', `${a.name} ${a.ver}`],
+            ['Ends', a.b ? fmtD(a.b) : '—'],
+            ['New term', '12 months, same terms'],
+            ['Signed in', 'Your e-signature tool', 1],
+          ]
+        : [],
+      btn: 'Start the renewal',
+      after: () => {
+        a.st = 'sent';
+        a.note = 'Renewal sent for signature today, same terms for 12 months.';
+      },
+      steps: ['Copied the current terms', 'Prepared it in your e-signature tool', 'Set a reminder 14 days before it ends'],
+      done: ['Renewal started.', 'It comes back here marked signed.'],
+    },
+    explorer: {
+      t: 'Block explorer',
+      h: c && c[1],
+      rows: c
+        ? [
+            ['Address', c[5]],
+            ['Network', 'Testnet', 1],
+          ]
+        : [],
+      btn: 'Open the explorer',
+      ext: 1,
+      steps: ['Opened the address in the explorer'],
+      done: ['Opened in a new tab.', 'Nothing changes here.'],
+    },
+  }[kind];
+  const note =
+    f.ext && kind !== 'explorer' ? (
+      <div className="note">
+        {ic('out', 'sm')}
+        <span>
+          <b>{kind === 'esign' ? 'You sign in your e-signature tool.' : 'You sign in the multisig.'}</b>{' '}
+          {kind === 'esign' ? 'It comes back here marked signed.' : 'No keys live in this app.'}
+        </span>
+      </div>
+    ) : (
+      ''
+    );
+  const rule = f.rule ? (
+    <div className="note">
+      {ic('team', 'sm')}
+      <span>
+        <b>Two-person rule.</b> {f.rule}
+        {' proposed this. You sign second.'}
+      </span>
+    </div>
+  ) : (
+    ''
+  );
+  modalShell(
+    f.t,
+    <>
+      <div>
+        <span className="lbl">{f.t}</span>
+        <p className="h2" style={css('margin-top:8px')}>
+          {f.h}
+        </p>
+        {f.p ? (
+          <p className="quiet" style={css('margin:8px 0 0')}>
+            {f.p}
+          </p>
+        ) : (
+          ''
+        )}
+      </div>
+      {f.input ? (
+        <label className="field">
+          <span className="lbl">What changes</span>
+          <input
+            id="cp-what"
+            type="text"
+            defaultValue={c ? '' : 'Weekly review of the AssurancePool floor'}
+            placeholder="One line, plain words"
+            autoComplete="off"
+          />
+        </label>
+      ) : (
+        ''
+      )}
+      {f.input && LIVE && c ? (
+        <>
+          <label className="field">
+            <span className="lbl">Function on {c[1]}</span>
+            <select id="cp-fn">
+              <option value="">Decide later, in the Safe</option>
+              {writeFns(c[1]).map((fn) => (
+                <option key={fn.sig} value={fn.sig}>
+                  {fn.sig}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="lbl">Arguments, in order</span>
+            <input id="cp-args" type="text" placeholder='e.g. ["0x…", "150000000"]' autoComplete="off" />
+          </label>
+        </>
+      ) : (
+        ''
+      )}
+      <div className="rows ledger">
+        {f.rows.map(([k, v, t], __k) => (
+          <div key={__k} className={`r${t ? ' total' : ''}`}>
+            <span className="k">{k}</span>
+            <span className="v">{v}</span>
+          </div>
+        ))}
+      </div>
+      {rule}
+      {note}
+      <div className="acts">
+        {f.btn ? (
+          <>
+            <button className="btn btn-p" type="button" data-cgo={kind}>
+              {f.btn}
+              {f.ext ? ic('out') : ''}
+            </button>
+            <button className="btn btn-g" type="button" data-close="">
+              Not now
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-g" type="button" data-close="">
+            Close
+          </button>
+        )}
+      </div>
+    </>,
+    'Every change is logged',
+  );
+  document.addEventListener('keydown', onKey);
+  // live, each one saves through the API: a change goes to the Safe, signatures to their tools
+  if (kind === 'propose')
+    live(f, 'contracts', 'propose', () => {
+      const sig = document.getElementById('cp-fn')?.value || '',
+        raw = (document.getElementById('cp-args')?.value || '').trim();
+      let args = [];
+      if (raw) {
+        try {
+          args = JSON.parse(raw);
+        } catch {
+          throw new Error('Write the arguments as a list, like ["0x…", "150"]');
+        }
+        if (!Array.isArray(args)) throw new Error('Write the arguments as a list, like ["0x…", "150"]');
+      }
+      return {
+        contract: c ? c[1] : 'Contract',
+        what: (document.getElementById('cp-what')?.value || '').trim() || 'Contract change',
+        ...(sig ? { fn: sig.split('(')[0], args: args.map((a) => (Array.isArray(a) ? a.map(String) : String(a))) } : {}),
+      };
+    });
+  else if (kind === 'sign' && ch) live(f, 'contracts', 'sign', () => ({ id: ch.id }));
+  else if (kind === 'esign' && a) live(f, 'contracts', 'esign', () => ({ id: a.id }));
+  else if (kind === 'renew' && a) live(f, 'contracts', 'renew', () => ({ id: a.id }));
+  openCFlow.f = f;
+}
+
+/* ══ Governance ═════════════════════════════════════════════════════════
+   Who decides what, and when it is due. The co-op is the parent; Holdings carries a governance class
+   (co-op) and a financial class (investors); the Foundation sits outside the tree and contracts ClearLabs.
+   Ties: Home deadlines (ClearLabs annual report 1 Nov, ready; Co-op board minutes 4 Nov, drafting;
+   Statement of Information 15 Nov, not started); Contracts (member agreement v2.2 draft, intercompany
+   services draft, protocol maintenance). */

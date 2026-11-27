@@ -1,0 +1,179 @@
+{
+ "contracts.chain": {
+  "network": "Base Sepolia",
+  "block": 18204331,
+  "safe": "Ops Safe",
+  "threshold": 2,
+  "delayHours": 24
+ },
+ "contracts.key_roles": {
+  "holders": [
+   "Ops Safe",
+   "Issuers",
+   "ClearCredit",
+   "BurnerBond",
+   "Validator",
+   "Anyone",
+   "LendingPool"
+  ],
+  "roles": [
+   [
+    "Upgrade and admin",
+    [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   [
+    "Pause",
+    [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   [
+    "Mint credit",
+    [
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   [
+    "Set shop terms",
+    [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   [
+    "Approve a deed",
+    [
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0
+    ]
+   ],
+   [
+    "Add a validator",
+    [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   [
+    "Claim from AssurancePool",
+    [
+     0,
+     0,
+     1,
+     1,
+     0,
+     3,
+     2
+    ]
+   ]
+  ]
+ },
+ "contracts.draft_to_live": [
+  [
+   "RevolvingIssuer v1.3",
+   8,
+   "upgrade"
+  ],
+  [
+   "Uptown Barber",
+   2.1,
+   "shop"
+  ],
+  [
+   "BB-0006",
+   1.4,
+   "bond"
+  ],
+  [
+   "PayoutPool v0.9",
+   7,
+   "upgrade"
+  ],
+  [
+   "AssurancePool v1.2",
+   9,
+   "upgrade"
+  ]
+ ],
+ "contracts.signatures_weekly": {
+  "K": [
+   2,
+   3,
+   1,
+   1,
+   2,
+   2,
+   1,
+   3
+  ],
+  "DR": [
+   3,
+   4,
+   2,
+   1,
+   1,
+   2,
+   1,
+   3
+  ],
+  "BS": [
+   0,
+   1,
+   0,
+   1,
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "contracts.registry_adds": [
+  1785715200000,
+  1785974400000,
+  1786320000000,
+  1786665600000,
+  1787270400000,
+  1787875200000,
+  1788307200000,
+  1788912000000,
+  1789516800000,
+  1790121600000,
+  1790726400000,
+  1792454400000
+ ]
+}

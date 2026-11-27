@@ -1,0 +1,2270 @@
+{
+  "address": "0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AccretionOutOfRange",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "yieldBps"
+        },
+        {
+          "type": "uint256",
+          "name": "daysLeft"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultAlreadySettled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultBadGlide",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "BondVaultBadSplit",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "toDebt"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultBondExists",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultBondPledged",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultEnforcementInForce",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "BondVaultInsufficientFunds",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "held"
+        },
+        {
+          "type": "uint256",
+          "name": "required"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "BondVaultLoanOutstanding",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "outstanding"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultMaturityOutOfRange",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "maturity"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultNotAgent",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultNotControls",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultNotTrackedBorrower",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultNothingOwed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultReserveFloorOutOfBounds",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bps"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultUnknownBond",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultWouldBreachReserve",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "deployable"
+        },
+        {
+          "type": "uint256",
+          "name": "requested"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AgentTransfer",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BackstopsUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "treasury",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "payoutPool",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BondPaidThroughDistributions",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BondRetired",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BondTermsRecorded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "collection",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "seriesId",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DrewFromTreasury",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EarnSourcesSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "agent",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "controls",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EncumbranceSourceUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ExcessWithdrawn",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "GlideScheduleSet",
+      "inputs": [
+        {
+          "type": "uint32[]",
+          "name": "bandDays"
+        },
+        {
+          "type": "uint16[]",
+          "name": "bandBps"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "InterestReceived",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "principal",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "interest",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PurchaseRecorded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "principal",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "maturity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidFromPayoutPool",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "outstanding",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ReserveFloorRaised",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "previousBps",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "bps",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ReserveShortfall",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "required",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "held",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ReserveShortfallCured",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "required",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "held",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "since",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleAdminChanged",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "previousAdminRole",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "newAdminRole",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleGranted",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleRevoked",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RollConfirmationSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "confirmed",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "rolling",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RollRemainderPaid",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "oldBondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "payee",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Rolled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "oldBondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "newBondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "rolledPrincipal",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "newFaceValue",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "newMaturity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Settled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettledEarly",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "presentValue",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettledPledged",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "paidToDebt",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "paidToHolder",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettlementCompleted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "paidToDebt",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "paidToHolder",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "debtOwed",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "holderOwed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettlementShortfall",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "debtOwed",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "holderOwed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ToppedUp",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "BOND_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_ADMIN_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_GLIDE_BANDS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_RESERVE_FLOOR_BPS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "OPERATOR_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "RESERVE_WINDOW",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "TREASURY_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "agent",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "agentTransfer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "agentWithdrawExcess",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "amountDueAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "uint256",
+          "name": "timestamp"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bondTerms",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "address",
+              "name": "collection"
+            },
+            {
+              "type": "uint32",
+              "name": "yieldBps"
+            },
+            {
+              "type": "uint64",
+              "name": "issuedAt"
+            },
+            {
+              "type": "address",
+              "name": "confirmedBy"
+            },
+            {
+              "type": "uint64",
+              "name": "endedAt"
+            },
+            {
+              "type": "bool",
+              "name": "rolling"
+            },
+            {
+              "type": "uint64",
+              "name": "seriesId"
+            },
+            {
+              "type": "uint32",
+              "name": "termDays"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "burnPaid",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "collateralAssets",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "collateralKind",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "completeSettlement",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "confirmedBondsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "controls",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "coversNearTermMaturities",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deployableExcess",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "encumbranceSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "faceDueWithin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "window"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getRoleAdmin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "glideReserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "glideSchedule",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32[]",
+          "name": "bandDays"
+        },
+        {
+          "type": "uint16[]",
+          "name": "bandBps"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "grantRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "hasRole",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "held",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holderEligibilityChanged",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "bool",
+          "name": "ineligible"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "holderOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inReserveShortfall",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "admin"
+        },
+        {
+          "type": "address",
+          "name": "_reserveToken"
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "lendToPayoutPool",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lentToPayoutPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "minReserveBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "nearTermReserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "obligations",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue"
+        },
+        {
+          "type": "uint64",
+          "name": "maturity"
+        },
+        {
+          "type": "bool",
+          "name": "settled"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "outstandingAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "index"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "outstandingBonds",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "outstandingCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payoutPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingSettlement",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "address",
+          "name": "debtTo"
+        },
+        {
+          "type": "uint256",
+          "name": "debtOwed"
+        },
+        {
+          "type": "uint256",
+          "name": "holderOwed"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pokeReserve",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "raiseReserveFloor",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bps"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "recordPurchase",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue"
+        },
+        {
+          "type": "uint64",
+          "name": "maturity"
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps"
+        },
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "registerAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "i"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "registerEntry",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "faceValue"
+        },
+        {
+          "type": "uint64",
+          "name": "maturity"
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps"
+        },
+        {
+          "type": "uint64",
+          "name": "issuedAt"
+        },
+        {
+          "type": "uint64",
+          "name": "endedAt"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "registerLength",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "renounceRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repayFromPayoutPool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "requiredReserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "reserveToken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "retireUnpaid",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "revokeRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "roll",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "oldBondId"
+        },
+        {
+          "type": "uint256",
+          "name": "newBondId"
+        },
+        {
+          "type": "uint256",
+          "name": "newFaceValue"
+        },
+        {
+          "type": "uint64",
+          "name": "newMaturity"
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps"
+        },
+        {
+          "type": "uint32",
+          "name": "termDays"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "remainder"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "rollingDueWithin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "window"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "seriesFaceOutstanding",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "setBackstops",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_treasury"
+        },
+        {
+          "type": "address",
+          "name": "_payoutPool"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setEarnSources",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "agent_"
+        },
+        {
+          "type": "address",
+          "name": "controls_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setEncumbranceSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setGlideSchedule",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32[]",
+          "name": "bandDays"
+        },
+        {
+          "type": "uint16[]",
+          "name": "bandBps"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setRollConfirmation",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "bool",
+          "name": "confirmed"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settle",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "settleAt",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "address",
+          "name": "debtTo"
+        },
+        {
+          "type": "uint256",
+          "name": "toDebt"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "debtPaid"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "settleEarly",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        },
+        {
+          "type": "uint256",
+          "name": "presentValue"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settlePledged",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "address",
+          "name": "debtTo"
+        },
+        {
+          "type": "uint256",
+          "name": "toDebt"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "debtPaid"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "shortfallSince",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes4",
+          "name": "interfaceId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "termOfferChanged",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        },
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "topUp",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "totalFaceOutstanding",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalFaceSettled",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalPrincipal",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalSettlementOwed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "treasury",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "treasuryAvailable",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "uncoveredNearTerm",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "blockNumber": 0
+}

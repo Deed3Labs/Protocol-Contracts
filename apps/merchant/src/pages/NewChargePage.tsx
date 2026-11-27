@@ -1,0 +1,1819 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { CardTableSheet } from '@/terminal/cardTable';
+import { readerQueue, type ReaderQueue, type TableReaderState } from '@/reader';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { earnLabels, pointsWord, type MerchantPaymentLink, type Order, type OrderCustomerState, type PointsName, type Tender } from '@clear/merchant-contracts';
+import { BLANK_LINK, SendLinkSheet, type LinkDraft } from '@/charge/link';
+import { seesMoney } from '@clear/domain';
+import { useAuth } from '@/auth/authContext';
+import { Segmented } from '@/brand/controls';
+import { OneColumn, cx } from '@/brand/ui';
+import { api } from '@/data/apiClient';
+import { discardOnLeave, mockControls, useMerchantApi } from '@/data/merchantApi';
+import { errorSentence, useApi } from '@/data/useApi';
+import { printReceipt } from '@/lib/printReceipt';
+import { useLayout } from '@/lib/useBreakpoint';
+import { FlowTop } from '@/shell/chrome';
+import {
+  CATALOG,
+  FALL10,
+  FOOD,
+  FOOD_ORDER,
+  REFERENCE_CART,
+  TAX_RATE,
+  TILE_ORDER,
+  lineOf,
+  missingGroup,
+  totals,
+  unitPrice,
+  usd,
+  type CartLine,
+  type Discount,
+  type Item,
+} from '@/charge/model';
+import {
+  BigLines,
+  CartCell,
+  ItemsCell,
+  OptionsSheet,
+  QuickSaleSheet,
+  StartTop,
+  AmountView,
+  TabCell,
+  typeAmount,
+  type FeeTerms,
+  type StartMode,
+  type TabRates,
+} from '@/charge/start';
+import { CheckoutView, DiscountSheet, TipView, chargeTotal, type CodeCheck, type Method, type TipChoice } from '@/charge/checkout';
+import {
+  ApprovedView,
+  CodeCell,
+  CustomerCell,
+  ScanTheirsView,
+  SendToNumberView,
+  ShowCodeView,
+  WaitingView,
+  exampleSplit,
+  type ChargeState,
+  type ShiftRow,
+} from '@/charge/clear';
+import { CardChargeCell, PrintReceiptSheet, ReaderCell, ReaderPickerSheet, ReceiptGroups, SendReceiptSheet, type ReaderState, type SendBy } from '@/charge/card';
+import { currentPlatform, previewPlatform, readerService, type Platform, type ReaderInfo, type ReaderService } from '@/reader';
+import { CashPaidView, CashView, SplitLegsCell, SplitView, type Leg, type LegMethod } from '@/charge/cash';
+import { cardName, chargeItemFrom, codeCheck, legsFromTenders, nothingTaken, payKey, pickedOptionIds, toLineInputs, totalsFromOrder } from '@/charge/live';
+import { FailureSheet, PhoneAmount, PhoneCart, PhoneCode, PhoneItems, PhoneStatus } from '@/charge/phone';
+import { CodeScanner } from '@/charge/CodeScanner';
+import { CustomerAdd, CustomerOn, fullName, MemberSheet, PhoneCustomerSheet, RewardLine, ScanCustomerSheet, ServerSmall } from '@/charge/customer';
+import { memberWalletFrom } from '@/charge/memberCode';
+import { useOnline } from '@/lib/useOnline';
+import { printAfterCash, useCounterHardware, useDrawerForSale, useQueueSync, type PrintRow } from '@/terminal/counter';
+import { isOffline, offlineOrder, queueCashSale, rememberRates, type OfflineLine } from '@/terminal/offlineSale';
+import { miCasa, ORDER_0142, TAB_12 } from '@/terminal/reference';
+import { ShowOnRow, ShowOnSheet, useShowOn } from '@/terminal/showOn';
+
+/**
+ * New charge — docs/merchant-reference/clear-merchant-new-charge.html.
+ *
+ * Start with an amount or items, check out, take the tip, then take it by Clear, card, cash or a
+ * split. Every way ends the same: paid, a receipt, and New charge.
+ *
+ * **What runs live** (MerchantApi, UI Phase 6 step 4): the shop's catalogue, or a typed amount;
+ * Checkout raises the order on the server, which works out tax, discounts and the total; the tip
+ * from the shop's settings; then Clear (a tender on the order: its code shown, the member's answer
+ * followed), cash (into the open drawer, the change the server's sum) or a split of those. An order
+ * nothing was paid on is discarded on the way out, so its stock isn't left held. The card reader is
+ * step 5. In development, `?preview=1&screen=<frame>` opens any frame of the reference on its own
+ * scenario (see SCREENS), and `?preview=1&live=1` runs the live page against the mock.
+ */
+
+type Screen =
+  | 'start'
+  | 'cart'
+  | 'checkout'
+  | 'tip'
+  | 'code'
+  | 'theirs'
+  | 'phone'
+  | 'waiting'
+  | 'approved'
+  | 'card'
+  | 'cash'
+  | 'cashPaid'
+  | 'split';
+
+type Sheet =
+  | { k: 'options'; item: Item; missing?: boolean }
+  | { k: 'quick' }
+  | { k: 'discount'; mode?: 'code' | 'amount'; code?: string; value?: string; pin?: number }
+  | { k: 'send'; by: 'text' | 'email'; to: string }
+  | { k: 'print'; printer: 'ready' | 'offline' }
+  | { k: 'fail'; kind: 'declined' | 'expired' | 'offline' }
+  | { k: 'readers' }
+  | null;
+
+interface Flow {
+  screen: Screen;
+  mode: StartMode;
+  view: 'list' | 'tiles';
+  typed: string;
+  lines: CartLine[];
+  discount: Discount | null;
+  tip: TipChoice | null;
+  /** Which way to pay was picked at Checkout, so the tip knows where to go next. */
+  method: Method | null;
+  code: string;
+  reader: ReaderState;
+  /** Bumped each time the reader starts collecting: arriving from Checkout, or another card. */
+  run: number;
+  /** "Visa ending 4242", from the reader. */
+  card?: string;
+  given: string;
+  legs: Leg[];
+  legMethod: LegMethod;
+  /** Live: the split's next part, as typed; empty for all that's left. */
+  part: string;
+  phone: string;
+  sendBy: SendBy;
+  /** Live: where the receipt was sent, once it has been. */
+  sentTo?: string;
+  sheet: Sheet;
+  suggested: boolean;
+  catalog: 'shop' | 'food';
+  underMin: boolean;
+  capNote: boolean;
+}
+
+const BLANK: Flow = {
+  screen: 'start',
+  mode: 'amount',
+  view: 'list',
+  typed: '',
+  lines: [],
+  discount: null,
+  tip: null,
+  method: null,
+  code: '',
+  reader: 'ready',
+  run: 0,
+  given: '',
+  legs: [],
+  legMethod: 'card',
+  part: '',
+  phone: '',
+  sendBy: 'text',
+  sheet: null,
+  suggested: false,
+  catalog: 'shop',
+  underMin: false,
+  capNote: false,
+};
+
+/**
+ * The classes the reference puts on each frame. Its rules read them from the frame down
+ * (`.ck .ci-hero`, `.cc .mc-steps`), so the screen's root carries the same ones.
+ */
+const FRAME: Partial<Record<Screen | 'items', string>> = {
+  items: 'c-ci',
+  cart: 'c-ci',
+  checkout: 'c-ci c-ck',
+  tip: 'c-ci c-ck',
+  cash: 'c-ci c-ck',
+  split: 'c-ci c-ck',
+  card: 'c-ci c-cc',
+  cashPaid: 'c-ci c-ck c-cc',
+};
+
+const TEN = { kind: 'preset', cents: 1000 } as const;
+const cart = { mode: 'items' as const, lines: REFERENCE_CART };
+const typed940 = { typed: '940', mode: 'amount' as const };
+
+/** Every frame of the reference, reachable in development as `?preview=1&screen=<name>`. */
+/** A rate as the reference writes it: 2.0%, 1.25%. */
+const pctLabel = (p: number) => `${p % 1 ? p.toFixed(2).replace(/0$/, '') : p.toFixed(1)}%`;
+
+export const SCREENS: Record<string, Partial<Flow>> = {
+  amount: { ...typed940 },
+  items: { ...cart },
+  'items-suggest': { mode: 'items', lines: [lineOf('michelin', 4)] },
+  'items-empty': { mode: 'items', lines: [] },
+  options: { ...cart, sheet: { k: 'options', item: CATALOG[0] } },
+  quicksale: { ...cart, sheet: { k: 'quick' } },
+  'phone-cart': { ...cart, screen: 'cart' },
+  notenough: { mode: 'items', screen: 'cart', lines: [lineOf('goodyear', 4), lineOf('mount', 4)], capNote: true },
+  tiles: { ...cart, view: 'tiles' },
+  food: { mode: 'items', view: 'tiles', catalog: 'food', lines: FOOD_ORDER },
+  'food-options': { mode: 'items', view: 'tiles', catalog: 'food', lines: FOOD_ORDER, sheet: { k: 'options', item: FOOD[1], missing: true } },
+  checkout: { ...cart, screen: 'checkout' },
+  // Before Stripe is connected: Card is locked (the page reads the screen name for that).
+  'checkout-nostripe': { ...cart, screen: 'checkout' },
+  /** Today's drawer not opened yet: Cash locked, like an unconnected card. */
+  'checkout-nodrawer': { ...cart, screen: 'checkout' },
+  'checkout-amount': { ...typed940, screen: 'checkout' },
+  'checkout-discount': { ...cart, screen: 'checkout', discount: FALL10 },
+  'discount-code': { ...cart, screen: 'checkout', sheet: { k: 'discount', code: 'FALL10' } },
+  'discount-expired': { ...cart, screen: 'checkout', sheet: { k: 'discount', code: 'SUMMER25' } },
+  'discount-amount': { ...cart, screen: 'checkout', sheet: { k: 'discount', mode: 'amount', value: '15', pin: 2 } },
+  tip: { ...cart, screen: 'tip', tip: TEN, method: 'card' },
+  code: { ...typed940, screen: 'code', method: 'clear', code: '8QK2' },
+  'code-cart': { ...cart, screen: 'code', method: 'clear', code: '8QK2' },
+  theirs: { ...typed940, screen: 'theirs', method: 'clear', code: '8QK2' },
+  'theirs-cart': { ...cart, screen: 'theirs', method: 'clear', code: '8QK2' },
+  phone: { ...typed940, screen: 'phone', method: 'clear', code: '8QK2', phone: '9095550142' },
+  'under-min': { mode: 'items', lines: [lineOf('valves', 1), { key: 'rotation', name: 'Tire rotation', qty: 1, unitCents: 2500, tax: 'labour' }], screen: 'code', method: 'clear', code: '8QK2', underMin: true },
+  waiting: { ...typed940, screen: 'waiting', method: 'clear', code: '8QK2' },
+  approved: { ...typed940, screen: 'approved', method: 'clear', code: '8QK2' },
+  card: { ...cart, screen: 'card', method: 'card', reader: 'ready' },
+  'card-reading': { ...cart, screen: 'card', method: 'card', reader: 'reading' },
+  'card-declined': { ...cart, screen: 'card', method: 'card', reader: 'declined' },
+  'card-approved': { ...cart, screen: 'card', method: 'card', reader: 'approved', tip: TEN },
+  'receipt-text': { ...cart, screen: 'card', method: 'card', reader: 'approved', tip: TEN, sheet: { k: 'send', by: 'text', to: '(909) 555-0177' } },
+  'receipt-email': { ...cart, screen: 'card', method: 'card', reader: 'approved', tip: TEN, sheet: { k: 'send', by: 'email', to: 'm.alvarez@gmail.com' } },
+  print: { ...cart, screen: 'card', method: 'card', reader: 'approved', tip: TEN, sheet: { k: 'print', printer: 'ready' } },
+  'print-offline': { ...cart, screen: 'card', method: 'card', reader: 'approved', tip: TEN, sheet: { k: 'print', printer: 'offline' } },
+  cash: { ...cart, screen: 'cash', method: 'cash', tip: { kind: 'none' }, given: '940' },
+  'cash-paid': { ...cart, screen: 'cashPaid', method: 'cash', tip: { kind: 'none' }, given: '940', sendBy: 'none' },
+  // Clear Terminal, section 7: Checkout with Show it on open (with `&shop=micasa`).
+  'show-on': { ...cart, screen: 'checkout' },
+  // 13b: a card on Table 12's own reader, connecting, with Table 4 next (with `&shop=micasa`).
+  'card-table': { ...cart, screen: 'card', method: 'card', reader: 'ready', tip: TEN },
+  split: { ...cart, screen: 'split', method: 'split', tip: { kind: 'none' }, legs: [{ method: 'cash', amountCents: 20000, det: '4:38pm · no change', state: 'paid' }], legMethod: 'card' },
+  'split-declined': {
+    ...cart,
+    screen: 'split',
+    method: 'split',
+    tip: { kind: 'none' },
+    legs: [
+      { method: 'cash', amountCents: 20000, det: '4:38pm · no change', state: 'paid' },
+      { method: 'card', amountCents: 72752, det: 'Visa ending 4242 · the bank declined it', state: 'declined' },
+    ],
+  },
+  declined: { ...typed940, screen: 'waiting', method: 'clear', code: '8QK2', sheet: { k: 'fail', kind: 'declined' } },
+  expired: { ...typed940, screen: 'waiting', method: 'clear', code: '8QK2', sheet: { k: 'fail', kind: 'expired' } },
+  offline: { ...typed940, screen: 'code', method: 'clear', code: '8QK2', sheet: { k: 'fail', kind: 'offline' } },
+};
+
+/** Codes the preview knows. Codes come from Settings, Discounts once the backend has them. */
+const CODES: Record<string, CodeCheck> = {
+  FALL10: { code: 'FALL10', ok: true, percent: 10, says: '10% off the whole charge, before tax. Until Oct 31, once per customer.' },
+  SUMMER25: { code: 'SUMMER25', ok: false, says: 'This code ended on Sep 1. Nothing has been taken off.' },
+};
+
+const DANA: ChargeState = {
+  code: '8QK2',
+  raisedBy: 'Jen R.',
+  customer: 'Dana R.',
+  sentTo: 'Sent to (909) 555-0142',
+  amountCents: 94000,
+  status: 'waiting',
+  steps: [
+    { t: 'Sent', det: '12:16pm', state: 'd' },
+    { t: 'Delivered', det: '12:16pm', state: 'd' },
+    { t: 'Opened', det: '12:17pm', state: 'on' },
+    { t: 'Approved', det: 'By tomorrow', state: '' },
+  ],
+};
+const DANA_OK: ChargeState = {
+  ...DANA,
+  status: 'approved',
+  howPaid: '4 payments of $235.00, the first on Oct 6',
+  steps: [
+    { t: 'Sent', det: '12:16pm', state: 'd' },
+    { t: 'Delivered', det: '12:16pm', state: 'd' },
+    { t: 'Opened', det: '12:17pm', state: 'd' },
+    { t: 'Approved', det: '12:19pm', state: 'd' },
+  ],
+};
+const JEN_SHIFT: ShiftRow[] = [
+  { name: 'Dana R.', det: 'Just now', amountCents: 94000, approved: true },
+  { name: 'Nina P.', det: 'Sent 11:58am · not opened', amountCents: 41000, approved: false },
+  { name: 'Marcus T.', det: '11:02am', amountCents: 41200, approved: true },
+];
+
+/** An order's lines as the cart draws them: a table's tab, opened to add to or to take payment. */
+const linesOf = (o: Order): CartLine[] =>
+  o.lines.map((l) => ({
+    key: l.id,
+    itemId: l.itemId ?? undefined,
+    name: l.name,
+    chosen: l.options.map((x) => x.name).join(', ') || undefined,
+    qty: l.quantity,
+    unitCents: l.unitCents,
+    tax: l.taxKind,
+    optionIds: l.options.map((x) => x.optionId),
+  }));
+
+/** Where a waiting Clear charge goes: a scanned member, a number, or the customer added at the cart. */
+type SendTo = { to: 'member'; wallet: string } | { to: 'phone'; phone: string } | { to: 'customer' };
+
+/** "with the agua fresca already off": a free item by its name, anything else as their reward. */
+const offLine = (label: string) => (/^free /i.test(label) ? `the ${label.slice(5)}` : 'their reward');
+
+/** "8.375" from the shop's "8.375", or the cart's own rate (7.75) while it's unknown. */
+const pctOf = (fraction: number) => (fraction * 100).toFixed(3).replace(/\.?0+$/, '');
+
+const nowTime = () => {
+  const d = new Date();
+  return `${d.getHours() % 12 || 12}:${d.getMinutes().toString().padStart(2, '0')}${d.getHours() < 12 ? 'am' : 'pm'}`;
+};
+
+export default function NewChargePage() {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const layout = useLayout();
+  const phone = layout === 'phone';
+  const one = layout !== 'two-column';
+  const { session } = useAuth();
+  const role = session?.staff.role ?? 'counter';
+  const me = session?.staff.name ?? '';
+
+  // The reference scenario, in development only: `?preview=1` (and `&screen=` for one frame).
+  // `&live=1` keeps the preview's session but shows what a live shop gets.
+  const preview = import.meta.env.DEV && params.get('preview') === '1' && !params.get('live');
+  const preset = preview ? SCREENS[params.get('screen') ?? ''] : undefined;
+  // Tables › Add items (`&items=1&table=`): New charge's items, with the table's tab where the cart was
+  // (terminal reference, 8b). The catalogue and the tab are read in the preview too, from the mock.
+  const adding = !!params.get('items') && !!params.get('table');
+
+  const { data: profile } = useApi(() => api.profile(), []);
+  // The live shop's catalogue, codes, ways to pay and tips, from the merchant API.
+  const merchant = useMerchantApi();
+  const liveCatalog = useApi(() => (preview && !adding ? Promise.resolve(null) : merchant.catalog()), [preview]);
+  const liveCodes = useApi(() => (preview ? Promise.resolve(null) : merchant.discountCodes()), [preview]);
+  const liveSettings = useApi(() => (preview ? Promise.resolve(null) : merchant.settings()), [preview]);
+  const liveCards = useApi(() => (preview ? Promise.resolve(null) : merchant.cardAvailability()), [preview]);
+  const cardsOn = liveCards.data?.available === true && liveSettings.data?.paymentMethods.card !== false;
+  const [order, setOrder] = useState<Order | null>(null);
+  const [tenders, setTenders] = useState<Tender[]>([]);
+  const [tender, setTender] = useState<Tender | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const shop = preview ? 'Mike’s Tire' : (profile?.name ?? '');
+  // The shop's Clear terms, both of them: what it pays on a charge paid now, and over time.
+  const liveShop = useApi(() => (preview || !seesMoney(role) ? Promise.resolve(null) : merchant.shop()), [preview, role]);
+  const tier = liveShop.data?.clearTier;
+  const fees: FeeTerms | null = !seesMoney(role)
+    ? null
+    : preview
+      ? { now: 1.25, over: 2.0 }
+      : tier
+        ? { now: tier.paidNowBps / 100, over: tier.overTimeBps / 100 }
+        : profile?.discountRate != null
+          ? { now: Math.round(profile.discountRate * 10000) / 100 }
+          : null;
+  const limitCents = preview ? 250000 : (profile?.approvalCapCents ?? null);
+
+  // New charge › Send a link (pay spec §5): owners and managers, from the start of a charge. The
+  // preview's `&screen=link` is the drawn sheet, `&screen=link-made` the link once made.
+  const linkScreen = preview ? params.get('screen') : null;
+  const [linkSheet, setLinkSheet] = useState(() => linkScreen === 'link' || linkScreen === 'link-made');
+  const [linkMade, setLinkMade] = useState<MerchantPaymentLink | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const linkItems = useApi(() => (linkSheet ? merchant.catalog() : Promise.resolve(null)), [linkSheet]);
+  const linkDraft: LinkDraft = linkScreen?.startsWith('link') ? { ...BLANK_LINK, itemId: 'itm_tray12', note: 'Saturday pickup, 11:30am' } : BLANK_LINK;
+  const createLink = async (request: Parameters<typeof merchant.createPaymentLink>[0]) => {
+    setLinkBusy(true);
+    setLinkError(null);
+    try {
+      setLinkMade(await merchant.createPaymentLink(request));
+    } catch (error) {
+      setLinkError(errorSentence(error));
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (linkScreen === 'link-made') void createLink({ for: 'item', itemId: 'itm_tray12', quantity: 1, note: 'Saturday pickup, 11:30am', expires: '7d', allowOverTime: true });
+    // Once, for the preview's frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const sendLink =
+    seesMoney(role) && !adding ? (
+      <button
+        type="button"
+        className="c-ci-link"
+        onClick={() => {
+          setLinkMade(null);
+          setLinkError(null);
+          setLinkSheet(true);
+        }}
+      >
+        Send a link
+      </button>
+    ) : null;
+
+  const [f, setF] = useState<Flow>(() => ({
+    ...BLANK,
+    // `?items=1`: Home's Build cart and the + sheet's cart open on the items, live or in the preview.
+    mode: params.get('items') ? 'items' : BLANK.mode,
+    ...preset,
+  }));
+  // Today's drawer: cash goes only into an open one. Read again on each checkout, so a drawer opened
+  // on Home meanwhile counts. Unread (offline), cash stays open: the queue files it into the session
+  // open when it was taken.
+  const liveDrawer = useApi(() => (preview ? Promise.resolve(null) : merchant.drawer()), [preview, f.screen === 'checkout']);
+  const cashLocked = preview ? params.get('screen') === 'checkout-nodrawer' : !liveDrawer.loading && !liveDrawer.error && liveDrawer.data?.status !== 'open';
+  const set = useCallback((p: Partial<Flow>) => setF((cur) => ({ ...cur, ...p })), []);
+  // A receipt on a live shop: Text or Email asks where; paper prints from the order's own receipt.
+  const pickSend = (sendBy: SendBy) => set(sendBy === 'none' ? { sendBy } : { sendBy, sheet: { k: 'send', by: sendBy, to: '' } });
+  const openPrint = () => set({ sheet: { k: 'print', printer: 'ready' } });
+  const liveReceipt = useApi(
+    () => (!preview && order && f.sheet?.k === 'print' ? merchant.receipt(order.id) : Promise.resolve(null)),
+    [preview, order?.id, f.sheet?.k],
+  );
+  const [raising, setRaising] = useState(false);
+  const [raiseError, setRaiseError] = useState<string | null>(null);
+  // A waiting Clear charge sent on: to a member whose code was scanned, or as a text to a number.
+  const online = useOnline();
+
+  // ---- Clear Terminal: the drawer, the Points, the printers, the offline queue (sections 5, 7, 8) ----
+  const hwPreview = import.meta.env.DEV && params.get('preview') === '1';
+  const counterHw = useCounterHardware({ preview: hwPreview });
+  const drawerSale = useDrawerForSale({ api: merchant, drawer: counterHw.drawer, service: counterHw.service, staffId: session?.staff.id ?? '' });
+  const [showOn, setShowOn] = useShowOn(counterHw.points);
+  const [showOnSheet, setShowOnSheet] = useState(() => preview && params.get('screen') === 'show-on');
+  const showOnPoint = counterHw.points.find((p) => p.id === showOn) ?? null;
+  const showOnTables = useApi(() => (showOnSheet ? merchant.floor().catch(() => null) : Promise.resolve(null)), [showOnSheet]);
+  const [prints, setPrints] = useState<Record<string, PrintRow>>({});
+  const drawerOpenedFor = useRef<string | null>(null);
+  useQueueSync(merchant, online, !preview);
+  // The shop's tax rates, kept on the tablet so a cash sale can be priced with the connection down.
+  useEffect(() => {
+    if (!preview && online) void merchant.taxStatus().then(rememberRates, () => undefined);
+  }, [preview, online, merchant]);
+  // A table's tab (Tables › Add items, Take payment): its order, and the table it's on.
+  const tabTable = params.get('table');
+  const tabOrder = params.get('order');
+  useEffect(() => {
+    if (preview || !tabOrder || adding) return;
+    void merchant.order(tabOrder).then(
+      (o) => {
+        setOrder(o);
+        const lines = linesOf(o);
+        set(params.get('items') ? { mode: 'items', lines } : { mode: 'items', lines, screen: 'checkout' });
+        // Taking payment at a table: its own Point shows the bill (section 8).
+        const point = counterHw.points.find((p) => p.settings.tableId === o.tableId);
+        if (!params.get('items') && point) void merchant.showOnPoint(point.id, { kind: 'order', orderId: o.id }).catch(() => undefined);
+      },
+      (e) => setPayError(errorSentence(e)),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, tabOrder, counterHw.points.length]);
+  // Adding to a tab: the table (its number and party) from the floor, and its tab, which is never this
+  // page's `order`, so leaving doesn't discard it. Its rates price the tab after this.
+  // A new charge for a table (`&table=`, not adding) reads the floor too, for its title.
+  const tabFloor = useApi(() => (adding || (tabTable && !preview) ? merchant.floor() : Promise.resolve(null)), [adding, tabTable]);
+  const tabView = tabFloor.data?.tables.find((t) => t.id === tabTable) ?? null;
+  const tabOrderId = adding ? (tabOrder ?? tabView?.orderId ?? null) : null;
+  const tab = useApi(() => (tabOrderId ? merchant.order(tabOrderId) : Promise.resolve(null)), [tabOrderId]);
+  // The shop's rates price the tab after this, and a live cart line by line, as the server does.
+  const tabTax = useApi(() => (adding || !preview ? merchant.taxStatus() : Promise.resolve(null)), [adding, preview]);
+  const tabRates: TabRates = useMemo(() => {
+    const r = tabTax.data?.rates;
+    const frac = (v: string | null | undefined) => (v ? Number(v) / 100 : 0);
+    const named = r?.food ?? r?.goods ?? r?.labour;
+    return r
+      ? { goods: frac(r.goods), labour: frac(r.labour), food: frac(r.food), label: named ?? '0', inclusive: tabTax.data!.pricesIncludeTax }
+      : { goods: TAX_RATE, labour: 0, food: TAX_RATE, label: pctOf(TAX_RATE), inclusive: false };
+  }, [tabTax.data]);
+  // Back to the floor, the preview's with it, as Tables builds its own links.
+  const toTables = () => navigate(`/tables${hwPreview ? `?preview=1${miCasa() ? '&shop=micasa' : ''}` : ''}`);
+  /** Add {n} to the tab: the tab's lines and the new ones, onto its order (or a new one for the table), then the floor. */
+  const addToTab = () => {
+    if (!tabTable || !f.lines.length) return;
+    const t = tab.data;
+    const lines = toLineInputs([...(t ? linesOf(t) : []), ...f.lines], 0);
+    void attempt(async () => {
+      if (t) await merchant.updateOrder(t.id, { lines });
+      else await merchant.createOrder({ lines, customer: null, tableId: tabTable });
+      toTables();
+    });
+  };
+  const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text' | 'Customer'; label: string; at: Date; to: SendTo } | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null; paidNow: boolean; payingNow: boolean } | null>(null);
+  const [raisedAt, setRaisedAt] = useState<Date>(() => new Date());
+
+  const shopItems = useMemo(() => (liveCatalog.data ?? []).filter((c) => !c.archivedAt).map(chargeItemFrom), [liveCatalog.data]);
+  const catalog = preview && !adding ? (f.catalog === 'food' ? FOOD : CATALOG) : shopItems;
+  const typedCents = Math.round(parseFloat(f.typed || '0') * 100);
+  const body = { lines: f.mode === 'items' ? f.lines : [], typedCents, discount: f.discount };
+  // Live, the order's numbers are the server's: what it comes to, and what's still owed. The tip
+  // goes on the first payment only, so a split doesn't tip twice.
+  const tipTaken = tenders.some((t) => t.tipCents > 0 && t.status !== 'declined' && t.status !== 'cancelled');
+  const tipCents = f.tip && f.tip.kind !== 'none' && !tipTaken ? f.tip.cents : 0;
+  const baseCents = order ? order.remainingCents : chargeTotal(body);
+  // A split's next part: what's typed, never more than is owed; otherwise all of it.
+  const typedPart = Math.round(parseFloat(f.part || '0') * 100);
+  const partCents = f.method === 'split' && order && typedPart > 0 ? Math.min(typedPart, order.remainingCents) : baseCents;
+  const dueCents = partCents + tipCents;
+  const inCart = useMemo(() => Object.fromEntries(f.lines.filter((l) => l.itemId).map((l) => [l.itemId!, l.qty])), [f.lines]);
+
+  // ---- The live path: the order, and its payments -------------------------------------------
+  const refresh = async (orderId: string) => {
+    const [o, ts] = await Promise.all([merchant.order(orderId), merchant.tenders(orderId)]);
+    setOrder(o);
+    setTenders(ts);
+    return o;
+  };
+  const attempt = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setPayError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setPayError(errorSentence(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Checkout: the cart as an order on the server, which prices it (tax, discount, total). */
+  const toCheckout = () => {
+    if (preview) return set({ screen: 'checkout' });
+    const lines = toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents);
+    if (!lines.length) return;
+    // Offline: the tablet prices it, and only cash can take it (the queue sends it later).
+    if (!online) {
+      const cart = f.mode === 'items' ? f.lines : [];
+      const offline: OfflineLine[] = cart.length
+        ? cart.map((l, i) => ({ input: lines[i]!, name: l.name, quantity: l.qty, unitCents: l.unitCents, taxKind: l.tax }))
+        : [{ input: lines[0]!, name: 'Amount', quantity: 1, unitCents: typedCents, taxKind: 'exempt' }];
+      try {
+        setOrder(offlineOrder(offline, { shop: shop || 'shop', raisedBy: session?.staff.id ?? '' }));
+        set({ screen: 'checkout' });
+      } catch (e) {
+        setPayError(e instanceof Error ? e.message : errorSentence(e));
+      }
+      return;
+    }
+    void attempt(async () => {
+      const o =
+        order && order.status === 'open' && !isOffline(order)
+          ? await merchant.updateOrder(order.id, { lines })
+          : order && !isOffline(order)
+            ? order
+            : await merchant.createOrder({ lines, customer: null, tableId: tabTable });
+      setOrder(o);
+      // Section 7: the customer sees it on the Point it's shown on, and can pay there too. A table's
+      // order goes to its own Point when payment is taken.
+      if (showOn && !tabTable) void merchant.showOnPoint(showOn, { kind: 'order', orderId: o.id }).catch(() => undefined);
+      set({ screen: 'checkout' });
+    });
+  };
+
+  // ---- Rewards: the customer at the cart (rewards spec, section 9) ----------------------------
+  // Only where the shop's app is on, and on the live path: the reference's own frames are unchanged.
+  const shopApp = useApi(() => (preview ? Promise.resolve(null) : merchant.shopApp().catch(() => null)), [preview]);
+  const appOn = !preview && !adding && shopApp.data?.app.enabled === true;
+  const pointsName: PointsName = shopApp.data?.app.pointsName ?? { kind: 'points' };
+  const pword = (n: number) => pointsWord(pointsName, n);
+  const [cust, setCust] = useState<OrderCustomerState>({ status: 'none' });
+  const [custSheet, setCustSheet] = useState<'scan' | 'phone' | 'member' | null>(null);
+  const [custBusy, setCustBusy] = useState(false);
+  const [custError, setCustError] = useState<string | null>(null);
+  const [pendingPhone, setPendingPhone] = useState<string | null>(null);
+  const [invited, setInvited] = useState(false);
+  const added = cust.status === 'added' ? cust : null;
+  const applied = order?.discount?.kind === 'reward' && order.discount.rewardId ? { rewardId: order.discount.rewardId, label: order.discount.label } : null;
+  const custRun = async (fn: () => Promise<void>) => {
+    setCustBusy(true);
+    setCustError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setCustError(errorSentence(e));
+    } finally {
+      setCustBusy(false);
+    }
+  };
+  /** Adding someone needs the order on the server: the cart as it is, created or brought up to date. */
+  const ensureOrder = async (): Promise<Order> => {
+    const lines = toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents);
+    if (!lines.length) throw new Error('Add something to the cart first.');
+    const o = order && order.status === 'open' && !isOffline(order) ? await merchant.updateOrder(order.id, { lines }) : await merchant.createOrder({ lines, customer: null, tableId: tabTable });
+    setOrder(o);
+    return o;
+  };
+  const addByCode = (code: string) =>
+    custRun(async () => {
+      const o = await ensureOrder();
+      setCust(await merchant.addCustomer(o.id, { via: 'code', code }));
+      setInvited(false);
+      setCustSheet('member');
+    });
+  const addByPhone = (phone: string) =>
+    custRun(async () => {
+      const o = await ensureOrder();
+      const st = await merchant.addCustomer(o.id, { via: 'phone', phone });
+      setCust(st);
+      const d = phone.replace(/\D/g, '').slice(-10);
+      setPendingPhone(d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : phone);
+      setCustSheet(null);
+    });
+  const applyReward = (rewardId: string) =>
+    custRun(async () => {
+      if (!order) return;
+      const o = await merchant.applyDiscount(order.id, { kind: 'reward', rewardId });
+      setOrder(o);
+      setCust(await merchant.orderCustomer(o.id));
+    });
+  const undoReward = () =>
+    custRun(async () => {
+      if (!order) return;
+      const o = await merchant.removeDiscount(order.id);
+      setOrder(o);
+      setCust(await merchant.orderCustomer(o.id));
+    });
+  /** Off the charge: their reward first, then them. Closing the sheet without Add to charge does this too. */
+  const removeCustomer = () =>
+    custRun(async () => {
+      if (!order) return;
+      if (applied) setOrder(await merchant.removeDiscount(order.id));
+      await merchant.removeCustomer(order.id);
+      setOrder(await merchant.order(order.id));
+      setCust({ status: 'none' });
+      setPendingPhone(null);
+      setCustSheet(null);
+    });
+  // A number waits on their phone: asked again every few seconds until they've confirmed.
+  useEffect(() => {
+    if (cust.status !== 'pending' || !order) return;
+    const id = window.setInterval(() => {
+      void merchant.orderCustomer(order.id).then((st) => {
+        setCust(st);
+        if (st.status === 'added') {
+          setPendingPhone(null);
+          setCustSheet('member');
+        } else if (st.status === 'none') setPendingPhone(null);
+      }, () => undefined);
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [cust.status, order, merchant]);
+  // With someone on it, the order follows the cart, so their reward and points follow it too.
+  const cartKey = JSON.stringify(toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents));
+  useEffect(() => {
+    if (!added || !order || order.status !== 'open' || isOffline(order)) return;
+    const lines = JSON.parse(cartKey) as Parameters<typeof merchant.updateOrder>[1]['lines'];
+    if (!lines.length) return;
+    const id = window.setTimeout(() => {
+      void merchant
+        .updateOrder(order.id, { lines })
+        .then(async (o) => {
+          setOrder(o);
+          setCust(await merchant.orderCustomer(o.id));
+        })
+        .catch((e) => setCustError(errorSentence(e)));
+    }, 300);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartKey]);
+
+  /** Clear: a tender on the order for what's owed (and the tip), shown to the member as a code. */
+  const raise = async () => {
+    if (preview) {
+      set({ screen: 'code', code: '8QK2' });
+      return;
+    }
+    if (!order) return;
+    setRaising(true);
+    setRaiseError(null);
+    try {
+      const t = await merchant.createClearTender(order.id, { amountCents: partCents, tipCents, idempotencyKey: payKey() });
+      setTender(t);
+      setRaisedAt(new Date());
+      setLive(null);
+      // A member added at the cart who can pay with Clear: straight to them, nothing to scan (section 9).
+      if (added?.customer.canPayWithClear) {
+        set({ code: t.clearChargeCode ?? '' });
+        await sendOn({ to: 'customer' }, t);
+        return;
+      }
+      set({ screen: 'code', code: t.clearChargeCode ?? '' });
+    } catch (e) {
+      setRaiseError(errorSentence(e));
+    } finally {
+      setRaising(false);
+    }
+  };
+
+  /** Send the waiting charge on; the screen then waits on their answer, as it does for the code. */
+  const sendOn = async (to: SendTo, viaTender?: Tender) => {
+    if (sending) return;
+    // Not silently: a scan or a number sent before the charge exists would otherwise do nothing at all.
+    const t = viaTender ?? tender;
+    if (!t) return setSendError('The charge is still being set up. Try again in a moment.');
+    setSending(true);
+    setSendError(null);
+    try {
+      const r = await merchant.sendClearCharge(t.id, to);
+      setSentVia({ how: r.to === 'member' ? 'App' : r.to === 'customer' ? 'Customer' : 'Text', label: r.label, at: new Date(), to });
+      set({ screen: 'waiting' });
+    } catch (e) {
+      setSendError(errorSentence(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Development only, on the live path over the mock (`?preview=1&live=1&shop=micasa&table=tbl_6`):
+  // `&rw=cart|scan|pending|sofia|dev|applied|checkout|waiting` sets up Table 6 as section 9 draws it.
+  const rw = import.meta.env.DEV && params.get('preview') === '1' && params.get('live') === '1' ? params.get('rw') : null;
+  const rwDone = useRef(false);
+  useEffect(() => {
+    if (!rw || rwDone.current || !appOn) return;
+    rwDone.current = true;
+    const codeFor = (who: 'sofia' | 'dev') => mockControls()?.rewards.codeFor(who) ?? '';
+    void (async () => {
+      const lines = (
+        [
+          ['pastor', 2],
+          ['horchata', 1],
+          ['jamaica', 1],
+        ] as const
+      ).map(([ref, quantity]) => ({ itemId: `itm_${ref}`, quantity, optionIds: [] }));
+      let o = await merchant.createOrder({ lines, customer: null, tableId: tabTable });
+      setOrder(o);
+      set({ mode: 'items', lines: linesOf(o) });
+      if (rw === 'cart') return;
+      if (rw === 'scan') return setCustSheet('scan');
+      if (rw === 'pending') {
+        setCust(await merchant.addCustomer(o.id, { via: 'phone', phone: '(909) 555-0123' }));
+        return setPendingPhone('(909) 555-0123');
+      }
+      setCust(await merchant.addCustomer(o.id, { via: 'code', code: codeFor(rw === 'dev' ? 'dev' : 'sofia') }));
+      if (rw === 'sofia' || rw === 'dev') return setCustSheet('member');
+      o = await merchant.applyDiscount(o.id, { kind: 'reward', rewardId: 'rwd_agua' });
+      setOrder(o);
+      setCust(await merchant.orderCustomer(o.id));
+      if (rw === 'applied') return;
+      set({ screen: 'checkout' });
+      if (rw === 'checkout') return;
+      const t = await merchant.createClearTender(o.id, { amountCents: o.remainingCents, tipCents: 0, idempotencyKey: payKey() });
+      setTender(t);
+      setRaisedAt(new Date());
+      set({ method: 'clear', tip: { kind: 'none' }, code: t.clearChargeCode ?? '' });
+      await sendOn({ to: 'customer' }, t);
+    })().catch((e) => setPayError(errorSentence(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rw, appOn]);
+
+  // The member's answer, followed on the tender (and how far they've got, on the charge itself).
+  // Checks that keep failing are said, not swallowed: "waiting" while the tablet can't ask would
+  // hide a charge that has in fact gone through.
+  const [syncTrouble, setSyncTrouble] = useState(false);
+  useEffect(() => {
+    if (preview || !tender || tender.method !== 'clear' || !['code', 'waiting', 'theirs', 'phone'].includes(f.screen)) return;
+    let stopped = false;
+    let failures = 0;
+    const tick = async () => {
+      try {
+        const t = await merchant.syncTender(tender.id);
+        if (stopped) return;
+        failures = 0;
+        setSyncTrouble(false);
+        setTender(t);
+        if (t.clearChargeCode) {
+          const c = await api.watchCharge(t.clearChargeCode).catch(() => null);
+          if (!stopped && c) {
+            setLive({ openedAt: c.openedAt, resolvedAt: c.resolvedAt, splitInto: c.splitInto, paidNow: c.paidNow === true, payingNow: c.payingNow === true });
+            if (c.openedAt && f.screen === 'code') set({ screen: 'waiting' });
+          }
+        }
+        if (t.status === 'approved') {
+          const o = await refresh(t.orderId);
+          if (!stopped) set(o.remainingCents > 0 && f.method === 'split' ? { screen: 'split', part: '' } : { screen: 'approved' });
+        } else if (t.status === 'declined') set({ sheet: { k: 'fail', kind: 'declined' } });
+        else if (t.status === 'cancelled') set({ sheet: { k: 'fail', kind: 'expired' } });
+      } catch {
+        // A poll that fails changes nothing; the payment is safe on the server and the next tick asks
+        // again. Three in a row (about 9s) and the screen says it can't check.
+        failures += 1;
+        if (!stopped && failures >= 3) setSyncTrouble(true);
+      }
+    };
+    void tick();
+    const id = window.setInterval(tick, 3000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, tender?.id, f.screen]);
+
+  /** Cash: what's owed (the tip with it), or in a split what was handed over up to what's owed. */
+  const takeCash = () => {
+    if (preview || !order) return set({ screen: 'cashPaid', sendBy: 'none' });
+    const given = Math.round(parseFloat(f.given || '0') * 100);
+    if (isOffline(order)) {
+      // The sale is the tablet's until the queue sends it: the order and its cash, once.
+      return void attempt(async () => {
+        const t = await queueCashSale(order, toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents), { amountCents: partCents, tipCents, handedOverCents: given });
+        setTender(t);
+        set({ screen: 'cashPaid', sendBy: 'none' });
+      });
+    }
+    void attempt(async () => {
+      const t = await merchant.createCashTender(order.id, { amountCents: partCents, tipCents, handedOverCents: given, idempotencyKey: payKey() });
+      setTender(t);
+      const o = await refresh(order.id);
+      set(o.remainingCents > 0 ? { screen: 'split', given: '', part: '' } : { screen: 'cashPaid', sendBy: 'none' });
+    });
+  };
+
+  // The drawer opens as the change screen comes up, and the printers print what they print by
+  // themselves (section 5). The tender never waited on either.
+  useEffect(() => {
+    if (f.screen !== 'cashPaid') return;
+    const key = tender?.id ?? 'preview';
+    if (drawerOpenedFor.current === key) return;
+    drawerOpenedFor.current = key;
+    const offline = isOffline(order);
+    void drawerSale.open(order?.id ?? null, offline ? order!.id : null);
+    if (!preview && order && !offline) {
+      void printAfterCash({
+        printers: counterHw.printers,
+        preview: hwPreview,
+        receipt: () => merchant.receipt(order.id),
+        order,
+        onRow: (k, row) => setPrints((cur) => ({ ...cur, [k]: row })),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.screen, tender?.id]);
+
+  /** Leaving: an order nothing was paid on is discarded, so its stock isn't held for nobody. */
+  const discardIfUnpaid = async (o: Order | null) => {
+    // A table's tab belongs to the table: backing out of Take payment leaves it open (Tables v2).
+    if (preview || !o || o.status === 'voided' || o.tableId) return;
+    const ts = await merchant.tenders(o.id).catch(() => null);
+    if (ts && nothingTaken(ts)) await merchant.discardOrder(o.id).catch(() => undefined);
+  };
+  const release = () => discardIfUnpaid(order);
+  // However the screen is left (the nav bar, Back, another tab of the app), not only by its own
+  // buttons. Discarding is safe to repeat, so leaving by a button as well does no harm.
+  const orderRef = useRef<Order | null>(null);
+  orderRef.current = order;
+  const tendersRef = useRef<Tender[]>([]);
+  tendersRef.current = tenders;
+  useEffect(
+    () => () => {
+      void discardIfUnpaid(orderRef.current);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  // The tab closed, or the tablet left the page, mid-charge: there's no time to ask the server
+  // first, so this goes on what the page knows (the server refuses it if money was taken).
+  useEffect(() => {
+    if (preview) return;
+    const onHide = () => {
+      const o = orderRef.current;
+      if (o && o.status !== 'voided' && !o.tableId && nothingTaken(tendersRef.current)) discardOnLeave(o.id);
+    };
+    window.addEventListener('pagehide', onHide);
+    return () => window.removeEventListener('pagehide', onHide);
+  }, [preview]);
+
+  // ---- The card reader ---------------------------------------------------------------------------
+  // The reader service drives the card screen's four states: the installed app's plugin, a
+  // browser's smart readers, or the preview's simulation. Leaving the screen cancels the payment.
+  const readerPlatform: Platform = preview ? (previewPlatform(params) ?? 'ios') : currentPlatform();
+  const [readerLabel, setReaderLabel] = useState<string | undefined>();
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [readerList, setReaderList] = useState<{ readers: ReaderInfo[]; current: string | null; loading: boolean; error: string | null }>({
+    readers: [],
+    current: null,
+    loading: false,
+    error: null,
+  });
+  const readerOpts = preview ? { preview: { platform: readerPlatform, decline: params.get('decline') === '1' } } : {};
+  // Clear Terminal's Pay case (13b): a table's order is paid on its own Point's reader, borrowed
+  // for the payment. One reader at a time; another table waits its turn.
+  const tablePoint = order?.tableId ? (counterHw.points.find((p) => p.settings.tableId === order.tableId && p.settings.readerId) ?? null) : null;
+  const shopReaders = useApi(() => (tablePoint && !preview ? merchant.readers() : Promise.resolve(null)), [tablePoint?.id, preview]);
+  const [tableReader, setTableReader] = useState<TableReaderState>(() =>
+    preview && params.get('screen') === 'card-table' ? { active: 'hw_t12', phase: 'connecting', queue: ['hw_t4'] } : sharedQueue(() => readerService(readerOpts)).state(),
+  );
+  useEffect(() => {
+    const stop = sharedQueue(() => readerService(readerOpts)).subscribe(setTableReader);
+    return () => void stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (f.screen !== 'card' || preset?.reader) return;
+    let on = true;
+    let svc: ReaderService | null = null;
+    setReaderError(null);
+    readerService(readerOpts)
+      .then(async (service) => {
+        if (!on) return;
+        svc = service;
+        // Live, a reader to collect on: the one connected, else the shop's only (or, in a browser,
+        // first) smart reader; with nothing to choose between, the reader list opens instead.
+        // A table's own reader: connect it for this payment, behind any table paying now.
+        const linked = tablePoint ? shopReaders.data?.find((r) => r.id === tablePoint.settings.readerId) : undefined;
+        const queue = sharedQueue(() => readerService(readerOpts));
+        if (!preview && tablePoint && linked) await queue.connectFor({ pointId: tablePoint.id, externalReaderId: linked.externalReaderId });
+        if (!preview && !service.connected()) {
+          const found = (await Promise.all(service.kinds.map((k) => service.discover(k).catch(() => [])))).flat();
+          if (!on) return;
+          if (found.length === 1 || (found.length > 0 && service.platform === 'web')) await service.connect(found[0]!);
+          else {
+            set({ sheet: { k: 'readers' } });
+            if (!found.length) setReaderError('No reader this device can use. Add a smart reader in Settings › Payments.');
+            return;
+          }
+        }
+        setReaderLabel(service.connected()?.label);
+        if (tablePoint) queue.paying(tablePoint.id);
+        const result = await service.collect(
+          preview ? dueCents : partCents,
+          (e) => {
+            if (!on) return;
+            set(e.state === 'approved' || e.state === 'declined' ? { reader: e.state, card: 'card' in e ? e.card : undefined } : { reader: e.state });
+          },
+          preview || !order ? undefined : { orderId: order.id, tipCents },
+        );
+        // Done, declined or cancelled: the table's reader goes back, and the next table gets it.
+        if (tablePoint) void queue.done(tablePoint.id);
+        // A card that went through on part of a split: back to the split for the rest.
+        if (!preview && order && on && result.outcome === 'approved') {
+          const o = await refresh(order.id);
+          if (on && o.remainingCents > 0 && f.method === 'split') set({ screen: 'split', part: '' });
+        }
+      })
+      .catch((e) => on && setReaderError(e instanceof Error ? e.message : 'The reader isn’t responding.'));
+    return () => {
+      on = false;
+      void svc?.cancel();
+    };
+    // Collecting starts afresh on each run, not on every state the reader reports.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.screen, f.run]);
+
+  // "Use another reader": what this device can drive, found by the same service.
+  useEffect(() => {
+    if (f.sheet?.k !== 'readers') return;
+    let on = true;
+    setReaderList((l) => ({ ...l, loading: true, error: null }));
+    readerService(readerOpts)
+      .then(async (service) => {
+        const found = (await Promise.all(service.kinds.map((k) => service.discover(k).catch(() => [])))).flat();
+        if (on) setReaderList({ readers: found, current: service.connected()?.id ?? null, loading: false, error: null });
+      })
+      .catch((e) => on && setReaderList({ readers: [], current: null, loading: false, error: e instanceof Error ? e.message : 'The reader isn’t responding.' }));
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.sheet?.k]);
+
+  // ---- Moving through --------------------------------------------------------------------------
+  const reset = () => {
+    setOrder(null);
+    setTenders([]);
+    setTender(null);
+    setPayError(null);
+  };
+  const exit = () => void release().then(() => navigate('/'));
+  const again = () =>
+    void release().then(() => {
+      reset();
+      setF({ ...BLANK });
+    });
+  const addLine = (item: Item, picked: Record<string, string[]> = {}, qty = 1) => {
+    const chosen = (item.options ?? [])
+      .flatMap((g) => (picked[g.id] ?? []).map((id) => g.choices.find((c) => c.id === id)))
+      .filter((c) => c && c.id !== 'none')
+      .map((c) => c!.name.toLowerCase())
+      .join(', ');
+    const key = `${item.id}${chosen ? `:${chosen}` : ''}`;
+    setF((cur) => {
+      const found = cur.lines.find((l) => l.key === key);
+      const lines = found
+        ? cur.lines.map((l) => (l.key === key ? { ...l, qty: l.qty + qty } : l))
+        : [...cur.lines, { key, itemId: item.id, name: item.name, chosen: chosen || undefined, qty, unitCents: unitPrice(item, picked), tax: item.tax, hasOptions: !!item.options, optionIds: pickedOptionIds(item, picked) }];
+      return { ...cur, lines, sheet: null };
+    });
+  };
+  const setQty = (itemId: string, qty: number) =>
+    setF((cur) => ({ ...cur, lines: qty <= 0 ? cur.lines.filter((l) => l.itemId !== itemId) : cur.lines.map((l) => (l.itemId === itemId ? { ...l, qty } : l)) }));
+  const tipsOn = preview || liveSettings.data?.tips.enabled !== false;
+  const pick = (m: Method) => {
+    setPayError(null);
+    // The tip is asked first, on the customer's side, when the shop takes tips.
+    if (tipsOn) set({ method: m, screen: 'tip', tip: null });
+    else {
+      set({ method: m, tip: { kind: 'none' } });
+      afterTipFor(m);
+    }
+  };
+  const afterTip = () => afterTipFor(f.method);
+  const afterTipFor = (method: Method | null) => {
+    if (method === 'clear') void raise();
+    else if (method === 'card') setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
+    else if (method === 'cash') set({ screen: 'cash', given: '' });
+    // The split starts on card, as the reference draws it, where the shop takes cards.
+    else set({ screen: 'split', legs: [], legMethod: preview || cardsOn ? 'card' : 'cash' });
+  };
+
+  // Tires usually go with mount and balance: suggested once, the count matched.
+  const tires = f.lines.filter((l) => catalog.find((i) => i.id === l.itemId)?.thumb === 'tire').reduce((s, l) => s + l.qty, 0);
+  // The reference's item is `mount`; a live shop's is whatever its catalogue calls it.
+  const mountItem = catalog.find((i) => i.id === 'mount' || /^mount and balance$/i.test(i.name));
+  const suggestion =
+    f.catalog === 'shop' && mountItem && tires > 0 && !f.lines.some((l) => l.itemId === mountItem.id) && !f.suggested
+      ? { t: 'Tires usually go with mount and balance', det: `${tires} × ${usd(2500)}, one per tire`, action: `Add ${tires}` }
+      : null;
+
+  const who = me ? `${me}, this shift` : undefined;
+  const modeSwitch = (
+    <Segmented
+      as="span"
+      kind="mode"
+      label="Start with"
+      value={f.mode}
+      onChange={(mode) => set({ mode })}
+      options={[
+        { value: 'amount', label: 'Amount' },
+        { value: 'items', label: 'Items' },
+      ]}
+    />
+  );
+
+  // ---- Screens ---------------------------------------------------------------------------------
+  let top: ReactNode = null;
+  let main: ReactNode = null;
+  const flowTop = (title: string, back = true) => (
+    <FlowTop title={title} back={back} onExit={back ? () => set({ screen: f.screen === 'checkout' ? 'start' : 'checkout' }) : exit} onShift={me} />
+  );
+
+  // The cart's Customer line: Scan their code or Phone; then who it is and their reward (section 9).
+  const customerLine = !appOn ? undefined : added ? (
+    <>
+      <CustomerOn c={added.customer} shop={shop} name={pointsName} onRemove={() => void removeCustomer()} onOpen={() => setCustSheet('member')} />
+      <RewardLine c={added.customer} name={pointsName} applied={applied} busy={custBusy} onApply={(id) => void applyReward(id)} onUndo={() => void undoReward()} />
+    </>
+  ) : (
+    <CustomerAdd pending={cust.status === 'pending' ? pendingPhone : null} onScan={() => (setCustError(null), setCustSheet('scan'))} onPhone={() => (setCustError(null), setCustSheet('phone'))} onCancel={() => void removeCustomer()} />
+  );
+
+  if (f.screen === 'start' || f.screen === 'cart') {
+    // A shop with a catalogue starts with an amount or its items; one without, with an amount.
+    const hasItems = preview || shopItems.length > 0;
+    const items = hasItems && f.mode === 'items';
+    // Adding to a table's tab is drawn for the tablet; a phone gets the same two cells, one above the other.
+    const tabNumber = tabView?.number ?? '…';
+    const party = tabView?.party;
+    if (phone && !adding) {
+      main =
+        items && f.screen === 'cart' ? (
+          <PhoneCart
+            lines={f.lines}
+            catalog={catalog}
+            onQty={(l, n) => l.itemId && setQty(l.itemId, n)}
+            onRemove={(l) => l.itemId && setQty(l.itemId, 0)}
+            onBack={() => set({ screen: 'start' })}
+            onCheckout={toCheckout}
+          />
+        ) : items ? (
+          <PhoneItems
+            catalog={catalog}
+            view="list"
+            inCart={inCart}
+            lines={f.lines}
+            onAdd={(i) => addLine(i)}
+            onQty={(i, n) => setQty(i.id, n)}
+            onQuickSale={() => set({ sheet: { k: 'quick' } })}
+            onOptions={(i) => set({ sheet: { k: 'options', item: i } })}
+            onCart={() => set({ screen: 'cart' })}
+            onExit={exit}
+            modeSwitch={modeSwitch}
+          />
+        ) : (
+          <PhoneAmount
+            cents={typedCents}
+            fees={fees}
+            recordedAgainst={who}
+            onKey={(k) => setF((cur) => ({ ...cur, typed: typeAmount(cur.typed, k) }))}
+            onContinue={toCheckout}
+            onExit={exit}
+            // A shop with a catalogue switches to its items here, as on a tablet.
+            modeSwitch={hasItems ? modeSwitch : undefined}
+            foot={sendLink ? <p className="c-pay-phonelink">{sendLink}</p> : undefined}
+          />
+        );
+    } else {
+      top = adding ? (
+        <FlowTop title={`Adding to Table ${tabNumber}`} back onExit={toTables} onShift={me} />
+      ) : hasItems ? (
+        <StartTop mode={f.mode} onMode={(mode) => set({ mode })} onShift={me} onExit={exit} end={sendLink} title={f.catalog === 'food' ? 'New order' : tabTable && tabView ? `New charge · Table ${tabView.number}` : 'New charge'} />
+      ) : (
+        <FlowTop title="New charge" onExit={exit} onShift={me} end={sendLink} />
+      );
+      if (items && f.capNote) {
+        main = (
+          <div className="c-mc-tablet c-ci c-ci-snip" style={{ height: 'auto', padding: 0 }}>
+            <BigLines
+              lines={f.lines}
+              catalog={catalog}
+              capNote={{ goodyear: 'Only 4 free. 2 more are held for Nina P.’s charge.' }}
+              onQty={(l, n) => l.itemId && setQty(l.itemId, n)}
+              onRemove={(l) => l.itemId && setQty(l.itemId, 0)}
+            />
+          </div>
+        );
+      } else if (items) {
+        main = (
+          <div className={one ? 'c-slab c-one' : 'c-slab'}>
+            <ItemsCell
+              catalog={catalog}
+              view={f.view}
+              onView={(view) => set({ view })}
+              inCart={inCart}
+              onAdd={(i) => addLine(i)}
+              onQty={(i, n) => setQty(i.id, n)}
+              onQuickSale={() => set({ sheet: { k: 'quick' } })}
+              onOptions={(i) => set({ sheet: { k: 'options', item: i } })}
+              tabs={f.catalog === 'food' ? ['All', 'Food', 'Drinks', 'Sweet'] : undefined}
+              // The reference's tile layouts are for its own catalogues; a live shop's tiles are its catalogue.
+              tileOrder={!preview || adding ? undefined : f.catalog === 'food' ? ['tacos', 'burrito', 'quesadilla', 'chips', 'horchata', 'agua', 'churros'] : TILE_ORDER}
+            />
+            {adding ? (
+              <TabCell
+                heading={`Table ${tabNumber}${party ? ` · ${party.name ?? 'Walk-in'}, ${party.size}` : ''}`}
+                onTab={tab.data ? linesOf(tab.data) : []}
+                adding={f.lines}
+                rates={tabRates}
+                busy={busy || (!!tabOrderId && !tab.data)}
+                onAdd={addToTab}
+              />
+            ) : (
+              <CartCell
+                lines={f.lines}
+                suggestion={suggestion}
+                onAddSuggestion={() => {
+                  if (mountItem) addLine(mountItem, {}, tires);
+                  set({ suggested: true });
+                }}
+                onCheckout={toCheckout}
+                heading={f.catalog === 'food' ? 'Order 47' : undefined}
+                headingDet={f.catalog === 'food' ? 'For “Sam”' : undefined}
+                heroLabel={f.catalog === 'food' ? 'Total' : undefined}
+                rates={preview ? undefined : tabRates}
+                customer={customerLine}
+                server={
+                  added && order
+                    ? {
+                        totalCents: order.totalCents,
+                        small: (
+                          <ServerSmall
+                            discount={order.discount ? { label: order.discount.label, cents: order.discountCents } : null}
+                            taxCents={order.taxCents}
+                            taxLabel={`Sales tax · ${tabRates.label}%`}
+                            earns={added.earnsPoints}
+                            word={pword}
+                          />
+                        ),
+                      }
+                    : null
+                }
+              />
+            )}
+          </div>
+        );
+      } else {
+        main = (
+          <AmountView
+              cents={typedCents}
+              limitCents={limitCents}
+              fees={fees}
+              recordedAgainst={seesMoney(role) ? undefined : who}
+              owner={seesMoney(role)}
+              onKey={(k) => setF((cur) => ({ ...cur, typed: typeAmount(cur.typed, k) }))}
+              onContinue={toCheckout}
+            />
+        );
+      }
+    }
+  } else if (f.screen === 'checkout') {
+    top = flowTop(`Checkout · ${usd(baseCents)}`);
+    main = (
+      <CheckoutView
+        body={body}
+        server={order ? totalsFromOrder(order) : null}
+        // Live, cards open once Stripe is connected and cards are on in Settings › Payments.
+        cardLocked={preview ? params.get('screen') === 'checkout-nostripe' : !cardsOn}
+        cashLocked={cashLocked}
+        unavailable={
+          isOffline(order)
+            ? (['card', 'clear', 'split'] as Method[])
+            : preview
+              ? []
+              : ([!liveSettings.data?.paymentMethods.cash && 'cash', !liveSettings.data?.paymentMethods.split && 'split'].filter(Boolean) as Method[])
+        }
+        onEditCart={() => set({ screen: 'start' })}
+        onDiscount={() => set({ sheet: { k: 'discount' } })}
+        onRemoveDiscount={() =>
+          preview || !order
+            ? set({ discount: null })
+            : void attempt(async () => {
+                setOrder(await merchant.removeDiscount(order.id));
+                set({ discount: null });
+              })
+        }
+        onPick={pick}
+        rows={counterHw.points.length > 0 && !isOffline(order) ? <ShowOnRow name={showOnPoint?.name ?? 'Just this tablet'} onChange={() => setShowOnSheet(true)} /> : null}
+        customer={added ? <CustomerOn c={added.customer} shop={shop} name={pointsName} /> : undefined}
+        heroDet={added?.customer.membership && added.earnsPoints !== null ? `${applied ? `${applied.label} applied · ` : ''}earns ${added.earnsPoints} ${pword(added.earnsPoints)}` : undefined}
+        foot={added?.customer.membership ? `Card or cash: ${pword(2)} land on ${added.customer.firstName}’s account when it’s paid.` : undefined}
+        payer={added?.customer.firstName}
+        clearDet={added?.customer.canPayWithClear ? `Sent to ${added.customer.firstName}’s phone now. Nothing to scan` : undefined}
+        taxRate={preview ? undefined : tabRates.label}
+        reward={applied && order ? { label: applied.label, cents: order.discountCents, onUndo: () => void undoReward() } : null}
+      />
+    );
+  } else if (f.screen === 'tip') {
+    top = flowTop('Turned to the customer');
+    main = (
+      <TipView
+        shop={shop}
+        totalCents={baseCents}
+        count={body.lines.length ? totals(body.lines).count : undefined}
+        presets={preview ? [500, 1000, 2000] : (liveSettings.data?.tips.presets ?? [500, 1000, 2000])}
+        tip={f.tip}
+        onTip={(tip) => set({ tip })}
+        onContinue={afterTip}
+      />
+    );
+  } else if (f.screen === 'code') {
+    const c = { shop, amountCents: dueCents, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), lines: body.lines.length ? body.lines : undefined, minimumCents: f.underMin ? 5000 : undefined };
+    if (preview && params.get('screen') === 'code' && c.date) c.date = 'Sep 22';
+    if (phone) {
+      main = <PhoneCode code={f.code} amountCents={dueCents} onExit={exit} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />;
+    } else {
+      top = flowTop(`${usd(dueCents)} · showing the code`, false);
+      main = f.underMin ? (
+        <div className="c-slab c-one">
+          <CustomerCell c={c} />
+        </div>
+      ) : one ? (
+        <div className="c-slab c-one">
+          <CodeCell code={f.code} amountCents={dueCents} />
+          <CustomerCell c={c} alts={['theirs', 'phone']} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />
+        </div>
+      ) : (
+        <ShowCodeView c={c} code={f.code} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />
+      );
+    }
+  } else if (f.screen === 'theirs') {
+    top = flowTop(`${usd(dueCents)} · scan their code`, false);
+    main = (
+      <>
+        <ScanTheirsView
+          amountCents={dueCents}
+          lines={body.lines.length ? body.lines : undefined}
+          onShowMine={() => set({ screen: 'code' })}
+          onPhone={() => set({ screen: 'phone' })}
+          camera={
+            preview ? undefined : (
+              <CodeScanner
+                onCode={(raw) => {
+                  const wallet = memberWalletFrom(raw);
+                  if (!wallet) {
+                    setSendError('That isn’t a member’s Clear code. Ask them to open Code in the Clear app.');
+                    return false;
+                  }
+                  // The charge isn't raised yet: say so and keep the camera on, so the next scan sends it.
+                  if (!tender) {
+                    setSendError('The charge is still being set up. Hold the code up again in a moment.');
+                    return false;
+                  }
+                  setSendError(null);
+                  void sendOn({ to: 'member', wallet });
+                  return true;
+                }}
+              />
+            )
+          }
+        />
+        {sendError && (
+          <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+            {sendError}
+          </p>
+        )}
+      </>
+    );
+  } else if (f.screen === 'phone') {
+    top = flowTop(`${usd(dueCents)} · send to a number`, false);
+    main = (
+      <>
+      <SendToNumberView
+        shop={shop}
+        amountCents={dueCents}
+        code={f.code}
+        digits={f.phone}
+        onKey={(k) => setF((cur) => ({ ...cur, phone: k === 'del' ? cur.phone.slice(0, -1) : cur.phone.length >= 10 ? cur.phone : cur.phone + k }))}
+        onSend={preview ? () => set({ screen: 'waiting' }) : () => void sendOn({ to: 'phone', phone: f.phone })}
+        onShowMine={() => set({ screen: 'code' })}
+        onScanTheirs={() => set({ screen: 'theirs' })}
+      />
+      {sendError && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+          {sendError}
+        </p>
+      )}
+      </>
+    );
+  } else if (f.screen === 'waiting' || f.screen === 'approved') {
+    const approved = f.screen === 'approved';
+    // Live, the payment's own amount: once it's approved nothing is owed, so "due" would read $0.00.
+    const shownCents = !preview && tender?.method === 'clear' ? tender.amountCents + tender.tipCents : dueCents;
+    const s: ChargeState = preview
+      ? approved
+        ? { ...DANA_OK, raisedBy: me }
+        : { ...DANA, raisedBy: me }
+      : {
+          code: f.code,
+          raisedBy: me,
+          amountCents: shownCents,
+          sentTo: sentVia ? `Sent to ${sentVia.label}` : undefined,
+          customer: sentVia?.how === 'Customer' && added ? fullName(added.customer) : undefined,
+          header: tabTable && tabView ? `Table ${tabView.number} · raised by ${me}` : undefined,
+          status: approved ? 'approved' : 'waiting',
+          waitingLine: approved
+            ? undefined
+            : syncTrouble
+              ? 'Can’t reach Clear to check right now. Still trying; the payment is safe either way.'
+              : live?.payingNow
+                ? 'Paying now, from their Clear cash'
+                : sentVia?.how === 'Customer' && applied
+                  ? `Approving on their phone, with ${offLine(applied.label)} already off`
+                  : undefined,
+          howPaid: !approved
+            ? undefined
+            : live?.paidNow
+              ? 'Paid now, from their Clear cash'
+              : live?.splitInto === 1
+                ? 'Next cycle'
+                : live?.splitInto
+                  ? `${live.splitInto} payments of ${usd(exampleSplit(shownCents).each)}`
+                  : undefined,
+          steps: [
+            { t: 'Raised', det: raisedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', ''), state: 'd' },
+            { t: 'Opened', det: live?.openedAt ? new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') : 'Not yet', state: approved || live?.openedAt ? 'd' : 'on' },
+            {
+              t: approved && live?.paidNow ? 'Paid' : 'Approved',
+              // Paying now takes a few seconds on chain: the counter says it's happening, not "any time".
+              det: approved ? 'Just now' : live?.payingNow ? 'Paying now…' : 'Any time today',
+              state: approved ? 'd' : live?.openedAt ? 'on' : '',
+            },
+          ],
+        };
+    const fee = fees ? { label: `Fee · ${pctLabel(fees.over ?? fees.now)}${fees.over ? ', over time' : ''}`, cents: Math.round((shownCents * (fees.over ?? fees.now)) / 100) } : undefined;
+    const reached = preview
+      ? ([
+          { how: 'Text', status: 'Delivered', at: '12:16pm' },
+          { how: 'Email', status: 'Delivered', at: '12:16pm' },
+          { how: 'App', status: 'Opened', at: '12:17pm' },
+        ] as const)
+      : [
+          // To the customer it goes three ways at once: their app, a text and an email.
+          ...(sentVia?.how === 'Customer'
+            ? (['Text', 'Email'] as const).map((how) => ({ how, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }))
+            : []),
+          ...(sentVia?.how === 'Customer' && !live?.openedAt ? [{ how: 'App' as const, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
+          ...(sentVia && sentVia.how !== 'Customer' ? [{ how: sentVia.how, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
+          ...(live?.openedAt ? [{ how: 'App' as const, status: 'Opened', at: new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
+        ];
+    // Again the same way it went, or a number if it has only been shown.
+    const sendAgain = () => (sentVia ? void sendOn(sentVia.to) : set({ screen: 'phone' }));
+    const cancel = async () => {
+      if (!preview && tender) await merchant.cancelTender(tender.id).catch(() => undefined);
+      exit();
+    };
+    if (phone) {
+      main = (
+        <PhoneStatus
+          s={s}
+          reached={reached.map((r) => ({ how: r.how, status: r.status }))}
+          fee={fee}
+          paidOut={preview ? 'Oct 14' : undefined}
+          onExit={exit}
+          onHome={exit}
+          onSendAgain={preview ? () => undefined : sendAgain}
+          onCancel={live?.payingNow ? undefined : cancel}
+          onDone={exit}
+          onNew={again}
+        />
+      );
+    } else {
+      const first = s.customer?.split(/\s+/)[0];
+      top = approved ? flowTop('Charge approved', false) : flowTop(first ? `Waiting on ${first}` : 'Waiting', false);
+      main = approved ? (
+        <ApprovedView
+          s={s}
+          fee={fee}
+          paidOut={preview ? 'Oct 14, with this month’s charges' : undefined}
+          shift={fee ? undefined : preview ? JEN_SHIFT : []}
+          shiftOf={me}
+          onDone={exit}
+          onNew={again}
+        />
+      ) : (
+        <WaitingView
+          s={s}
+          reached={[...reached]}
+          reachedNote={preview ? undefined : sentVia ? (sentVia.how === 'Customer' ? 'All three at once' : sentVia.how === 'Text' ? 'By text' : 'In their Clear app') : 'The code on this screen'}
+          keyline={
+            sentVia?.how === 'Customer' ? (
+              <>
+                {live?.openedAt ? `They have it open${tabTable ? ' at the table' : ''}. ` : ''}
+                <strong>Nothing was scanned at checkout</strong>: they were added once, at the cart, and Clear went straight to them.
+              </>
+            ) : undefined
+          }
+          onSendAgain={preview ? () => undefined : sendAgain}
+          onCancel={live?.payingNow ? undefined : cancel}
+          onHome={exit}
+        />
+      );
+    }
+  } else if (f.screen === 'card') {
+    // Live, once the card has gone through nothing may be owed: show the payment itself.
+    const paidCard = !preview ? [...tenders].reverse().find((t) => t.method === 'card' && (t.status === 'authorised' || t.status === 'captured')) : undefined;
+    const cardCents = f.reader === 'approved' && paidCard ? paidCard.amountCents + paidCard.tipCents : dueCents;
+    top = flowTop(`${usd(cardCents)} · card`, false);
+    const t = totals(body.lines);
+    main = (
+      <div className={one ? 'c-slab c-one' : 'c-slab'}>
+        <CardChargeCell
+          lines={body.lines}
+          amountCents={preview ? (f.reader === 'approved' && !tipCents ? baseCents : body.lines.length ? t.totalCents : dueCents) : paidCard ? paidCard.amountCents : partCents}
+        />
+        <ReaderCell
+          state={f.reader}
+          amountCents={cardCents}
+          at={preview ? '4:41pm' : nowTime()}
+          receipt={
+            preview ? (
+              <ReceiptGroups by={f.sendBy} onBy={(sendBy) => set({ sendBy })} to="(909) 555-0177" onChange={() => set({ sheet: { k: 'send', by: 'text', to: '(909) 555-0177' } })} onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
+            ) : (
+              <ReceiptGroups by={f.sendBy} to={f.sentTo} onBy={pickSend} onChange={() => set({ sheet: { k: 'send', by: f.sendBy === 'email' ? 'email' : 'text', to: '' } })} onPrint={openPrint} />
+            )
+          }
+          reader={readerLabel}
+          card={f.card}
+          error={readerError}
+          onCancel={() => set({ screen: 'checkout' })}
+          onOtherReader={() => set({ sheet: { k: 'readers' } })}
+          onTryAnother={() => setF((cur) => ({ ...cur, reader: 'ready', run: cur.run + 1 }))}
+          onOfferClear={() => (preview ? set({ method: 'clear', screen: 'code', code: '8QK2' }) : void raise())}
+          onDone={exit}
+          onNew={again}
+        />
+      </div>
+    );
+  } else if (f.screen === 'cash') {
+    top = flowTop(`Cash · ${usd(dueCents)}`);
+    const given = Math.round(parseFloat(f.given || '0') * 100);
+    main = (
+        <CashView
+          dueCents={dueCents}
+          tipLabel={tipCents ? `With a ${usd(tipCents)} tip` : 'No tip'}
+          givenCents={given}
+          onKey={(k) => setF((cur) => ({ ...cur, given: typeAmount(cur.given, k) }))}
+          onQuick={(c) => set({ given: (c / 100).toFixed(2) })}
+          onTake={takeCash}
+        />
+    );
+  } else if (f.screen === 'cashPaid') {
+    // Live, what the server took and the change it worked out.
+    const paidCents = tender && tender.method === 'cash' ? tender.amountCents + tender.tipCents : dueCents;
+    top = flowTop(`Cash · ${usd(paidCents)}`);
+    const given = tender && tender.method === 'cash' ? (tender.handedOverCents ?? paidCents) : Math.round(parseFloat(f.given || '0') * 100);
+    // Mi Casa's order 0142 (section 5), in the preview: the reference's change, Point and printers.
+    const mc = preview && miCasa();
+    const drawerShown = drawerSale.state === 'none' ? 'static' : drawerSale.state;
+    const printRows = mc
+      ? [
+          { t: 'Receipt', det: 'Printing on Counter printer · 4 × 6', state: 'printing' as const },
+          { t: 'Bag label', det: 'Order 27 · To go', state: 'printed' as const },
+        ]
+      : Object.values(prints);
+    if (mc) top = flowTop(`Cash · ${usd(ORDER_0142.totalCents)}`);
+    main = (
+      <CashPaidView
+        dueCents={mc ? ORDER_0142.totalCents : paidCents}
+        givenCents={mc ? ORDER_0142.handedOverCents : given}
+        drawer={drawerShown}
+        detail={mc ? `order ${String(ORDER_0142.number).padStart(4, '0')}` : order?.number && !preview ? `order ${String(order.number).padStart(4, '0')}` : undefined}
+        onPoint={mc ? 'Counter' : online && showOnPoint && order && !isOffline(order) ? showOnPoint.name : null}
+        prints={printRows}
+        onRetry={() => void drawerSale.open(order?.id ?? null, isOffline(order) ? order!.id : null)}
+        onKey={() => void drawerSale.usedKey(order?.id ?? null, isOffline(order) ? order!.id : null)}
+        at={mc ? ORDER_0142.at : preview ? '4:41pm' : nowTime()}
+        receipt={
+          preview ? (
+            <ReceiptGroups icons={false} paper={!mc} by={f.sendBy} onBy={(sendBy) => set({ sendBy })} none="No number for this customer" onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
+          ) : (
+            <ReceiptGroups
+              icons={false}
+              paper={!prints.receipt}
+              by={f.sendBy}
+              to={f.sentTo}
+              onBy={pickSend}
+              onChange={() => set({ sheet: { k: 'send', by: f.sendBy === 'email' ? 'email' : 'text', to: '' } })}
+              onPrint={openPrint}
+            />
+          )
+        }
+        onDone={exit}
+        onNew={again}
+      />
+    );
+  } else if (f.screen === 'split') {
+    top = flowTop(`Split · ${usd(dueCents)}`);
+    // Live, the parts are the order's tenders and what's left is the server's.
+    const done: Leg[] = preview ? f.legs : legsFromTenders(tenders);
+    // The parts count toward the order's total; a tip rides on top of the first part it's paid with.
+    const total = preview ? dueCents : (order?.totalCents ?? 0);
+    const paid = done.filter((l) => l.state === 'paid').reduce((s, l) => s + l.amountCents, 0);
+    const declined = preview && f.legs.some((l) => l.state === 'declined');
+    const next = preview ? dueCents - paid : partCents;
+    const legs: Leg[] = declined ? done : [...done, { method: f.legMethod, amountCents: next, det: 'Choose below', state: 'next' }];
+    const chargeLeg = () => {
+      if (preview) return set({ screen: f.legMethod === 'card' ? 'card' : f.legMethod === 'cash' ? 'cash' : 'code', code: '8QK2' });
+      if (f.legMethod === 'cash') return cashLocked ? setPayError('Open the drawer on Home to take cash') : set({ screen: 'cash', given: '' });
+      if (f.legMethod === 'clear') return void raise();
+      if (!cardsOn) return setPayError('Cards aren’t available for this shop yet. Take this part by Clear or cash.');
+      setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
+    };
+    main = declined ? (
+      <div className="c-slab c-one">
+        <SplitLegsCell totalCents={total} legs={legs} />
+      </div>
+    ) : (
+      <SplitView
+        totalCents={total}
+        legs={legs}
+        nextCents={next}
+        method={f.legMethod}
+        onMethod={(legMethod) => set({ legMethod })}
+        onCharge={chargeLeg}
+        cashLocked={cashLocked}
+        {...(preview ? {} : { typed: f.part, onAmount: (part: string) => set({ part }) })}
+      />
+    );
+  }
+
+  // ---- Sheets ------------------------------------------------------------------------------------
+  const close = () => set({ sheet: null });
+  const sh = f.sheet;
+  const sheet =
+    sh?.k === 'options' ? (
+      <OptionsSheet
+        item={sh.item}
+        initial={sh.missing ? {} : sh.item.id === 'michelin' ? { warranty: ['3y'], extras: ['disposal'] } : {}}
+        initialQty={sh.item.id === 'michelin' ? 4 : 1}
+        showMissing={sh.missing || !!missingGroup(sh.item, {})}
+        onAdd={(picked, qty) => addLine(sh.item, picked, qty)}
+        onClose={close}
+      />
+    ) : sh?.k === 'quick' ? (
+      <QuickSaleSheet
+        initialAmount={params.get('screen') === 'quicksale' ? '18.00' : ''}
+        initialNote={params.get('screen') === 'quicksale' ? 'Patch, rear left tire' : ''}
+        initialTax={params.get('screen') === 'quicksale' ? 'labour' : 'goods'}
+        onAdd={({ cents, note, tax }) => setF((cur) => ({ ...cur, sheet: null, lines: [...cur.lines, { key: `quick:${cur.lines.length}`, name: note, qty: 1, unitCents: cents, tax }] }))}
+        onClose={close}
+      />
+    ) : sh?.k === 'discount' ? (
+      <DiscountSheet
+        lines={body.lines}
+        limitPercent={role === 'owner' ? null : role === 'manager' ? 25 : 10}
+        check={(c) => (preview ? (CODES[c] ?? null) : codeCheck(liveCodes.data ?? [], c))}
+        askPin={!preview}
+        initialMode={sh.mode}
+        initialCode={sh.code}
+        initialValue={sh.value}
+        pinFilled={sh.pin}
+        onApply={(discount, pin) =>
+          preview || !order
+            ? set({ discount, sheet: null })
+            : void attempt(async () => {
+                const o = await merchant.applyDiscount(
+                  order.id,
+                  discount.code
+                    ? { kind: 'code', code: discount.code }
+                    : {
+                        kind: 'manual',
+                        percent: discount.percent !== undefined ? Math.max(1, Math.round(discount.percent)) : null,
+                        amountCents: discount.percent === undefined ? (discount.amountCents ?? null) : null,
+                        reason: discount.reason ?? 'Other',
+                        approverPin: pin,
+                      },
+                );
+                setOrder(o);
+                set({ discount: { ...discount, label: o.discount?.label ?? discount.label }, sheet: null });
+              })
+        }
+        onClose={close}
+      />
+    ) : sh?.k === 'send' ? (
+      <SendReceiptSheet
+        shop={shop}
+        totalCents={preview ? dueCents : tender ? tender.amountCents + tender.tipCents : dueCents}
+        card={preview ? 'Visa ending 4242' : tender?.method === 'card' ? cardName(tender) : tender?.method === 'cash' ? 'Cash' : 'Clear'}
+        date={preview ? 'Sep 22' : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        link={preview ? 'useclear.org/r/8QK2' : 'a link to the receipt'}
+        initialBy={sh.by}
+        initialTo={sh.to}
+        onSend={
+          preview || !order
+            ? close
+            : (by, to) =>
+                void attempt(async () => {
+                  await merchant.sendReceipt(order.id, { by, to });
+                  set({ sendBy: by, sentTo: to ?? undefined, sheet: null });
+                })
+        }
+        onClose={close}
+      />
+    ) : sh?.k === 'print' ? (
+      <PrintReceiptSheet
+        printer={sh.printer}
+        system={!preview}
+        loading={!preview && !liveReceipt.data}
+        slip={
+          preview || !liveReceipt.data
+            ? {
+                shop,
+                address: '412 Colton Ave · (909) 555-0180',
+                when: `Sep 22, 4:41pm · ${me.split(/\s+/)[0]}`,
+                lines: body.lines,
+                taxCents: totals(body.lines).taxCents,
+                totalCents: totals(body.lines).totalCents,
+                paid: ['Visa ending 4242', 'Approved'],
+              }
+            : {
+                shop: liveReceipt.data.shop.name,
+                address: liveReceipt.data.shop.address ?? '',
+                when: `${new Date(liveReceipt.data.issuedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(' AM', 'am').replace(' PM', 'pm')} · ${me.split(/\s+/)[0]}`,
+                lines: body.lines,
+                taxCents: liveReceipt.data.taxCents,
+                totalCents: liveReceipt.data.totalCents + liveReceipt.data.tipCents,
+                paid: liveReceipt.data.tenders[0]
+                  ? [liveReceipt.data.tenders[0].card ?? (liveReceipt.data.tenders[0].method === 'cash' ? 'Cash' : 'Clear'), 'Approved']
+                  : ['—', ''],
+              }
+        }
+        onPrint={
+          preview
+            ? close
+            : (copies) => {
+                if (liveReceipt.data) printReceipt(liveReceipt.data, copies);
+                close();
+              }
+        }
+        onSendInstead={() => set({ sheet: { k: 'send', by: 'text', to: '' } })}
+        onRetry={close}
+        onClose={close}
+      />
+    ) : sh?.k === 'readers' ? (
+      <ReaderPickerSheet
+        readers={readerList.readers}
+        current={readerList.current}
+        web={readerPlatform === 'web'}
+        loading={readerList.loading}
+        error={readerList.error}
+        onPick={(r) =>
+          void readerService(readerOpts)
+            .then((service) => service.connect(r))
+            .then(() => {
+              setReaderLabel(r.label);
+              setF((cur) => ({ ...cur, sheet: null, reader: 'ready', run: cur.run + 1 }));
+            })
+            .catch((e) => setReaderList((l) => ({ ...l, error: e instanceof Error ? e.message : 'That reader didn’t connect.' })))
+        }
+        onClose={close}
+      />
+    ) : sh?.k === 'fail' ? (
+      <FailureSheet
+        kind={sh.kind}
+        customer={preview ? 'Dana R.' : undefined}
+        onPrimary={() => (sh.kind === 'declined' ? set({ sheet: null, screen: 'start' }) : preview ? set({ sheet: null, screen: 'waiting' }) : void raise().then(close))}
+        onCash={() => set({ sheet: null, screen: 'cash' })}
+        onCard={() => setF((cur) => ({ ...cur, sheet: null, screen: 'card', reader: 'ready', run: cur.run + 1 }))}
+        onClose={close}
+      />
+    ) : null;
+
+  return (
+    // A tablet frame, as the reference draws these, in landscape and portrait: the slab fills the
+    // screen and each cell scrolls inside it, so the pad and the primary button never leave the
+    // screen. The phone scrolls as a page.
+    <div className={cx('c-app c-mc-tablet', phone && 'c-mc-page', FRAME[f.screen === 'start' && f.mode === 'items' ? 'items' : f.screen], adding && f.screen === 'start' && 'c-ck')}>
+      {top}
+      {!online && (
+        // Offline cards aren't built (reader/platform.ts), so only cash works until it's back.
+        <div className="c-mc-offline" role="status">
+          <span className="c-chip c-underway">
+            <span className="c-core" />
+            No connection
+          </span>
+          <span className="c-det">Cash still works. Card and Clear wait for the internet to come back.</span>
+        </div>
+      )}
+      <OneColumn.Provider value={one}>{main}</OneColumn.Provider>
+      {(raiseError || payError) && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginTop: 'var(--s2)' }}>
+          {raiseError ?? payError}
+        </p>
+      )}
+      {busy && (
+        <p className="c-det" aria-live="polite" style={{ marginTop: 'var(--s2)' }}>
+          One moment&hellip;
+        </p>
+      )}
+      {raising && (
+        <p className="c-det" aria-live="polite" style={{ marginTop: 'var(--s2)' }}>
+          Raising the charge&hellip;
+        </p>
+      )}
+      {sheet}
+      {custSheet === 'scan' && (
+        <ScanCustomerSheet
+          error={custError}
+          onCode={(raw) => {
+            void addByCode(raw);
+            return true;
+          }}
+          onPhone={() => (setCustError(null), setCustSheet('phone'))}
+          onClose={() => setCustSheet(null)}
+        />
+      )}
+      {custSheet === 'phone' && <PhoneCustomerSheet busy={custBusy} error={custError} onSend={(p) => void addByPhone(p)} onClose={() => setCustSheet(null)} />}
+      {custSheet === 'member' && added && (
+        <MemberSheet
+          state={added}
+          shop={shop}
+          name={pointsName}
+          rate={shopApp.data ? earnLabels(shopApp.data.rules, pointsName).rate : ''}
+          applied={applied}
+          invited={invited}
+          busy={custBusy}
+          error={custError}
+          onApply={(id) => void applyReward(id)}
+          onUndo={() => void undoReward()}
+          onInvite={() => void custRun(async () => (await merchant.inviteCustomer(order!.id), setInvited(true)))}
+          onAdd={() => setCustSheet(null)}
+          onClose={() => void removeCustomer()}
+        />
+      )}
+      {((preview && miCasa() && params.get('screen') === 'card-table') || (f.screen === 'card' && tablePoint && tableReader.active === tablePoint.id && (tableReader.phase === 'connecting' || tableReader.queue.length > 0))) && (
+        <CardTableSheet
+          table={preview ? 'Table 12' : (counterHw.points.find((p) => p.id === tableReader.active)?.name ?? 'the table')}
+          reader={preview ? 'M2 1A3F' : (shopReaders.data?.find((r) => r.id === tablePoint?.settings.readerId)?.label ?? 'its reader')}
+          amountCents={preview ? TAB_12.totalCents : dueCents}
+          state={tableReader}
+          waiting={tableReader.queue.map((id) => (preview && id === 'hw_t4' ? 'Table 4' : (counterHw.points.find((p) => p.id === id)?.name ?? 'Another table')))}
+          onClose={() => setTableReader((t) => ({ ...t, phase: t.phase === 'connecting' ? 'ready' : t.phase }))}
+        />
+      )}
+      {linkSheet && (
+        <SendLinkSheet
+          items={linkItems.data ?? []}
+          draft={linkDraft}
+          created={linkMade}
+          busy={linkBusy}
+          error={linkError}
+          onCreate={(request) => void createLink(request)}
+          onClose={() => setLinkSheet(false)}
+        />
+      )}
+      {showOnSheet && (
+        <ShowOnSheet
+          points={counterHw.points}
+          tables={showOnTables.data?.tables ?? []}
+          value={showOn}
+          onPick={(id) => {
+            setShowOn(id);
+            setShowOnSheet(false);
+            if (id && order && !preview && !isOffline(order)) void merchant.showOnPoint(id, { kind: 'order', orderId: order.id }).catch(() => undefined);
+          }}
+          onClose={() => setShowOnSheet(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One reader queue for the tablet: the SDK holds one reader, whichever screen asks. */
+let queueOnce: ReaderQueue | null = null;
+function sharedQueue(service: () => ReturnType<typeof readerService>): ReaderQueue {
+  return (queueOnce ??= readerQueue(service));
+}

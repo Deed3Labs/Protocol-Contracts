@@ -78,6 +78,12 @@ async function main() {
 
   // 4. Setup roles and permissions
   console.log("\n4. Setting up roles and permissions...");
+  // Without these, createFraction reverts "!mkt" (audit D-22) and units cannot be pulled (D-21).
+  const deedNFTContract = await hre.ethers.getContractAt("DeedNFT", deedNFTAddress);
+  await (await deedNFTContract.setApprovedMarketplace(fractionalizeAddress, true)).wait();
+  const subdivideContract = await hre.ethers.getContractAt("Subdivide", subdivideAddress);
+  await (await subdivideContract.setApprovedMarketplace(fractionalizeAddress, true)).wait();
+  console.log("DeedNFT and Subdivide approve Fractionalize");
   
   // Grant necessary roles to the Fractionalize contract
   const ADMIN_ROLE = await fractionalize.ADMIN_ROLE();

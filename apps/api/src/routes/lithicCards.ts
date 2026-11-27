@@ -1,0 +1,258 @@
+import express, { type Request, type Response } from 'express';
+import { cardCreditFeeTotals, listCardTransactions } from '../services/lithic/cardTransactionsService.js';
+import { creditFeeSettings, currentCreditFee } from '../services/lithic/cardCreditFee.js';
+import { isConfigured } from '../services/lithic/lithicClient.js';
+import { cardStore } from '../services/lithic/cardStore.js';
+import { cardService } from '../services/lithic/cardService.js';
+import { requireStepUp, requireStepUpWhen } from '../middleware/stepUp.js';
+
+const router = express.Router();
+
+/*
+ * Member-facing card endpoints — spec step 8.
+ *
+ * Two rules hold everywhere in this file.
+ *
+ * The wallet comes from the verified session, never from the body. These endpoints freeze cards and
+ * reveal card details; accepting a caller-supplied address would let any signed-in member operate
+ * anyone else's card.
+ *
+ * Every mutation checks ownership against our own mapping before it reaches Lithic. A card token is
+ * not a secret — it appears in webhooks and logs — so possession of one proves nothing.
+ */
+
+function sessionWallet(req: Request): string {
+  return String(req.auth?.smartWallet || req.auth?.walletAddress || '')
+    .trim()
+    .toLowerCase();
+}
+
+/** Loads the card only if this session owns it. */
+async function ownedCard(req: Request): Promise<{ token: string } | null> {
+  const wallet = sessionWallet(req);
+  const token = String(req.params.token || '');
+  if (!wallet || !token) return null;
+  const record = await cardStore.get(token);
+  return record && record.wallet === wallet ? { token } : null;
+}
+
+/** GET /api/lithic/cards — this member's cards. */
+router.get('/', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  if (!isConfigured() || !cardStore.isConfigured()) {
+    return res.json({ configured: false, cards: [] });
+  }
+
+  try {
+    return res.json({ configured: true, cards: await cardService.listCards(wallet) });
+  } catch (error) {
+    console.error('[cards] list failed', error);
+    return res.status(500).json({ error: 'Failed to load cards' });
+  }
+});
+
+
+/**
+ * GET /api/lithic/cards/transactions — what this member's cards have spent.
+ *
+ * Read from our own approved authorizations rather than fetched from Lithic: every approval already
+ * passes through the Auth Stream handler, which records the amount, the merchant object and which
+ * tiers paid. Asking Lithic again for something we decided ourselves would be slower, rate-limited,
+ * and no more true.
+ *
+ * Registered before `/:token` so a card token named "transactions" cannot shadow it — the tokens
+ * are UUIDs and could not, but route order that depends on that is a trap for the next person.
+ */
+router.get('/transactions', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  if (!isConfigured()) return res.json({ transactions: [] });
+
+  try {
+    const limit = Number.parseInt(String(req.query.limit ?? '50'), 10);
+    res.json({ transactions: await listCardTransactions(wallet, Number.isFinite(limit) ? limit : 50) });
+  } catch (error) {
+    console.error('[lithic] card transactions read failed:', error instanceof Error ? error.message : error);
+    res.status(502).json({ error: 'Could not read card transactions' });
+  }
+});
+
+/**
+ * GET /api/lithic/cards/credit-fees?cycleStart=<unix seconds> — the card credit fee for a statement
+ * (decision 55): whether it is charged now, and the totals for the cycle and the year to date
+ * (Reg Z §1026.7(b)(6)). Each fee also sits on its own purchase in /transactions. The cycle window
+ * comes from the caller, which reads it from the chain with the line (GET /api/credit); without it,
+ * only the year to date is given.
+ */
+router.get('/credit-fees', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  const cycleStart = Number(req.query.cycleStart);
+  const cycleStartMs = Number.isFinite(cycleStart) && cycleStart > 0 ? Math.floor(cycleStart) * 1000 : null;
+  // Charged only when both the API's setting and the chain's bound allow it.
+  const fee = { cents: creditFeeSettings().cents, on: currentCreditFee().cents > 0 };
+  try {
+    res.json({ fee, ...(await cardCreditFeeTotals(wallet, cycleStartMs)) });
+  } catch (error) {
+    console.error('[lithic] card credit fee totals failed:', error instanceof Error ? error.message : error);
+    res.status(502).json({ error: 'Could not read card credit fees' });
+  }
+});
+
+/** POST /api/lithic/cards — issue a virtual card. */
+router.post('/', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  if (!isConfigured()) return res.status(503).json({ error: 'Cards unavailable' });
+
+  try {
+    const card = await cardService.createVirtualCard(wallet, {
+      memo: typeof req.body?.memo === 'string' ? req.body.memo.slice(0, 50) : undefined,
+      spendLimitCents: Number(req.body?.spendLimitCents) || undefined,
+      spendLimitDuration:
+        typeof req.body?.spendLimitDuration === 'string' ? req.body.spendLimitDuration : undefined,
+    });
+    return res.status(201).json({ card });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create card';
+    return res.status(400).json({ error: message });
+  }
+});
+
+/** POST /api/lithic/cards/physical — order a physical card. */
+router.post('/physical', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+
+  const s = req.body?.shipping ?? {};
+  const required = ['firstName', 'lastName', 'address1', 'city', 'state', 'postalCode'];
+  const missing = required.filter((k) => !String(s[k] ?? '').trim());
+  if (missing.length) {
+    return res.status(400).json({ error: `Missing shipping fields: ${missing.join(', ')}` });
+  }
+
+  try {
+    const card = await cardService.createPhysicalCard(wallet, s, {
+      memo: typeof req.body?.memo === 'string' ? req.body.memo.slice(0, 50) : undefined,
+    });
+    return res.status(201).json({ card });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to order card';
+    return res.status(400).json({ error: message });
+  }
+});
+
+/**
+ * POST /api/lithic/cards/:token/activate — the card that came in the post.
+ *
+ * The last four is checked against the card we posted rather than taken on trust: it is the only
+ * evidence anyone has that the member is holding it, since no delivery event exists.
+ */
+router.post('/:token/activate', async (req: Request, res: Response) => {
+  const owned = await ownedCard(req);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
+
+  const lastFour = String(req.body?.lastFour ?? '').replace(/\D/g, '');
+  if (lastFour.length !== 4) return res.status(400).json({ error: 'Enter the last four digits' });
+
+  try {
+    const card = await cardService.activateCard(owned.token, lastFour);
+    if (!card) return res.status(404).json({ error: 'Card not found' });
+    return res.json({ card });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not activate the card';
+    return res.status(400).json({ error: message });
+  }
+});
+
+/** POST /api/lithic/cards/:token/freeze — freeze or unfreeze. */
+// Freezing is one tap; unfreezing is Face ID (middleware/stepUp).
+router.post('/:token/freeze', requireStepUpWhen((req) => req.body?.frozen === false), async (req: Request, res: Response) => {
+  const owned = await ownedCard(req);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
+
+  try {
+    const card = await cardService.setFrozen(owned.token, req.body?.frozen !== false);
+    return res.json({ card });
+  } catch (error) {
+    console.error('[cards] freeze failed', error);
+    return res.status(500).json({ error: 'Failed to update card' });
+  }
+});
+
+/** POST /api/lithic/cards/:token/spend-limit — the member's own guardrail. */
+router.post('/:token/spend-limit', requireStepUp, async (req: Request, res: Response) => {
+  const owned = await ownedCard(req);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
+
+  const cents = Number(req.body?.spendLimitCents);
+  if (!Number.isFinite(cents) || cents < 0) {
+    return res.status(400).json({ error: 'spendLimitCents must be zero or more' });
+  }
+
+  try {
+    const card = await cardService.setSpendLimit(
+      owned.token,
+      cents,
+      typeof req.body?.duration === 'string' ? req.body.duration : 'MONTHLY',
+    );
+    return res.json({ card });
+  } catch (error) {
+    console.error('[cards] spend limit failed', error);
+    return res.status(500).json({ error: 'Failed to update spend limit' });
+  }
+});
+
+/**
+ * GET /api/lithic/cards/:token/embed — a short-lived URL for Lithic's card-details iframe.
+ *
+ * Returns a URL, never card data. The member's browser calls Lithic directly, so the PAN and CVV
+ * never pass through this server and cannot end up in its logs.
+ */
+router.get('/:token/embed', requireStepUp, async (req: Request, res: Response) => {
+  const owned = await ownedCard(req);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
+
+  // The member's appearance, so the frame is styled for the sheet it opens in rather than for a
+  // ground it is not on. Anything else falls back to paper.
+  const asked = String(req.query.theme ?? '');
+  const theme = asked === 'dusk' || asked === 'dark' ? asked : 'light';
+
+  try {
+    const url = await cardService.getCardEmbedUrl(owned.token, theme);
+    // no-store: a URL that reveals card details must not sit in a shared cache.
+    res.set('Cache-Control', 'no-store');
+    return res.json({ url, expiresInSeconds: 60 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to prepare card details';
+    return res.status(400).json({ error: message });
+  }
+});
+
+/**
+ * GET /api/lithic/cards/:token/embed-session — a session for the modern embedded card UI.
+ *
+ * Returns a short-lived session, never card data: the member's browser exchanges it with Lithic
+ * directly, so the PAN and CVV never pass through this server. The deprecated URL above stays as
+ * the fallback for a program that cannot mint one.
+ */
+router.get('/:token/embed-session', requireStepUp, async (req: Request, res: Response) => {
+  const owned = await ownedCard(req);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
+
+  // PIN setting is the issuer's own field in our frame; the numbers are the other kind.
+  const kind = String(req.query.type ?? '') === 'pin' ? 'PIN_SETTING_EMBED' : 'CARD_EMBED';
+
+  try {
+    const session = await cardService.createCardEmbedSession(owned.token, kind);
+    // no-store: a session that reveals card details must not sit in a shared cache.
+    res.set('Cache-Control', 'no-store');
+    return res.json(session);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to prepare card details';
+    return res.status(400).json({ error: message });
+  }
+});
+
+export default router;

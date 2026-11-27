@@ -1,0 +1,37 @@
+# Phase 2e progress: the credit half (calendar cycles, Secured Minimum, Automatic Clearing, default notice, Combined Ceiling, fee leg)
+
+Branch `audit/phase-2e-calendar-cycles`. The bond half (Earn addendum: `payPledged`, the pledged `settle` split, advance rates, the Maturity Instruction, the Liquidator's bond path) is built on `audit/phase-2e-pledged-bonds` and merged in at the end.
+
+## Interface note for the bond half (read first)
+
+The default views keep their names and signatures. Only how default is computed changes.
+
+| View | Contract | Meaning after 2e |
+|---|---|---|
+| `inDefault(member)` | RevolvingIssuer | Computed revolving default (12.5, 10b): two consecutive missed Rebalance Amounts, a two-person cure-notice timestamp recorded for the second, the second amount still unpaid, and the grace period over (the later of 15 days after the second due point and 864,000 s after the timestamp). With no timestamp it is false. |
+| `hasDefaulted(member)` | RevolvingIssuer, TermIssuer | Unchanged: a default was recorded (written off) at some point. |
+| `hasDefaultedOnCurrentLine(member)` | RevolvingIssuer | Unchanged: the recorded default belongs to the line the member holds today. |
+| `hasDefaultedOnCurrentLine(member)` | TermIssuer (new) | A plan secured under MB-05 has a recorded 12.14 default (`declarePlanDefault`) and is still open. `inDefault` on TermIssuer is unchanged. |
+| `defaultedAt(member)` | RevolvingIssuer, TermIssuer | Unchanged. |
+| `missedInRowOf(member)`, `unsecuredExcessOf(member)` | RevolvingIssuer | Unchanged. |
+
+A revolving default is recorded (and the Liquidator's `_requireCurrentDefault` passes) only once `inDefault` is true; `triggerDefault(member)` on RevolvingIssuer records it and reverts otherwise. MB-05 6.1(a) "default as recorded on chain" for a revolving line is therefore `inDefault(member) || hasDefaultedOnCurrentLine(member)`, exactly what the Liquidator already reads. Unsecured term plans keep TermIssuer's own default (`declareDefault`, `hasDefaulted`); secured plans follow 12.14.
+
+## Items
+
+- [x] §3 accrual (calendar months for revolving; per-second caps; term list carry per decision C)
+- [x] 12.1 cycles (cycleEndDay, Pacific calendar, member change by signature, Rebalance Amount, Secured Minimum, securedDrawPause, hybridMode)
+- [x] 12.2 Automatic Clearing (UNSECURED / DUE_ONLY / EVERYTHING, autoClearAuthHash, excluded payers)
+- [x] 12.3 Combined Ceiling (permanent; newest plan first, then earlier plans, then revolving, Boost first)
+- [x] 12.5 / 10b revolving default (two-person cure-notice timestamp, fail closed)
+- [x] 12.12 permissions wording
+- [x] 12.13 incomePause: Secured Minimum zero, no securedDrawPause; only expiry or the member ends it early
+- [x] 12.13 graceCycle (Cycle Assurance): two-person eligibility, at most 1 per rolling 365 days (governed)
+- [x] 12.14 secured term plan default: 60 days + two-person notice + 30 days, fails closed, Liquidation Hold
+- [x] 12.16 origination fee leg (feeRecipient, $50/$75 cap, pro-rata reversal, two-person change)
+- [x] §13 `releaseAssurance` pays Hardship Grants; Credit Backstop never funds a grant (test)
+- [x] Phase 4c items 1, 2, 3, 7
+- [x] TermIssuer NatSpec (ELPA)
+- [x] Tests: amend 1, 3, 18, 25, 28; add 39-48; 4c regressions
+- [x] 12.14 enforcement: a recorded secured-plan default makes `payPledged` pay the defaulted plans (Liquidator trusts TermIssuer for that path only)
+- [x] Merge the bond half; checks; report (`PHASE-2E-REPORT.md`); draft PR #896

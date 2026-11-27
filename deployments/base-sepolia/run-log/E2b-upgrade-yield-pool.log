@@ -1,0 +1,11 @@
+LendingPool 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: the new implementation validates as an upgrade of what the manifest records
+  initializeYieldPool(0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97, 0xfAFf1081F77bF528bA21eea590f251a755bCdf65, 1794787200)
++ LendingPool upgraded to the Yield Pool: implementation 0xcB710057015e6B44957941dca784dFdE86c8C034
+ProviderError: execution reverted
+    at HttpProvider.request (/Users/kyngkai909/dev/pc-day0/node_modules/hardhat/src/internal/core/providers/http.ts:116:21)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async staticCallResult (/Users/kyngkai909/dev/pc-day0/node_modules/ethers/src.ts/contract/contract.ts:337:22)
+    at async staticCall (/Users/kyngkai909/dev/pc-day0/node_modules/ethers/src.ts/contract/contract.ts:303:24)
+    at async Proxy.legend (/Users/kyngkai909/dev/pc-day0/node_modules/ethers/src.ts/contract/contract.ts:351:41)
+    at async upgradeToYieldPool (/Users/kyngkai909/dev/pc-day0/scripts/upgrade_yield_pool.ts:113:10)
+    at async main (/Users/kyngkai909/dev/pc-day0/scripts/upgrade_yield_pool.ts:142:3)

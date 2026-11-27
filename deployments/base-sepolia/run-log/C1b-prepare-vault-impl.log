@@ -1,0 +1,112 @@
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:72:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                        ^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:82:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:98:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:272:84:
+    |
+272 |     function applyPledgePayment(address, address, bool, uint256) external returns (uint256 applied) {
+    |                                                                                    ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:277:79:
+    |
+277 |     function maturityToDebt(address, uint256, uint256) external view returns (uint256 toDebt) {
+    |                                                                               ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:292:76:
+    |
+292 |     function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+    |                                                                            ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:297:64:
+    |
+297 |     function defaultedAmountOf(address) external view returns (uint256 due) {
+    |                                                                ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:302:77:
+    |
+302 |     function applyPoolProceeds(address, uint256, uint256) external returns (uint256 applied) {
+    |                                                                             ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:307:57:
+    |
+307 |     function noticeShortfall(address) external returns (uint256 gap) {
+    |                                                         ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:58:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                          ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:71:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                                       ^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:62:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                              ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:75:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                                           ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:57:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                         ^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:69:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                                     ^^^^^^^^^^^^^^
+
+
+Compiled 271 Solidity files successfully (evm target: paris).
+ESADepositVault 0x836401Ed3e2bF7CAb5e2721188E74B834511413b on base-sepolia: the new implementation validates against the manifest.
+
+Implementation 0xc306138C82B0377fdED21141da674FaE61A76f40. The proxy was not upgraded.
+The upgrade is one call to 0x836401Ed3e2bF7CAb5e2721188E74B834511413b: 0x4f1ef286000000000000000000000000c306138c82b0377fded21141da674fae61a76f4000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000044c997dbca000000000000000000000000036cbd53842c5426634e7929541ec2318f3dcf7e000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000
+Build the batch for the vault's admin (it checks who that is):
+  VAULT_IMPL=0xc306138C82B0377fdED21141da674FaE61A76f40 RELAYER=0x… CLEAR_FINANCIAL_SAFE=0x… npx hardhat run scripts/migrate_vault_clrusd.ts --network base-sepolia

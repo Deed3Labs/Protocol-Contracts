@@ -1,0 +1,50 @@
+import { getCommonTokens } from '@/config/tokens';
+import { readEnv } from '@/config/clientEnv';
+
+const DEFAULT_SUPPORTED_CHAIN_IDS = [8453];
+
+function parseChainList(rawValue: string | undefined): number[] {
+  if (!rawValue) return DEFAULT_SUPPORTED_CHAIN_IDS;
+  const parsed = rawValue
+    .split(',')
+    .map((value) => parseInt(value.trim(), 10))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return parsed.length > 0 ? parsed : DEFAULT_SUPPORTED_CHAIN_IDS;
+}
+
+export function getSendSupportedChainIds(): number[] {
+  return parseChainList(import.meta.env.VITE_SEND_SUPPORTED_CHAIN_IDS);
+}
+
+export function getSendUsdcAddress(chainId: number): string | null {
+  const overrideKey = `VITE_SEND_USDC_${chainId}`;
+  const overrideAddress = readEnv(overrideKey)?.trim(); // see src/config/clientEnv.ts
+  if (overrideAddress) {
+    return overrideAddress;
+  }
+
+  const usdcToken = getCommonTokens(chainId).find((token) => token.symbol.toUpperCase() === 'USDC');
+  return usdcToken?.address || null;
+}
+
+export function getSendClaimEscrowAddress(chainId: number): string | null {
+  const chainSpecificKey = `VITE_SEND_CLAIM_ESCROW_${chainId}`;
+  const chainSpecific = readEnv(chainSpecificKey)?.trim(); // see src/config/clientEnv.ts
+  if (chainSpecific) {
+    return chainSpecific;
+  }
+
+  const globalValue = (import.meta.env.VITE_SEND_CLAIM_ESCROW_ADDRESS as string | undefined)?.trim();
+  return globalValue || null;
+}
+
+export const SEND_USDC_ABI = [
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+] as const;
+
+// The lock commits the claim key the link carries (audit H-4); plain createTransfer would leave the
+// sender as the only one who could send it to a wallet.
+export const CLAIM_ESCROW_ABI = [
+  'function createTransferWithClaimKey((bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash, address claimSigner) terms)',
+] as const;

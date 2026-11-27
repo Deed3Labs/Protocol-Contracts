@@ -1,0 +1,37 @@
+import { expect, test } from 'bun:test';
+import { PGlite } from '@electric-sql/pglite';
+import type { Pool } from 'pg';
+import { runMerchantMigrations } from '../config/merchantDb.js';
+
+/**
+ * The startup path, end to end: the real lazy `merchant` tables from src/config/merchantDb.ts, then
+ * the migrations on top, on a Postgres with nothing in it. testDb.ts stands in for the lazy tables
+ * to keep the other tests fast; this is what checks the stand-in hasn't drifted from the real ones.
+ */
+const pg = new PGlite();
+// Just enough of a pg Pool: parameterless text may hold several statements, as ensureMerchantSchema's do.
+const fakePool = {
+  query: async (text: string, params?: unknown[]): Promise<{ rows: unknown[] }> => {
+    if (params?.length) return pg.query(text, params as any[]);
+    const results = await pg.exec(text);
+    return results[results.length - 1] ?? { rows: [] };
+  },
+  connect: async () => ({ query: fakePool.query, release: () => undefined }),
+} as unknown as Pool;
+
+test('a fresh database gets the lazy merchant tables, then every migration', async () => {
+  const applied = await runMerchantMigrations(fakePool);
+  expect(applied).toEqual(['0001_merchant_shop', '0002_commerce', '0003_payments', '0004_ledger', '0005_connector_status_and_event_retry', '0006_card_payments', '0007_checkout', '0008_refunds_receipts_tax', '0009_payouts_reconciliation', '0010_card_connectors_fee_billing', '0011_pin_failures_audit_log', '0012_shop_listing_hours', '0013_shifts_staff_hours', '0014_setup_marks', '0015_flag_explanations', '0016_end_of_day_email', '0017_bridge_kyb', '0018_bank_accounts', '0019_bank_withdrawals', '0020_monthly_statements', '0021_terms_codes', '0022_who_can_close', '0023_terminal_hardware', '0024_terminal_floor', '0025_terminal_menu_receipts', '0026_point_firmware', '0027_waitlist_states', '0028_tables_v2', '0029_rewards', '0030_pay', '0031_pay_join', '0032_command', '0033_command_members', '0034_command_growth', '0035_command_merchants', '0036_command_money', '0037_command_shop', '0038_command_contracts', '0039_command_governance', '0040_command_records', '0041_command_actions', '0042_command_safe', '0043_command_safe_proposals', '0044_command_chain', '0045_command_code', '0046_command_feeds', '0047_command_shop_live', '0048_command_waitlist', '0049_command_site', '0050_command_bondvault_coop', '0051_command_code_pulls', '0052_command_shop_costing', '0053_command_shop_site_products', '0054_command_shop_catalog', '0055_command_shop_sell_past_stock', '0056_command_sections_community_settings', '0057_command_settings', '0058_command_audit_chain', '0059_command_reveals', '0060_command_shop_materials', '0061_command_shop_suppliers', '0062_command_shop_flat_batches', '0063_command_shop_orders_pickup', '0064_command_export_grants', '0065_command_code_projects', '0066_command_build_records', '0067_command_merchant_records', '0068_command_admin_records', '0069_command_field_records', '0070_command_code_checks', '0071_command_apps_feed', '0072_command_campaign_costs', '0073_command_offers_contract', '0074_command_card_sells', '0075_command_geocodes', '0076_command_board_chairs', '0077_command_assurance_fees', '0078_payout_topups', '0079_command_entities_building_co', '0080_command_contracts_map', '0081_settlement_funding', '0082_command_contracts_forwarder_copy', '0083_command_accounts_clear_lending', '0084_settlement_funding_stop', '0085_command_accounts_csa_copy', '0086_card_credit_fee', '0087_command_contracts_credits']);
+  const { rows } = await pg.query<{ table_schema: string; n: number }>(
+    `SELECT table_schema, count(*)::int AS n FROM information_schema.tables
+      WHERE table_schema IN ('merchant','commerce','payments','ledger') GROUP BY table_schema ORDER BY table_schema`,
+  );
+  expect(Object.fromEntries(rows.map((r) => [r.table_schema, r.n]))).toEqual({
+    commerce: 11, // 10 tables (category_order, 0025) and the stock_levels view
+    ledger: 3,
+    merchant: 32, // with table_visits (0028), firmware_releases (0026), shop_hours and shop_closures (0012), shifts, shift_breaks and staff_hours (0013), setup_marks (0014), bank_accounts (0018), bank_withdrawals (0019), statement_sends (0020), terms_codes (0021), and Terminal's hardware, point_keys, point_states, drawer_keys (0023), tables, waitlist_parties, table_requests and alerts (0024)
+    payments: 27, // with Terminal's no_sale_approvals and drawer_events (0023), and Pay with Clear's eleven (0030)
+  });
+  // A restart applies nothing.
+  expect(await runMerchantMigrations(fakePool)).toEqual([]);
+});

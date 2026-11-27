@@ -1,5 +1,5 @@
 {
-  "address": "0xee289AF20ddf5654E688ABDEa45D0d741528C8Bc",
+  "address": "0xF8074182d9ec61970bBC9E4aaE182B42dF7Bb74B",
   "abi": [
     {
       "type": "constructor",
@@ -14,8 +14,50 @@
     },
     {
       "type": "error",
+      "name": "SavingsIntentFactoryDepositorNotMember",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "depositor"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "SavingsIntentFactoryInvalidAddress",
       "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "SavingsIntentFactoryNotRedeem",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IntentAnnounced",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "escrow",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "depositor",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
     },
     {
       "type": "event",
@@ -203,6 +245,62 @@
     },
     {
       "type": "function",
+      "name": "announceIntent",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "tuple",
+          "name": "config",
+          "components": [
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "address",
+              "name": "receiver"
+            },
+            {
+              "type": "address",
+              "name": "transferToken"
+            },
+            {
+              "type": "address",
+              "name": "vaultToken"
+            },
+            {
+              "type": "address",
+              "name": "vault"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "uint8",
+              "name": "action"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "escrow"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "createIntentDeterministic",
       "constant": false,
       "payable": false,
@@ -332,6 +430,82 @@
     },
     {
       "type": "function",
+      "name": "intentSalt",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "userSalt"
+        },
+        {
+          "type": "tuple",
+          "name": "config",
+          "components": [
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "address",
+              "name": "receiver"
+            },
+            {
+              "type": "address",
+              "name": "transferToken"
+            },
+            {
+              "type": "address",
+              "name": "vaultToken"
+            },
+            {
+              "type": "address",
+              "name": "vault"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "uint8",
+              "name": "action"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isIntentEscrow",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "predictIntentAddress",
       "constant": true,
       "stateMutability": "view",
@@ -339,7 +513,45 @@
       "inputs": [
         {
           "type": "bytes32",
-          "name": "salt"
+          "name": "userSalt"
+        },
+        {
+          "type": "tuple",
+          "name": "config",
+          "components": [
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "address",
+              "name": "receiver"
+            },
+            {
+              "type": "address",
+              "name": "transferToken"
+            },
+            {
+              "type": "address",
+              "name": "vaultToken"
+            },
+            {
+              "type": "address",
+              "name": "vault"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "uint8",
+              "name": "action"
+            }
+          ]
         }
       ],
       "outputs": [

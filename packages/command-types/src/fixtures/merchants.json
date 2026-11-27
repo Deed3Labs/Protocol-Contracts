@@ -1,0 +1,1321 @@
+{
+ "tx": [
+  [
+   "rosas",
+   "Rosa’s Panadería",
+   "Bakery",
+   "Redlands",
+   1,
+   2,
+   "NET-14",
+   100,
+   3,
+   41,
+   0,
+   1284.4,
+   23,
+   372.6,
+   "Point · Tap"
+  ],
+  [
+   "uptown",
+   "Uptown Barber",
+   "Barber",
+   "Redlands",
+   1,
+   0,
+   "NET-30",
+   100,
+   0,
+   7,
+   0,
+   412,
+   7,
+   0,
+   "Point"
+  ],
+  [
+   "mesa",
+   "Mesa Laundry",
+   "Laundromat",
+   "San Bernardino",
+   1,
+   2,
+   "NET-30",
+   120,
+   1,
+   36,
+   0,
+   968.1,
+   29,
+   640.2,
+   "Point"
+  ],
+  [
+   "tire",
+   "Redlands Tire & Lube",
+   "Auto and tires",
+   "Redlands",
+   0,
+   2.5,
+   "NET-30",
+   500,
+   2,
+   22,
+   1,
+   7940,
+   19,
+   5210,
+   "Tap · Counter"
+  ],
+  [
+   "citrus",
+   "Citrus Bowl Café",
+   "Café",
+   "Riverside",
+   0,
+   2.5,
+   "NET-30",
+   100,
+   0,
+   31,
+   1,
+   702.5,
+   27,
+   588.4,
+   "Point · 6 tables"
+  ],
+  [
+   "books",
+   "State St. Books",
+   "Books",
+   "Redlands",
+   0,
+   2.5,
+   "NET-30",
+   150,
+   0,
+   19,
+   0,
+   611.8,
+   16,
+   402.9,
+   "Point"
+  ],
+  [
+   "mich",
+   "La Michoacana",
+   "Ice cream",
+   "San Bernardino",
+   0,
+   2.5,
+   "NET-30",
+   100,
+   1,
+   44,
+   0,
+   498.2,
+   38,
+   455.1,
+   "Point"
+  ],
+  [
+   "nails",
+   "Arrowhead Nails",
+   "Nail salon",
+   "San Bernardino",
+   0,
+   2.5,
+   "NET-14",
+   150,
+   0,
+   14,
+   0,
+   1036,
+   14,
+   720,
+   "Point"
+  ],
+  [
+   "hdw",
+   "Highland Hardware",
+   "Hardware",
+   "Highland",
+   0,
+   2.5,
+   "NET-30",
+   300,
+   1,
+   17,
+   0,
+   2310.4,
+   17,
+   1488.6,
+   "Tap · Counter"
+  ],
+  [
+   "phone",
+   "Cajon Phone Repair",
+   "Phone repair",
+   "San Bernardino",
+   0,
+   2.5,
+   "NET-14",
+   300,
+   2,
+   21,
+   1,
+   3120,
+   21,
+   2240,
+   "Tap"
+  ],
+  [
+   "pet",
+   "Brookside Pet Wash",
+   "Pet care",
+   "Redlands",
+   0,
+   2.5,
+   "NET-30",
+   150,
+   0,
+   12,
+   0,
+   540,
+   12,
+   310,
+   "Point"
+  ],
+  [
+   "orange",
+   "Orange St. Laundromat",
+   "Laundromat",
+   "Redlands",
+   0,
+   2.5,
+   "NET-30",
+   100,
+   0,
+   15,
+   0,
+   402.3,
+   15,
+   286.8,
+   "Point"
+  ]
+ ],
+ "signed": [
+  [
+   "icw",
+   "Inland Cycle Works",
+   "Bikes and repair",
+   "Redlands",
+   "signing"
+  ],
+  [
+   "shoe",
+   "Valley Shoe Repair",
+   "Shoe repair",
+   "Redlands"
+  ],
+  [
+   "tacos",
+   "Fontana Tacos",
+   "Restaurant",
+   "Fontana"
+  ],
+  [
+   "feed",
+   "Yucaipa Feed & Seed",
+   "Farm supply",
+   "Yucaipa"
+  ],
+  [
+   "pharm",
+   "Loma Linda Pharmacy",
+   "Pharmacy",
+   "Loma Linda"
+  ],
+  [
+   "cuts",
+   "Colton Cuts",
+   "Barber",
+   "Colton"
+  ],
+  [
+   "donut",
+   "Rialto Donuts",
+   "Bakery",
+   "Rialto"
+  ],
+  [
+   "bmkt",
+   "Bloomington Market",
+   "Grocery",
+   "Bloomington"
+  ],
+  [
+   "mcof",
+   "Mentone Coffee",
+   "Café",
+   "Mentone"
+  ],
+  [
+   "clean",
+   "Calimesa Cleaners",
+   "Dry cleaning",
+   "Calimesa"
+  ],
+  [
+   "deli",
+   "Grand Terrace Deli",
+   "Deli",
+   "Grand Terrace"
+  ],
+  [
+   "tea",
+   "Muscovy Tea",
+   "Tea",
+   "Redlands"
+  ],
+  [
+   "tailor",
+   "Sixth St. Tailor",
+   "Tailor",
+   "Redlands"
+  ],
+  [
+   "thrift",
+   "Kendall Thrift",
+   "Thrift",
+   "San Bernardino"
+  ],
+  [
+   "tires2",
+   "Tippecanoe Tires",
+   "Auto and tires",
+   "San Bernardino"
+  ],
+  [
+   "flor",
+   "Victoria Ave. Florist",
+   "Florist",
+   "Riverside"
+  ],
+  [
+   "pho",
+   "Base Line Pho",
+   "Restaurant",
+   "San Bernardino"
+  ],
+  [
+   "opt",
+   "Citrus Plaza Optical",
+   "Optical",
+   "Redlands"
+  ]
+ ],
+ "prospects": [
+  [
+   "Mission Auto Care",
+   "Auto repair",
+   "Redlands",
+   9000,
+   "Marcus",
+   "Demo Thu 22 Oct",
+   "talking"
+  ],
+  [
+   "Orange Show Tires",
+   "Tires",
+   "San Bernardino",
+   7500,
+   "Marcus",
+   "Send numbers",
+   "talking"
+  ],
+  [
+   "Cypress Dental",
+   "Dental",
+   "Redlands",
+   6000,
+   "Kai",
+   "Owner call Mon",
+   "talking"
+  ],
+  [
+   "Sun Valley HVAC",
+   "HVAC",
+   "Highland",
+   12000,
+   "Marcus",
+   "Ride-along Fri",
+   "talking"
+  ],
+  [
+   "Barton Rd. Appliance",
+   "Appliances",
+   "Grand Terrace",
+   5500,
+   "Dana",
+   "Second visit",
+   "talking"
+  ],
+  [
+   "Tri-City Transmission",
+   "Auto repair",
+   "San Bernardino",
+   8000,
+   "Marcus",
+   "Wants net-14",
+   "talking"
+  ],
+  [
+   "Kingston Vet",
+   "Veterinary",
+   "Redlands",
+   4500,
+   "Kai",
+   "Intro email",
+   "talking"
+  ],
+  [
+   "Redlands Smog & Brake",
+   "Auto repair",
+   "Redlands",
+   5000,
+   "Marcus",
+   "Walk in",
+   "prospect"
+  ],
+  [
+   "IE Mattress Outlet",
+   "Mattresses",
+   "Colton",
+   6500,
+   "Dana",
+   "Walk in",
+   "prospect"
+  ],
+  [
+   "Lugonia Auto Glass",
+   "Auto glass",
+   "Redlands",
+   4000,
+   "Marcus",
+   "Walk in",
+   "prospect"
+  ],
+  [
+   "Sunset Muffler",
+   "Auto repair",
+   "Rialto",
+   3500,
+   "Marcus",
+   "Walk in",
+   "prospect"
+  ],
+  [
+   "University Optometry",
+   "Optical",
+   "Redlands",
+   3000,
+   "Dana",
+   "Walk in",
+   "prospect"
+  ],
+  [
+   "Fontana Furniture",
+   "Furniture",
+   "Fontana",
+   7000,
+   "Dana",
+   "Walk in",
+   "prospect"
+  ],
+  [
+   "Yucaipa Pet Clinic",
+   "Veterinary",
+   "Yucaipa",
+   4000,
+   "Kai",
+   "Walk in",
+   "prospect"
+  ]
+ ],
+ "owed": {
+  "mesa": 80,
+  "icw": 60,
+  "rosas": 40,
+  "uptown": 50,
+  "tire": 20,
+  "citrus": 30,
+  "books": 20,
+  "mich": 40,
+  "nails": 30,
+  "hdw": 20,
+  "tacos": 40
+ },
+ "board": [
+  {
+   "id": "p0",
+   "name": "Mission Auto Care",
+   "kind": "Auto repair",
+   "city": "Redlands",
+   "val": 9000,
+   "owner": "Marcus",
+   "next": "Demo Thu 22 Oct",
+   "stage": "talking",
+   "flag": false,
+   "due": 1792627200000,
+   "last": 1791849600000,
+   "contact": {
+    "name": "Ray Ortega",
+    "role": "Owner",
+    "phone": "(909) 555-0142",
+    "email": "ray@missionauto.com"
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p1",
+   "name": "Orange Show Tires",
+   "kind": "Tires",
+   "city": "San Bernardino",
+   "val": 7500,
+   "owner": "Marcus",
+   "next": "Send numbers",
+   "stage": "talking",
+   "flag": false,
+   "due": 1792713600000,
+   "last": 1792108800000,
+   "contact": {
+    "name": "Lupe Diaz",
+    "role": "Manager",
+    "phone": "(909) 555-0177",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "p2",
+   "name": "Cypress Dental",
+   "kind": "Dental",
+   "city": "Redlands",
+   "val": 6000,
+   "owner": "Kai",
+   "next": "Owner call Mon",
+   "stage": "talking",
+   "flag": false,
+   "due": 1792972800000,
+   "last": 1792368000000,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Referral",
+   "addr": ""
+  },
+  {
+   "id": "p3",
+   "name": "Sun Valley HVAC",
+   "kind": "HVAC",
+   "city": "Highland",
+   "val": 12000,
+   "owner": "Marcus",
+   "next": "Ride-along Fri",
+   "stage": "talking",
+   "flag": false,
+   "due": 1792713600000,
+   "last": 1791936000000,
+   "contact": {
+    "name": "Dev Patel",
+    "role": "Owner",
+    "phone": "(909) 555-0110",
+    "email": "dev@sunvalleyhvac.com"
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p4",
+   "name": "Barton Rd. Appliance",
+   "kind": "Appliances",
+   "city": "Grand Terrace",
+   "val": 5500,
+   "owner": "Dana",
+   "next": "Second visit",
+   "stage": "talking",
+   "flag": false,
+   "due": 1793145600000,
+   "last": 1792195200000,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "p5",
+   "name": "Tri-City Transmission",
+   "kind": "Auto repair",
+   "city": "San Bernardino",
+   "val": 8000,
+   "owner": "Marcus",
+   "next": "Wants net-14",
+   "stage": "talking",
+   "flag": true,
+   "due": 1792454400000,
+   "last": 1792454400000,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Referral",
+   "addr": ""
+  },
+  {
+   "id": "p6",
+   "name": "Kingston Vet",
+   "kind": "Veterinary",
+   "city": "Redlands",
+   "val": 4500,
+   "owner": "Kai",
+   "next": "Intro email",
+   "stage": "talking",
+   "flag": false,
+   "due": 1792627200000,
+   "last": 1792022400000,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p7",
+   "name": "Redlands Smog & Brake",
+   "kind": "Auto repair",
+   "city": "Redlands",
+   "val": 5000,
+   "owner": "Marcus",
+   "next": "Walk in",
+   "stage": "prospect",
+   "flag": false,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p8",
+   "name": "IE Mattress Outlet",
+   "kind": "Mattresses",
+   "city": "Colton",
+   "val": 6500,
+   "owner": "Dana",
+   "next": "Walk in",
+   "stage": "prospect",
+   "flag": false,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p9",
+   "name": "Lugonia Auto Glass",
+   "kind": "Auto glass",
+   "city": "Redlands",
+   "val": 4000,
+   "owner": "Marcus",
+   "next": "Walk in",
+   "stage": "prospect",
+   "flag": false,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p10",
+   "name": "Sunset Muffler",
+   "kind": "Auto repair",
+   "city": "Rialto",
+   "val": 3500,
+   "owner": "Marcus",
+   "next": "Walk in",
+   "stage": "prospect",
+   "flag": false,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p11",
+   "name": "University Optometry",
+   "kind": "Optical",
+   "city": "Redlands",
+   "val": 3000,
+   "owner": "Dana",
+   "next": "Walk in",
+   "stage": "prospect",
+   "flag": false,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p12",
+   "name": "Fontana Furniture",
+   "kind": "Furniture",
+   "city": "Fontana",
+   "val": 7000,
+   "owner": "Dana",
+   "next": "Walk in",
+   "stage": "prospect",
+   "flag": false,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "p13",
+   "name": "Yucaipa Pet Clinic",
+   "kind": "Veterinary",
+   "city": "Yucaipa",
+   "val": 4000,
+   "owner": "Kai",
+   "next": "Walk in",
+   "stage": "prospect",
+   "flag": false,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Walk-in",
+   "addr": ""
+  },
+  {
+   "id": "icw",
+   "name": "Inland Cycle Works",
+   "kind": "Bikes and repair",
+   "city": "Redlands",
+   "stage": "signing",
+   "founding": 1,
+   "m": "icw",
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "shoe",
+   "name": "Valley Shoe Repair",
+   "kind": "Shoe repair",
+   "city": "Redlands",
+   "stage": "signed",
+   "m": "shoe",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "tacos",
+   "name": "Fontana Tacos",
+   "kind": "Restaurant",
+   "city": "Fontana",
+   "stage": "signed",
+   "m": "tacos",
+   "posters": 4,
+   "owed": 40,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "feed",
+   "name": "Yucaipa Feed & Seed",
+   "kind": "Farm supply",
+   "city": "Yucaipa",
+   "stage": "signed",
+   "m": "feed",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "pharm",
+   "name": "Loma Linda Pharmacy",
+   "kind": "Pharmacy",
+   "city": "Loma Linda",
+   "stage": "signed",
+   "m": "pharm",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "cuts",
+   "name": "Colton Cuts",
+   "kind": "Barber",
+   "city": "Colton",
+   "stage": "signed",
+   "m": "cuts",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "donut",
+   "name": "Rialto Donuts",
+   "kind": "Bakery",
+   "city": "Rialto",
+   "stage": "signed",
+   "m": "donut",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "bmkt",
+   "name": "Bloomington Market",
+   "kind": "Grocery",
+   "city": "Bloomington",
+   "stage": "signed",
+   "m": "bmkt",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "mcof",
+   "name": "Mentone Coffee",
+   "kind": "Café",
+   "city": "Mentone",
+   "stage": "signed",
+   "m": "mcof",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "clean",
+   "name": "Calimesa Cleaners",
+   "kind": "Dry cleaning",
+   "city": "Calimesa",
+   "stage": "signed",
+   "m": "clean",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "deli",
+   "name": "Grand Terrace Deli",
+   "kind": "Deli",
+   "city": "Grand Terrace",
+   "stage": "signed",
+   "m": "deli",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "tea",
+   "name": "Muscovy Tea",
+   "kind": "Tea",
+   "city": "Redlands",
+   "stage": "signed",
+   "m": "tea",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "tailor",
+   "name": "Sixth St. Tailor",
+   "kind": "Tailor",
+   "city": "Redlands",
+   "stage": "signed",
+   "m": "tailor",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "thrift",
+   "name": "Kendall Thrift",
+   "kind": "Thrift",
+   "city": "San Bernardino",
+   "stage": "signed",
+   "m": "thrift",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "tires2",
+   "name": "Tippecanoe Tires",
+   "kind": "Auto and tires",
+   "city": "San Bernardino",
+   "stage": "signed",
+   "m": "tires2",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "flor",
+   "name": "Victoria Ave. Florist",
+   "kind": "Florist",
+   "city": "Riverside",
+   "stage": "signed",
+   "m": "flor",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "pho",
+   "name": "Base Line Pho",
+   "kind": "Restaurant",
+   "city": "San Bernardino",
+   "stage": "signed",
+   "m": "pho",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  },
+  {
+   "id": "opt",
+   "name": "Citrus Plaza Optical",
+   "kind": "Optical",
+   "city": "Redlands",
+   "stage": "signed",
+   "m": "opt",
+   "posters": 3,
+   "owed": 0,
+   "due": null,
+   "last": null,
+   "contact": {
+    "name": "",
+    "role": "",
+    "phone": "",
+    "email": ""
+   },
+   "source": "Poster",
+   "addr": ""
+  }
+ ],
+ "fleet": [
+  [
+   "citrus",
+   {
+    "P": [
+     "on"
+    ],
+    "t": [
+     "on",
+     "on",
+     "on",
+     "low",
+     "on",
+     "off"
+    ]
+   },
+   "Table 4 battery low · table 6 offline since Tue",
+   "2 min ago"
+  ],
+  [
+   "orange",
+   {
+    "P": [
+     "off"
+    ]
+   },
+   "Point unplugged since 08:40",
+   "08:40"
+  ],
+  [
+   "rosas",
+   {
+    "P": [
+     "on"
+    ],
+    "T": [
+     "on"
+    ]
+   },
+   "",
+   "Now"
+  ],
+  [
+   "tire",
+   {
+    "T": [
+     "on"
+    ],
+    "C": [
+     "on"
+    ]
+   },
+   "",
+   "Now"
+  ],
+  [
+   "hdw",
+   {
+    "T": [
+     "on"
+    ],
+    "C": [
+     "on"
+    ]
+   },
+   "",
+   "1 min ago"
+  ],
+  [
+   "uptown",
+   {
+    "P": [
+     "on"
+    ]
+   },
+   "",
+   "Now"
+  ],
+  [
+   "mesa",
+   {
+    "P": [
+     "on"
+    ]
+   },
+   "",
+   "3 min ago"
+  ],
+  [
+   "books",
+   {
+    "P": [
+     "on"
+    ]
+   },
+   "",
+   "Now"
+  ],
+  [
+   "mich",
+   {
+    "P": [
+     "on"
+    ]
+   },
+   "",
+   "Now"
+  ],
+  [
+   "nails",
+   {
+    "P": [
+     "on"
+    ]
+   },
+   "",
+   "4 min ago"
+  ],
+  [
+   "phone",
+   {
+    "T": [
+     "on"
+    ]
+   },
+   "",
+   "Now"
+  ],
+  [
+   "pet",
+   {
+    "P": [
+     "on"
+    ]
+   },
+   "",
+   "1 min ago"
+  ]
+ ],
+ "cities": {
+  "Fontana": [
+   -117.435,
+   34.092,
+   "w"
+  ],
+  "Rialto": [
+   -117.37,
+   34.106,
+   "n"
+  ],
+  "Bloomington": [
+   -117.396,
+   34.07,
+   "s"
+  ],
+  "Colton": [
+   -117.314,
+   34.074,
+   "sw"
+  ],
+  "San Bernardino": [
+   -117.29,
+   34.108,
+   "n"
+  ],
+  "Highland": [
+   -117.209,
+   34.128,
+   "ne"
+  ],
+  "Grand Terrace": [
+   -117.313,
+   34.034,
+   "sw"
+  ],
+  "Loma Linda": [
+   -117.261,
+   34.048,
+   "se"
+  ],
+  "Redlands": [
+   -117.183,
+   34.056,
+   "se"
+  ],
+  "Mentone": [
+   -117.135,
+   34.07,
+   "ne"
+  ],
+  "Yucaipa": [
+   -117.043,
+   34.034,
+   "e"
+  ],
+  "Calimesa": [
+   -117.061,
+   33.982,
+   "se"
+  ],
+  "Riverside": [
+   -117.376,
+   33.981,
+   "w"
+  ]
+ }
+}

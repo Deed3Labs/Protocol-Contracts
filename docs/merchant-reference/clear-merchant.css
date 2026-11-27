@@ -1,0 +1,166 @@
+
+/* the header a flow uses instead of the nav: close, what this is, who is on shift */
+.mc-flowtop{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);
+            padding-bottom:var(--s2);margin-bottom:var(--s3);border-bottom:1px solid var(--ink-13)}
+.mc-flowtop .t{display:flex;align-items:center;gap:10px;font-size:var(--t-body);font-weight:500}
+.mc-flowtop .t svg{color:var(--ink-50)}
+
+/* ============================================================
+   MERCHANT ADDITIONS. Same brand, same components. What is new
+   here is the frame (a tablet in a stand) and the handful of
+   things only a counter needs.
+   ============================================================ */
+
+/* a tablet is hardware, so it takes a real-world radius like the phone */
+.mc-tablet{background:var(--paper);border:1px solid var(--ink-28);border-radius:22px;
+        padding:var(--s3);width:100%;max-width:1000px;color:var(--ink)}
+.mc-tablet.mc-portrait{max-width:640px}
+
+/* A tablet is a screen, not a box that grows: a landscape iPad's proportions, with
+   the slab stretching to fill what the header leaves. Cells keep their footers on
+   the floor of the screen and scroll inside if they have to. */
+.mc-tablet{display:flex;flex-direction:column;aspect-ratio:1180/820;overflow:hidden}
+.mc-tablet.mc-portrait{aspect-ratio:820/1180}
+.mc-tablet > *{flex-shrink:0}
+.mc-tablet > .slab{flex:1 1 auto;min-height:0}
+.mc-tablet > .slab.one{display:flex;flex-direction:column}
+.mc-tablet > .slab.one > :last-child{flex:1 1 auto}
+.mc-tablet > .slab > .cell,.mc-tablet > .slab > .col,
+.mc-tablet > .slab > .col > .cell{min-height:0;overflow:hidden}
+.mc-tablet .cmain{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none}
+/* Side-by-side cells share their rows — header, body, footer — so the rules under
+   a header and above a footer are one line across the seam, whatever each cell
+   holds. (A column of stacked cells opts out; it has its own rows.) */
+.mc-tablet > .slab:not(.one):not(:has(> .col)){grid-template-rows:auto minmax(0,1fr) auto;row-gap:0}
+.mc-tablet > .slab:not(.one):not(:has(> .col)) > .cell,
+.mc-tablet > .slab:not(.one):not(:has(> .col)) > .panel{display:grid;grid-row:span 3;
+                                                         grid-template-rows:subgrid}
+/* two screens in a row are two devices, not one long one */
+.mc-tablet + .mc-tablet{margin-top:var(--s4)}
+
+/* ---- phone: 308px of content, so anything laid out for a tablet stacks ---- */
+/* the figure and its action are a column, and the action is full width */
+.phone .mc-hero{flex-direction:column;align-items:stretch;gap:var(--s2);margin:var(--s2) 0 var(--s3)}
+.phone .mc-hero .btn{width:100%;height:44px}
+/* two footer items side by side leave ~130px each — they stack, and the divider
+   becomes the rule between them */
+.phone .foot2{grid-template-columns:minmax(0,1fr)}
+.phone .foot2 > div:first-child{padding-right:0;padding-bottom:10px}
+.phone .foot2 > div:last-child{padding-left:0;padding-top:10px;border-left:0;
+                               border-top:1px solid var(--ink-13)}
+/* a row that ends in a button: the button keeps its size, the text gives way */
+.phone .cfoot .line > .btn,.phone .rows .line > .btn{flex-shrink:0}
+.phone .rows .line > div:first-child,.phone .cfoot .line > div:first-child{min-width:0}
+/* the two-up button pair is too wide to sit in one row at this width */
+.phone .cfoot .pair{flex-direction:column}
+.phone .cfoot .pair .btn{width:100%}
+/* A page is not a screen. Home keeps the iPad's height, but when there is more on
+   it than fits, the whole page scrolls — exactly as the member app's phone pages
+   do — rather than squeezing each cell until its content is cut off. The charge
+   flow stays a screen: footers pinned, the body filling what is left. */
+.mc-tablet.mc-page{overflow-y:auto;scrollbar-width:none}
+.mc-tablet.mc-page::-webkit-scrollbar{width:0}
+.mc-tablet.mc-page > .slab{flex:1 0 auto;min-height:auto}
+.mc-tablet.mc-page > .slab > .cell,.mc-tablet.mc-page > .slab > .col,
+.mc-tablet.mc-page > .slab > .col > .cell,.mc-tablet.mc-page .cmain{overflow:visible}
+.mc-tablet .cmain::-webkit-scrollbar{width:0}
+.mc-frames{display:flex;flex-direction:column;gap:var(--s4)}
+
+.mc-top{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);
+        padding-bottom:var(--s2);margin-bottom:var(--s2);border-bottom:1px solid var(--ink-13)}
+/* "for Mike's Tire" is part of the lockup, centred on the mark */
+.mc-who{display:flex;align-items:center;gap:6px;min-width:0}
+.mc-for{font-size:var(--t-sec);color:var(--ink-70);white-space:nowrap;line-height:1}
+.mc-top nav{display:flex;gap:var(--s3);font-size:var(--t-sec);color:var(--ink-50)}
+.mc-top nav span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.mc-top nav .on{color:var(--ink);font-weight:500}
+.mc-top nav .mc-lock{color:var(--ink-28)}
+.mc-right{display:flex;align-items:center;gap:var(--s1)}
+/* who is on the counter is a status, so it is a pill — and tapping it changes shift */
+.mc-shift{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px 0 10px;
+          border:1px solid var(--ink-28);border-radius:var(--radius-pill);background:var(--paper);
+          font-family:var(--font-text);font-size:var(--t-detail);color:var(--ink-50);cursor:pointer;
+          white-space:nowrap}
+.mc-shift b{font-weight:500;color:var(--ink)}
+/* on a phone the pill keeps the dot and the name; "on shift" is what the dot says */
+.mc-shift.sm{height:28px;padding:0 10px 0 9px;gap:7px}
+.mc-phonetop{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);
+             margin-bottom:var(--s3)}
+.mc-phonetop .mc-for{font-size:var(--t-detail)}
+.mc-shift i{width:7px;height:7px;border-radius:50%;background:var(--settled);display:block;
+            box-shadow:0 0 6px 1px color-mix(in srgb, var(--settled) 55%, transparent)}
+
+/* the hero sits on paper, left-aligned, with New charge beside it */
+.mc-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--s3);
+         margin:var(--s3) 0;text-align:left}
+.mc-hero .btn-primary{height:48px;padding:0 var(--s4);font-size:var(--t-body);flex-shrink:0}
+
+/* The waiting charge is Home's temporary slot, exactly as on the member Home: its
+   own block between the hero and the slab, absent when nothing is waiting. It is
+   never a bordered box inside a column, which doubles the border against the seam. */
+.mc-slot{margin-bottom:var(--s2)}
+.panel.act.mc-wait{border-color:var(--underway)}
+/* stacked profiles: solid, each ringed in paper, the first on top. Nothing is
+   translucent — a face you can see through reads as a rendering fault. */
+.mc-faces{display:flex;flex-shrink:0}
+.mc-faces .avatarbtn{cursor:default;position:relative;background:var(--paper-2);
+                     box-shadow:0 0 0 2px var(--paper)}
+.mc-faces .avatarbtn + .avatarbtn{margin-left:-10px}
+.mc-faces .avatarbtn:nth-child(1){z-index:3}
+.mc-faces .avatarbtn:nth-child(2){z-index:2}
+.mc-faces .avatarbtn:nth-child(3){z-index:1}
+/* The count sits at the back of the stack with the faces, not on top of them:
+   people first, the remainder behind. It keeps the paper ground and the dashed
+   border so it still reads as a count rather than a person. */
+.mc-faces .avatarbtn.more{background:var(--paper);border-style:dashed;
+                          color:var(--ink-70);font-weight:500}
+/* one row at every width: faces, what is going on, the action. The text wraps;
+   nothing reflows into a different shape on a phone. */
+.mc-g2{display:flex;align-items:center;gap:var(--s2)}
+.mc-g2 > .txt{min-width:0;flex:1 1 auto}
+.mc-g2 > .act{flex-shrink:0}
+
+/* the shift clock: a timer, a bar for how far through the shift it is, and a
+   metrics strip that runs edge to edge so its rules meet the cell's own */
+.mc-clock{font-family:var(--font-text);font-size:30px;line-height:1;font-weight:500;
+          font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.mc-clock.paused{color:var(--ink-50)}
+.mc-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+            border-top:1px solid var(--ink-13);
+            margin:var(--s2) calc(var(--s2) * -1) calc(var(--s2) * -1)}
+.mc-metrics > div{min-width:0;padding:var(--s2)}
+.mc-metrics > div + div{border-left:1px solid var(--ink-13)}
+.mc-metrics p{margin:0}
+.mc-metrics .l{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.09em;
+               text-transform:uppercase;color:var(--ink-50);white-space:nowrap;
+               overflow:hidden;text-overflow:ellipsis}
+.mc-metrics .v{font-size:var(--t-sec);font-weight:500;margin-top:6px;font-variant-numeric:tabular-nums}
+.phone .mc-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+.phone .mc-metrics > div:nth-child(3){border-left:0;border-top:1px solid var(--ink-13)}
+
+/* waiting rows: one grid so every column lines up down the list */
+.mc-wrow{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) minmax(0,1.2fr) auto 14px;
+         gap:var(--s2);align-items:center}
+.mc-wrow > .det{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-wrow > .det:nth-child(3){text-align:right}
+.mc-wrow > .fig{text-align:right}
+/* on a phone it folds to two lines rather than five columns */
+.phone .mc-wrow{grid-template-columns:minmax(0,1fr) auto;row-gap:4px}
+.phone .mc-wrow > :nth-child(1){grid-area:1/1}
+.phone .mc-wrow > :nth-child(4){grid-area:1/2}
+.phone .mc-wrow > :nth-child(2){grid-area:2/1}
+.phone .mc-wrow > :nth-child(3){grid-area:2/2}
+.phone .mc-wrow > :nth-child(5){display:none}
+
+/* delivery receipts — the thing a card terminal cannot show */
+.mc-rcpt{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s3);margin-top:var(--s2)}
+.mc-rcpt span{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-detail);color:var(--ink-50)}
+.mc-rcpt span svg{flex-shrink:0}
+.mc-rcpt span.mc-ok{color:var(--ink-70)}
+.mc-rcpt span.mc-now{color:var(--live)}
+
+/* the owner-only nav items stay visible on a counter shift, marked, so a writer
+   learns where things are and an owner knows where to sign in */
+.mc-lockg{display:inline-flex;color:var(--ink-28)}
+
+.mc-tip .keyline{margin:0}

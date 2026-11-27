@@ -1,0 +1,188 @@
+import { usePaymentProtection } from '@/hooks/usePaymentProtection';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import OnboardingFlow from '@/pages/auth/OnboardingFlow';
+import { useFaceId } from '@/hooks/useFaceId';
+import { useLogout } from '@/hooks/useLogout';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { forgetMember, rememberedMember } from '@/lib/rememberedMember';
+import { isStale, lastActive, markActive, onServerLocked } from '@/lib/appLock';
+import { getSessionLock, reportActive } from '@/utils/apiClient';
+import { markStepUpVerified, serverStepUpEnrolled } from '@/lib/stepUp';
+import { proveWithServer } from '@/lib/serverStepUp';
+
+/** Activity is written at most this often; the lock only needs to know roughly when. */
+const WRITE_EVERY_MS = 15 * 1000;
+const CHECK_EVERY_MS = 30 * 1000;
+const ACTIVITY = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
+/** How often the server hears the member is using the app (api middleware/sessionLock allows a minute's slack). */
+const REPORT_EVERY_MS = 60 * 1000;
+
+/**
+ * The lock — what a banking app shows when you come back to it.
+ *
+ * Five minutes idle, or five minutes away, and the app opens on the welcome screen instead of the
+ * account. It is a lock and not a sign-out: the session stays, so Face ID opens it again in a glance
+ * and nothing has to reload. A member without Face ID sends themselves a code, which does sign them
+ * out and back in, because a code is a sign-in.
+ *
+ * The account is not drawn underneath. While locked, the children are not rendered at all — the
+ * balances are not in the page for a screenshot, a screen reader or an inspector to find. The
+ * providers above this stay mounted, so unlocking does not refetch everything.
+ *
+ * It also registers the step-up gate (lib/stepUp), since both need the same Face ID and the same
+ * signed-in shell. The lock hides the app; step-up is what protects the money.
+ */
+export default function AppLock({ children }: { children: ReactNode }) {
+  const faceId = useFaceId();
+  const member = useMemberProfile();
+  const logout = useLogout();
+  const [locked, setLocked] = useState(() => isStale(lastActive()));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  // Mounted with the shell, so the wallet-MFA flag stays current and a just-linked Face ID passkey is
+  // enrolled for payments wherever the member happens to be.
+  usePaymentProtection();
+  const faceIdRef = useRef(faceId);
+  faceIdRef.current = faceId;
+  const refreshProfile = useRef(member.refresh);
+  refreshProfile.current = member.refresh;
+
+  useEffect(() => {
+    // A session this device has not timed yet starts its clock now.
+    if (lastActive() === null) markActive();
+    let lastWrite = 0;
+    let lastReport = 0;
+
+    /*
+     * The server keeps its own lock, which the app's clock cannot talk round. It hears that the
+     * member is here only from real use, once a minute at most -- never from the page's own reads.
+     */
+    const report = (now: number) => {
+      if (now - lastReport < REPORT_EVERY_MS) return;
+      lastReport = now;
+      void reportActive();
+    };
+
+    const onActivity = () => {
+      if (lockedRef.current) return;
+      const now = Date.now();
+      if (now - lastWrite < WRITE_EVERY_MS) return;
+      lastWrite = now;
+      markActive(now);
+      report(now);
+    };
+    const check = () => {
+      if (!lockedRef.current && isStale(lastActive())) setLocked(true);
+    };
+    // Leaving stamps the time, so "away for five minutes" is measured from when they left.
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (!lockedRef.current) {
+          markActive();
+          report(Date.now());
+        }
+      } else {
+        check();
+        if (!lockedRef.current) {
+          // Back within the app's five minutes, but the server's may have run out: ask it.
+          void getSessionLock().then((serverLocked) => {
+            if (serverLocked) setLocked(true);
+            else if (serverLocked === false) report(Date.now());
+          });
+        }
+      }
+    };
+    const offServer = onServerLocked(() => setLocked(true));
+    // Opening the app: the server's lock counts even when this device's clock says otherwise.
+    if (!lockedRef.current) {
+      void getSessionLock().then((serverLocked) => {
+        if (serverLocked) setLocked(true);
+      });
+    }
+
+    ACTIVITY.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    document.addEventListener('visibilitychange', onVisibility);
+    const id = window.setInterval(check, CHECK_EVERY_MS);
+    return () => {
+      ACTIVITY.forEach((e) => window.removeEventListener(e, onActivity));
+      document.removeEventListener('visibilitychange', onVisibility);
+      offServer();
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // The Face ID asked before money moves is registered in ConfirmIdentitySheet, on every route: from
+  // here it went when the shell did, so approving a charge (/c/:code) asked for Face ID with nothing
+  // to ask it.
+
+  const unlock = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      // The server's Face ID opens the server's lock too, and leaves a token for the next guarded tap.
+      if (serverStepUpEnrolled()) await proveWithServer();
+      else {
+        await faceIdRef.current.confirm();
+        /*
+         * Face ID the server cannot check does not open the server's lock. Only a new sign-in does,
+         * until this member sets up Face ID for payments (Settings), which the server can check.
+         */
+        if ((await getSessionLock()) === true) {
+          setError('Clear locked this session. Send yourself a code to sign in again.');
+          return;
+        }
+      }
+      markActive();
+      // Unlocking was a Face ID check, so a send straight afterwards does not ask again.
+      markStepUpVerified();
+      setLocked(false);
+      // The profile read was refused while locked, and this provider sits above the pages that
+      // remount -- so nothing else would ask again, and the app would wear the address as a name.
+      refreshProfile.current();
+    } catch {
+      setError('Face ID did not open Clear. Try again, or send yourself a code.');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  if (!locked) return <>{children}</>;
+
+  /*
+   * The name this device remembers, not the profile's fallback. While locked the server refuses the
+   * profile read, so `member.name` is the wallet address -- which is exactly what the returning
+   * screen exists not to say.
+   */
+  const remembered = rememberedMember();
+  const name = member.displayName || remembered?.name || '';
+  const handle = member.contactHandle || remembered?.handle || '';
+
+  return (
+    <OnboardingFlow
+      step="welcome"
+      member={name ? { name, handle } : undefined}
+      onStepChange={(next) => {
+        // "Not you?" — somebody else is holding this phone, so the device stops remembering who.
+        if (next === 'enter') {
+          forgetMember();
+          void logout();
+        }
+      }}
+      auth={{
+        busy,
+        error,
+        resendIn: 0,
+        // A code is a sign-in, so it goes through the real one: sign out, and the login screen
+        // sends the code straight away rather than making them ask twice.
+        onContinue: () => void logout({ sendCode: true }),
+        onOAuth: () => {},
+        onSubmitCode: () => {},
+        onResend: () => {},
+        onPasskey: faceId.on ? () => void unlock() : undefined,
+      }}
+    />
+  );
+}

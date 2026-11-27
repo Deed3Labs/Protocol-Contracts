@@ -1,0 +1,448 @@
+import { randomUUID } from 'node:crypto';
+import { merchantPayout, payoutSettlement } from '@clear/domain';
+import { MERCHANT_SCHEMA, ensureMerchantSchema, getMerchantPool } from '../../config/merchantDb.js';
+import { getPostgresPool } from '../../config/postgres.js';
+import { readMerchantTerms } from '../chargeService.js';
+import { CHARGE_TABLE_NAME } from '../chargeStore.js';
+import { cashAccountCents } from './cashAccount.js';
+import { merchantPayoutPosition, microsToCents } from '../chain/payoutReader.js';
+
+/**
+ * The shop's own record, and what it is owed.
+ *
+ * **The registry is the authority on terms, not this table.** The rate and the per-charge cap live
+ * on chain in `MerchantRegistry`, which is what `chargeService` enforces when a charge is raised.
+ * What is stored here is a display copy plus the things a contract has no opinion about — the
+ * shop's category, its town, which bank account the payouts go to.
+ *
+ * Storing the rate twice is a real risk, so `forDisplay` reads the chain when it can and falls
+ * back to the copy only when it cannot. A Settings page showing a stale rate is a merchant who
+ * believes the wrong number about their own money.
+ */
+
+/**
+ * The charge table's real name.
+ *
+ * This said 'charges'. chargeStore — the only thing that creates or writes the table — calls it
+ * `charge_requests`, so every query here failed with "relation does not exist": the owner's charge
+ * counts and the whole payout position, silently, because the routes had no error handling and the
+ * rejection meant Express never answered at all. The Staff page hung rather than failing.
+ *
+ * Imported from chargeStore rather than retyped, so the two cannot drift again.
+ */
+const CHARGES_TABLE = CHARGE_TABLE_NAME;
+const normalize = (m: string) => m.trim().toLowerCase();
+
+/** Owed money a shop can withdraw: its ledger balance, or unknown when the chain couldn't be read. */
+const chainOwedCents = (p: { owedCents: number; releasedReadyCents: number | null }) => (p.releasedReadyCents === null ? null : p.owedCents);
+
+export const merchantProfileStore = {
+  async forDisplay(merchant: string, includeMoney: boolean) {
+    const pool = getMerchantPool();
+    await ensureMerchantSchema();
+
+    const { rows } = pool
+      ? await pool.query<{
+          merchant: string;
+          name: string;
+          category: string | null;
+          town: string | null;
+          payout_account: string | null;
+          payout_terms: string;
+          partner_since: string | null;
+          founding: boolean;
+        }>(`SELECT * FROM ${MERCHANT_SCHEMA}.profiles WHERE merchant = $1`, [normalize(merchant)])
+      : { rows: [] };
+
+    const profile = rows[0];
+    // On-chain first. `readMerchantTerms` returns null when the registry is unreachable rather
+    // than throwing, so Settings still renders — it just renders without the rate.
+    const chain = await readMerchantTerms(normalize(merchant)).catch(() => null);
+
+    return {
+      merchant: normalize(merchant),
+      name: profile?.name ?? '',
+      category: profile?.category ?? null,
+      town: profile?.town ?? null,
+      partnerSince: profile?.partner_since ?? null,
+      founding: profile?.founding ?? false,
+      payoutTerms: profile?.payout_terms ?? 'Net-30',
+      // Money is owner-only. The field is absent rather than null for a counter writer, so a bug
+      // that forgets to check the role renders nothing instead of rendering a zero.
+      ...(includeMoney
+        ? {
+            discountRate: chain?.discountRate ?? null,
+            approvalCapCents: chain?.capCents ?? null,
+            payoutAccount: profile?.payout_account ?? null,
+            termsSource: chain ? ('chain' as const) : ('unavailable' as const),
+          }
+        : {}),
+    };
+  },
+
+  /**
+   * What the shop is owed, and how it settles.
+   *
+   * Derived from the charges themselves rather than a running total. A balance kept as a column is
+   * a balance that can drift from the rows that produced it, and the first time a merchant
+   * reconciles against their own books the drift is what they find.
+   */
+  /**
+   * Create the shop's profile row. Onboarding's first write.
+   *
+   * `merchant` is the organization wallet's address, lowercased — the merchant address the
+   * registry knows IS that wallet, so identity comes from Privy rather than being chosen. ON
+   * CONFLICT DO NOTHING because onboarding is retried by people refreshing a page mid-signup, and
+   * a second attempt should land on the shop they already have rather than an error.
+   */
+  async create(input: {
+    merchant: string;
+    name: string;
+    category?: string | null;
+    town?: string | null;
+  }): Promise<boolean> {
+    const pool = getMerchantPool();
+    if (!pool) return false;
+    await ensureMerchantSchema();
+    const { rowCount } = await pool.query(
+      `INSERT INTO ${MERCHANT_SCHEMA}.profiles (merchant, name, category, town, partner_since)
+       VALUES ($1,$2,$3,$4,CURRENT_DATE)
+       ON CONFLICT (merchant) DO NOTHING`,
+      [normalize(input.merchant), input.name.trim(), input.category ?? null, input.town ?? null],
+    );
+    return (rowCount ?? 0) > 0;
+  },
+
+  /**
+   * The quorum and policy this shop was offered, if it has been offered one.
+   *
+   * Recorded at prepare rather than at grant, because the offer is what has to be stable: the
+   * owner grants in their own browser and may take two goes at it, and a second press must hand
+   * them the same quorum rather than mint another one holding the same live key.
+   */
+  async clearSignerIds(
+    merchant: string,
+  ): Promise<{ signerQuorumId: string | null; policyId: string | null } | null> {
+    const pool = getMerchantPool();
+    if (!pool) return null;
+    await ensureMerchantSchema();
+    const { rows } = await pool.query<{ clear_signer_quorum_id: string | null; clear_policy_id: string | null }>(
+      `SELECT clear_signer_quorum_id, clear_policy_id FROM ${MERCHANT_SCHEMA}.profiles WHERE merchant = $1`,
+      [normalize(merchant)],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { signerQuorumId: row.clear_signer_quorum_id, policyId: row.clear_policy_id };
+  },
+
+  /** Record Clear's signer on this shop, once the wallet has accepted it. */
+  async setClearSigner(merchant: string, quorumId: string, policyId: string): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.profiles
+          SET clear_signer_quorum_id = $2, clear_policy_id = $3
+        WHERE merchant = $1`,
+      [normalize(merchant), quorumId, policyId],
+    );
+  },
+
+  /**
+   * Ask for what is owed, before it is due — reference section 18.
+   *
+   * This records a request; it does not move money. Settlement is a separate act and the row says
+   * so, sitting at `requested` until it is paid. The screen that reports it has to be equally
+   * careful: "on its way" is true of a request that will be settled, and false of a request nobody
+   * has picked up, so the honest version names the date rather than implying a transfer.
+   *
+   * Bounded by what the position says is available today. A merchant cannot ask for more than they
+   * are owed, and the pool cap is the credit side's answer rather than something asserted here.
+   */
+  async requestWithdrawal(input: {
+    merchant: string;
+    amountCents: number;
+    requestedBy: string;
+    /** Owed money passes through the cash account; cash-account money goes straight out. */
+    source: 'owed' | 'cash';
+    destination: 'cash' | 'bank' | 'debit';
+  }): Promise<{ ok: boolean; id?: string; reason?: string }> {
+    const pool = getMerchantPool();
+    if (!pool) return { ok: false, reason: 'not configured' };
+    await ensureMerchantSchema();
+
+    const position = await this.payoutPosition(input.merchant);
+
+    /**
+     * The cap depends on where the money is coming from — reference section 07b.
+     *
+     * Cash-account money is bounded by the balance. Owed money is bounded by what the shop holds on
+     * the ledger: what the pool can free today is paid now, and the rest is redeemed as a claim the
+     * pool pays within the shop's terms (net-30). Capping owed money at what was released, as this
+     * did, meant the rest could never be withdrawn, so its 30 days never started.
+     */
+    const cap =
+      input.source === 'cash' ? position.cashAccountCents : chainOwedCents(position);
+
+    if (cap === null) {
+      return {
+        ok: false,
+        reason:
+          input.source === 'cash'
+            ? 'We cannot read your cash account just now. Try again shortly.'
+            : 'We cannot read what you are owed just now. Try again shortly.',
+      };
+    }
+    if (input.amountCents <= 0 || input.amountCents > cap) {
+      return { ok: false, reason: 'That is more than is available from there.' };
+    }
+    // Cash to cash is not a movement. It drops out of the picker, and is refused here too.
+    if (input.source === 'cash' && input.destination === 'cash') {
+      return { ok: false, reason: 'That money is already in your cash account.' };
+    }
+
+    const id = `pay_${randomUUID()}`;
+    await pool.query(
+      `INSERT INTO ${MERCHANT_SCHEMA}.payouts
+         (id, merchant, amount_cents, charge_count, scheduled_for, status, requested_by, requested_at)
+       VALUES ($1,$2,$3,0,CURRENT_DATE,'requested',$4, now())`,
+      [id, normalize(input.merchant), Math.round(input.amountCents), input.requestedBy],
+    );
+    return { ok: true, id };
+  },
+
+  /**
+   * What the chain did with a request that was recorded a moment ago.
+   *
+   * Paid means the money is in the shop's own account and the row is closed. Queued means the
+   * redemption went through, the pool was short, and a claim is waiting its turn — the request
+   * stays open, because it is still true that nobody has settled it. Either way the transaction is
+   * recorded, so a figure on a screen can be traced to something that happened.
+   */
+  async recordRedemption(
+    id: string,
+    result: { txHash: string; claimId: string | null; paidNow: boolean },
+  ): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.payouts
+          SET tx_hash = $2,
+              claim_id = $3,
+              status = CASE WHEN $4 THEN 'paid' ELSE status END,
+              paid_at = CASE WHEN $4 THEN now() ELSE paid_at END
+        WHERE id = $1`,
+      [id, result.txHash, result.claimId, result.paidNow],
+    );
+  },
+
+  async payoutPosition(merchant: string) {
+    const pool = getPostgresPool();
+    // Same shape as the real return, which it was not: this said `owed`/`clearsBalance`/`toBank`
+    // while the success path says `owedCents`/`clearsBalanceCents`/`toBankCents`. A caller reading
+    // the documented keys got undefined and rendered it as zero — a wrong number that looks like a
+    // quiet day rather than a missing database.
+    if (!pool) {
+      return {
+        owedCents: 0,
+        clawbackOwedCents: 0,
+        cashAccountCents: null as number | null,
+        releasedReadyCents: null as number | null,
+        scheduledCents: 0,
+        readyToWithdrawCents: null as number | null,
+        nextPayoutOn: null as string | null,
+        queuedCents: 0,
+        releasesOn: null as string | null,
+        clearsBalanceCents: 0,
+        toBankCents: 0,
+        availableTodayCents: null as number | null,
+        paid: [] as { id: string; amountCents: number; charges: number; on: string; paidAt: string | null }[],
+      };
+    }
+
+    const m = normalize(merchant);
+
+    /*
+     * What the shop is owed comes from the CHAIN, not from a sum of charge rows.
+     *
+     * `PayoutPool` says it plainly: a merchant's positive StableCredit balance IS the payables
+     * ledger, on-chain, with no parallel record to reconcile against. This kept a parallel record
+     * anyway — approved charges, summed — and the two disagreed the first time anything minted
+     * credits by a route other than a charge. The demo shop held 92.50 on chain and this screen
+     * showed nothing, which then capped withdrawals at zero for a reason no log would have named.
+     *
+     * The rows stay, and do what they are actually for: history, attribution, the count beside a
+     * payout. What a merchant is OWED is one number, and the ledger holds it.
+     *
+     * Null when the chain cannot be read — never a zero, which would read as a quiet day.
+     */
+    const chainPosition = await merchantPayoutPosition(m);
+    const owedCents = chainPosition === null ? 0 : microsToCents(chainPosition.redeemableMicros);
+
+    /*
+     * Refunds are already netted, and an overdraw is already recorded — by the ledger.
+     *
+     * `StableCredit.repayRefund` takes a settled refund off the merchant's balance, and when the
+     * refund outruns that balance the difference becomes an obligation the merchant carries. That
+     * is the same rule this used to implement in SQL over the refunds table, except the ledger's
+     * version covers every route to owing rather than only the rows we happened to write.
+     *
+     * So: what they hold is what they are owed, what they owe is reported beside it, and neither
+     * is computed twice.
+     */
+    const net = owedCents;
+    const clawbackOwedCents = chainPosition === null ? 0 : microsToCents(chainPosition.owedByMicros);
+
+    // Clear's own rows, for the history below rather than for any figure above.
+    const merchantPool = getMerchantPool();
+    if (merchantPool) await ensureMerchantSchema();
+
+    // The shop's own Clear balance clears out of the payout first — it costs them no carry there.
+    // Not yet read from the credit contracts; zero until that is wired, which reads as "all of it
+    // goes to your bank" rather than as a wrong number.
+    const clearBalanceCents = 0;
+    const settle = payoutSettlement(net / 100, clearBalanceCents / 100);
+
+    const paidRes = merchantPool
+      ? await merchantPool.query<{
+          id: string;
+          amount_cents: string;
+          charge_count: number;
+          scheduled_for: string;
+          paid_at: string | null;
+        }>(
+          `SELECT id, amount_cents, charge_count, scheduled_for, paid_at
+             FROM ${MERCHANT_SCHEMA}.payouts
+            WHERE merchant = $1 AND status = 'paid'
+            ORDER BY scheduled_for DESC LIMIT 12`,
+          [m],
+        )
+      : { rows: [] };
+
+    // When the next payout lands. The app showed a fixture date because this was computed but never
+    // returned — and a shop's whole relationship to Clear is "you are paid on the 14th", so the
+    // date is not decoration. Null when no payout is scheduled yet, which the screen states rather
+    // than filling in.
+    const nextRes = merchantPool
+      ? await merchantPool.query<{ scheduled_for: string }>(
+          `SELECT scheduled_for FROM ${MERCHANT_SCHEMA}.payouts
+            WHERE merchant = $1 AND status IN ('scheduled','available')
+            ORDER BY scheduled_for ASC LIMIT 1`,
+          [m],
+        )
+      : { rows: [] };
+
+    /**
+     * Three parallel lines, not one figure — reference section 07.
+     *
+     *   cashAccountCents   already the merchant's, movable at any hour
+     *   releasedReadyCents owed, and free today as far as the pool allows
+     *   scheduledCents     owed, and arriving on the scheduled payout
+     *
+     * "Ready to withdraw" is the first two added together, which is the number a merchant actually
+     * asks for — how much can I get right now — and the reason the composition is shown beneath it
+     * rather than as two cards they have to add up themselves.
+     *
+     * The old shape could not express this: it had one owed figure and an availability cap, so
+     * money already sitting in the shop's own account was invisible.
+     */
+    /**
+     * How much of what is OWED the pool can free today. Null means unknown, which is not zero —
+     * the credit side answers this and nothing here guesses a cap it cannot verify.
+     *
+     * Now asked rather than left null: the pool knows what it holds, what refunds it owes members
+     * and what is queued in front of this shop, and `merchantPayoutPosition` puts those together
+     * the way the pool itself would. Still null when the chain cannot be read.
+     */
+    // The same read as above, reused: one call answers both what they are owed and how much of it
+    // the pool can free today, and asking twice would be two figures from two moments.
+    const availableTodayCents: number | null =
+      chainPosition === null ? null : microsToCents(chainPosition.freeNowMicros);
+
+    /*
+     * Withdrawn and waiting: a withdrawal the pool couldn't pay on the spot moved the credits to
+     * the pool as a claim, due when the shop's terms run out. It is no longer in what they hold, but
+     * it is still theirs, so it stays on the screen, and its due day is what net-30 counts down to.
+     * Before this, a queued withdrawal vanished from Payouts and the card said "30 day terms" for
+     * ever, because the only date it knew was a scheduled payout row net-30 never writes.
+     */
+    const queuedCents = chainPosition === null ? 0 : chainPosition.queued.reduce((s, c) => s + microsToCents(c.amountMicros), 0);
+    const releasesOn = chainPosition?.queued[0] ? new Date(chainPosition.queued[0].dueBy * 1000).toISOString() : null;
+
+    const cash = await cashAccountCents(normalize(merchant));
+    const releasedReady = availableTodayCents === null ? null : Math.min(availableTodayCents, net);
+    const scheduled = (releasedReady === null ? net : Math.max(0, net - releasedReady)) + queuedCents;
+
+    return {
+      owedCents: net,
+      /** What refunds have outrun the pool by, owed back. Zero in the ordinary case. */
+      clawbackOwedCents,
+      cashAccountCents: cash,
+      releasedReadyCents: releasedReady,
+      scheduledCents: scheduled,
+      // Null when either half is unknown, so the screen says so rather than understating it.
+      // Cash-account money is withdrawable whatever the pool says, so an unknown early-release cap
+      // must not hide it. Null only when the balance itself could not be read.
+      readyToWithdrawCents: cash === null ? null : cash + (releasedReady ?? 0),
+      nextPayoutOn: nextRes.rows[0]?.scheduled_for ?? null,
+      /** Withdrawn, queued in the pool, and still theirs. Counted in `scheduledCents`, not in `owedCents`. */
+      queuedCents,
+      /** When the oldest of those is due: what net-30 counts down to. Null when nothing is queued. */
+      releasesOn,
+      clearsBalanceCents: Math.round(settle.clearsBalance * 100),
+      toBankCents: Math.round(settle.toBank * 100),
+      // The early-withdrawal cap is a pool question the credit side answers. Stated as null rather
+      // than guessed: the app says the cap up front, and a made-up cap is worse than none.
+      // The early-withdrawal cap is a pool question the credit side answers. Stated as null rather
+      // than guessed: a made-up cap is worse than none.
+      availableTodayCents,
+      paid: paidRes.rows.map((p: { id: string; amount_cents: string; charge_count: number; scheduled_for: string; paid_at: string | null }) => ({
+        id: p.id,
+        amountCents: Number(p.amount_cents),
+        charges: p.charge_count,
+        on: p.scheduled_for,
+        paidAt: p.paid_at,
+      })),
+    };
+  },
+
+  /** Charges raised per staff member this month — the by-product that shows who is offering it. */
+  async chargeCountsByStaff(merchant: string): Promise<Record<string, number>> {
+    const pool = getPostgresPool();
+    if (!pool) return {};
+    const { rows } = await pool.query<{ raised_by: string | null; n: string }>(
+      `SELECT raised_by, COUNT(*) AS n FROM ${CHARGES_TABLE}
+        WHERE merchant_address = $1
+          AND created_at >= date_trunc('month', now())
+          AND raised_by IS NOT NULL
+        GROUP BY raised_by`,
+      [normalize(merchant)],
+    );
+    const out: Record<string, number> = {};
+    for (const r of rows) if (r.raised_by) out[r.raised_by] = Number(r.n);
+    return out;
+  },
+
+  /**
+   * Set the owner-code refund threshold.
+   *
+   * Callers must already have established that this is a signed-in owner and that the value is
+   * within the shop's approval cap — the route does both. Kept dumb on purpose: a store method
+   * that re-derives authority is a store method somebody calls from the wrong place.
+   */
+  async setOwnerCodeLimit(merchant: string, limitCents: number): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.profiles SET owner_code_limit_cents = $2 WHERE merchant = $1`,
+      [normalize(merchant), Math.max(0, Math.round(limitCents))],
+    );
+  },
+
+  /** What a charge pays out, for a quote before it is raised. */
+  quotePayoutCents(amountCents: number, discountRate: number): number {
+    return Math.round(merchantPayout(amountCents / 100, discountRate) * 100);
+  },
+};

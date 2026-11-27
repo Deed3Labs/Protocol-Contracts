@@ -1,0 +1,71 @@
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import { registerServiceWorker } from './utils/serviceWorker'
+import { initAnalytics } from './lib/analytics'
+import { captureInvite } from './lib/invite'
+
+// Plausible analytics — injects only on the live app (app.useclear.org); no-op in dev/preview.
+initAnalytics();
+
+// An invite link from the waitlist (?invite=CODE): kept until onboarding sends it back.
+captureInvite();
+
+// Buffer polyfill for XMTP — must be set before App/AppKit/XMTP modules load, so App and
+// AppKitProvider are imported dynamically below (after this runs).
+import { Buffer } from 'buffer'
+import { stopIosFieldZoom } from '@/lib/iosViewport'
+globalThis.Buffer = Buffer
+
+// Before anything can be tapped: iOS's zoom into a field, stopped without stopping pinch-to-zoom.
+stopIosFieldZoom()
+
+// Register service worker for background sync
+if (import.meta.env.PROD) {
+  registerServiceWorker().catch((error) => {
+    console.error('Failed to register service worker:', error);
+  });
+}
+
+const root = createRoot(document.getElementById('root')!);
+
+// The phone pages (/p/:code, /r/:code) have their own entry (phone.html), which Vercel serves. This
+// is the same page for when the app's shell answers instead: `vite dev`, or the service worker's
+// offline shell for a member who has the app.
+const phonePage = /^\/[pr]\//.test(window.location.pathname);
+
+// Dev-only visual harness for the rebuild (`/?preview=1`): renders the shell and
+// pages without AppKit or auth, which otherwise gate everything behind a wallet.
+// The import is inside the DEV branch, so it never reaches a production bundle.
+const previewMode =
+  import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === '1';
+
+if (phonePage) {
+  void import('./phone/PhoneApp.tsx').then(({ default: PhoneApp }) => {
+    root.render(
+      <StrictMode>
+        <PhoneApp />
+      </StrictMode>,
+    );
+  });
+} else if (previewMode) {
+  void import('./PreviewApp.tsx').then(({ default: PreviewApp }) => {
+    root.render(
+      <StrictMode>
+        <PreviewApp />
+      </StrictMode>,
+    );
+  });
+} else {
+  void Promise.all([import('./App.tsx'), import('./AppKitProvider')]).then(
+    ([{ default: App }, { AppKitProvider }]) => {
+      root.render(
+        <StrictMode>
+          <AppKitProvider>
+            <App />
+          </AppKitProvider>
+        </StrictMode>,
+      );
+    },
+  );
+}

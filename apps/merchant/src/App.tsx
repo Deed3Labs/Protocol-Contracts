@@ -1,0 +1,203 @@
+import { lazy, Suspense } from 'react';
+import TablesPage from '@/pages/TablesPage';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { AppShell } from '@/shell/AppShell';
+import { SignIn } from '@/auth/SignIn';
+import { OwnerSignIn } from '@/auth/OwnerSignIn';
+import { EnrollDevice } from '@/auth/EnrollDevice';
+import { ConnectPage } from '@/connect/ConnectPage';
+import { useAuth } from '@/auth/authContext';
+import HomePage from '@/pages/HomePage';
+import NewChargePage from '@/pages/NewChargePage';
+import ChargesPage from '@/pages/ChargesPage';
+import ChargeDetailPage from '@/pages/ChargeDetailPage';
+import PayoutDetailPage from '@/pages/PayoutDetailPage';
+import PayoutsPage from '@/pages/PayoutsPage';
+import StaffPage from '@/pages/StaffPage';
+import OverviewPage from '@/pages/OverviewPage';
+import SettingsPage from '@/pages/SettingsPage';
+import OnboardingPage from '@/pages/OnboardingPage';
+import InventoryPage from '@/pages/InventoryPage';
+import CloseDayPage from '@/pages/CloseDayPage';
+import { useLayout } from '@/lib/useBreakpoint';
+import { useMerchantApi } from '@/data/merchantApi';
+import { useApi } from '@/data/useApi';
+import { mayCloseDay } from '@/home/liveDrawer';
+
+// Dev only: every component in every state, at the three widths. `import.meta.env.DEV` is
+// statically false in a production build, so the route and this chunk fall out of it.
+const Gallery = import.meta.env.DEV ? lazy(() => import('@/gallery/Gallery')) : null;
+
+/**
+ * The routing skeleton.
+ *
+ * Payouts and Staff are owner-only. Guarded here rather than merely hidden in the nav: a counter
+ * device is a shared device, and a URL somebody typed once is a URL somebody can type again.
+ * `seesMoney` in the shared domain is what decides, so there is one answer to that question.
+ */
+function OwnerOnly({ children }: { children: React.ReactNode }) {
+  const { canSeeMoney } = useAuth();
+  return canSeeMoney ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+/**
+ * Close the day: owners and managers, and anyone on shift when Settings › Closing says so. The
+ * server holds the same rule; this only saves a counter a page that would refuse them.
+ */
+function CloserOnly({ children }: { children: React.ReactNode }) {
+  const { session, canSeeMoney } = useAuth();
+  const api = useMerchantApi();
+  const settings = useApi(() => (canSeeMoney ? Promise.resolve(null) : api.settings()), [canSeeMoney]);
+  if (canSeeMoney) return <>{children}</>;
+  if (settings.loading) return null;
+  return mayCloseDay(session?.staff.role, settings.data) ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+export default function App() {
+  const { session, device, loading, refresh } = useAuth();
+  const layout = useLayout();
+  const navigate = useNavigate();
+
+  if (Gallery && window.location.pathname.startsWith('/_gallery')) {
+    return (
+      <Suspense fallback={null}>
+        <Gallery />
+      </Suspense>
+    );
+  }
+
+  // Dev-only. Enrollment sits behind a backend and an owner's Privy sign-in, which makes it the one
+  // screen that cannot be looked at while building it. `import.meta.env.DEV` is statically false in
+  // a production build, so this and the import fall out at bundle time.
+  if (import.meta.env.DEV && window.location.search.includes('screen=enroll')) {
+    return <EnrollDevice onDone={() => undefined} />;
+  }
+
+  // Nothing at all until the tablet has asked what it is. Rendering the PIN pad first and then
+  // replacing it with the enrollment screen would flash a sign-in at an owner who is setting the
+  // device up, which reads as a bug on the one screen that has to look deliberate.
+  if (loading) {
+    return (
+      <div className="c-app c-mc-tablet" aria-busy="true" />
+    );
+  }
+
+  // Signing a shop in to useclear.org (connect/): the owner arrives from the site's bag on any
+  // computer, so this comes before the tablet's own enrollment and PIN screens and needs neither.
+  if (window.location.pathname === '/connect') return <ConnectPage />;
+
+  /**
+   * Not set up, or removed — reference section 19.
+   *
+   * Distinct from signed out, and the app has to tell them apart: a signed-out tablet shows the
+   * PIN pad, an unenrolled one cannot, because the roster itself is behind device authentication.
+   * A tablet an owner revoked from across town lands here on its next request, which is what
+   * "remove it any time, from any device" looks like from this side.
+   *
+   * Enrollment is the owner's act, so it goes through the owner's sign-in first. There is no way to
+   * reach it with a shift PIN, which is the point — a device is authority being delegated.
+   */
+  if (!device) {
+    if (!session || session.staff.role !== 'owner') {
+      return (
+        <Routes>
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          {/* No `onBack`: there is no counter behind this yet. `onDone` re-reads the session —
+              sign-in stores its own bearer token, so without this the app would sit on this screen
+              having already signed in. */}
+          <Route
+            path="*"
+            element={
+              <OwnerSignIn
+                onDone={refresh}
+                phone={layout === 'phone'}
+                onSetUpShop={() => navigate('/onboarding')}
+              />
+            }
+          />
+        </Routes>
+      );
+    }
+    return (
+      <Routes>
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="*" element={<EnrollDevice onDone={() => undefined} />} />
+      </Routes>
+    );
+  }
+
+  // Onboarding is reachable before anyone has a session — a shop setting up has no staff yet.
+  if (!session) {
+    return (
+      <Routes>
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="*" element={<SignIn />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/new" element={<NewChargePage />} />
+        <Route path="/charges" element={<ChargesPage />} />
+        {/* Clear Terminal: only in the nav for shops that serve at tables; the page itself works for anyone on shift. */}
+        <Route path="/tables" element={<TablesPage />} />
+        <Route path="/charges/:id" element={<ChargeDetailPage />} />
+        <Route path="/charges/:id/refund" element={<ChargeDetailPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/inventory/:id" element={<InventoryPage />} />
+        <Route path="/inventory/:id/:sub" element={<InventoryPage />} />
+        {/* Who closes the day is the shop's call (Settings › Closing); the page itself says the rest. */}
+        <Route
+          path="/close"
+          element={
+            <CloserOnly>
+              <CloseDayPage />
+            </CloserOnly>
+          }
+        />
+        <Route
+          path="/payouts"
+          element={
+            <OwnerOnly>
+              <PayoutsPage />
+            </OwnerOnly>
+          }
+        />
+        <Route
+          path="/payouts/:id"
+          element={
+            <OwnerOnly>
+              <PayoutDetailPage />
+            </OwnerOnly>
+          }
+        />
+        <Route
+          path="/staff"
+          element={
+            <OwnerOnly>
+              <StaffPage />
+            </OwnerOnly>
+          }
+        />
+        {/* Month end, owner-only — it took Settings' nav slot, so it takes its guard too. */}
+        <Route
+          path="/overview"
+          element={
+            <OwnerOnly>
+              <OverviewPage />
+            </OwnerOnly>
+          }
+        />
+        {/* Still routable, just no longer in the nav: the profile sheet links here. */}
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/:section" element={<SettingsPage />} />
+        <Route path="/settings/:section/:sub" element={<SettingsPage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AppShell>
+  );
+}

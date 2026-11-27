@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { deployDeedNFT } from "../helpers/deed";
 import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { DeedNFT } from "../../typechain-types/contracts/core/DeedNFT";
@@ -67,7 +68,7 @@ describe("DeedNFT", function() {
 
     // Deploy DeedNFT
     const DeedNFT = await ethers.getContractFactory("DeedNFT");
-    deedNFT = await upgrades.deployProxy(DeedNFT, [
+    deedNFT = await deployDeedNFT([
       await validator.getAddress(),
       await validatorRegistry.getAddress()
     ]);
@@ -89,7 +90,7 @@ describe("DeedNFT", function() {
     
     await deedNFT.mintAsset(
       user1.address,
-      0, // AssetType.Land
+      1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
       "ipfs://metadata1",
       definition,
       "configuration1",
@@ -116,7 +117,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -125,7 +126,7 @@ describe("DeedNFT", function() {
           0n // salt
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
-        .withArgs(2, 0, deployer.address, await validator.getAddress());
+        .withArgs(2, 1, deployer.address, await validator.getAddress());
 
       // Check ownership
       expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
@@ -133,7 +134,7 @@ describe("DeedNFT", function() {
       // Check trait values
       const assetTypeBytes = await deedNFT.getTraitValue(2, ASSET_TYPE_KEY);
       const assetType = abiCoder.decode(["uint8"], assetTypeBytes)[0];
-      expect(assetType).to.equal(0); // Land
+      expect(assetType).to.equal(1); // Vehicle
 
       const validatorBytes = await deedNFT.getTraitValue(2, VALIDATOR_KEY);
       const validatorAddress = abiCoder.decode(["address"], validatorBytes)[0];
@@ -159,7 +160,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -228,10 +229,11 @@ describe("DeedNFT", function() {
         parcelNumber: "54321"
       });
 
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata2",
           definition,
           "configuration2",
@@ -253,7 +255,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -262,7 +264,7 @@ describe("DeedNFT", function() {
           0n // salt
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
-        .withArgs(2, 0, deployer.address, await validator.getAddress());
+        .withArgs(2, 1, deployer.address, await validator.getAddress());
 
       // Check ownership
       expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
@@ -279,7 +281,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -322,10 +324,11 @@ describe("DeedNFT", function() {
         parcelNumber: "12345"
       });
 
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -334,7 +337,7 @@ describe("DeedNFT", function() {
           0n // salt
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
-        .withArgs(2, 0, user1.address, await validator.getAddress());
+        .withArgs(2, 1, user1.address, await validator.getAddress());
 
       // Check ownership
       expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
@@ -371,7 +374,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -395,7 +398,7 @@ describe("DeedNFT", function() {
       // Mint a deed
       await deedNFT.mintAsset(
         user1.address,
-        0, // AssetType.Land
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -486,6 +489,67 @@ describe("DeedNFT", function() {
     });
   });
 
+  describe("Reserved traits", function() {
+    const key = (name: string) => ethers.keccak256(ethers.toUtf8Bytes(name));
+    const TRUE = ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]);
+
+    it("refuses an owner marking their own deed validated, by name or by key", async function() {
+      await expect(
+        deedNFT.connect(user1).setTrait(1, ethers.toUtf8Bytes("isValidated"), TRUE, 3)
+      ).to.be.revertedWith("Reserved trait");
+      await expect(
+        deedNFT.connect(user1).setTrait(1, key("isValidated"), TRUE, 3)
+      ).to.be.revertedWith("Reserved trait");
+
+      const [isValidated] = await deedNFT.getValidationStatus(1);
+      expect(isValidated).to.equal(false);
+    });
+
+    it("refuses an owner naming the validator, and so the royalty receiver", async function() {
+      const before = await deedNFT.getTraitValue(1, key("validator"));
+      await expect(
+        deedNFT.connect(user1).setTrait(
+          1,
+          ethers.toUtf8Bytes("validator"),
+          ethers.AbiCoder.defaultAbiCoder().encode(["address"], [user1.address]),
+          0
+        )
+      ).to.be.revertedWith("Reserved trait");
+      expect(await deedNFT.getTraitValue(1, key("validator"))).to.equal(before);
+    });
+
+    it("refuses the reserved traits to validators too", async function() {
+      for (const name of ["isValidated", "validator", "beneficiary"]) {
+        await expect(
+          deedNFT.setTrait(1, ethers.toUtf8Bytes(name), TRUE, 0)
+        ).to.be.revertedWith("Reserved trait");
+      }
+    });
+
+    it("lets only a validator set the asset type", async function() {
+      const vehicle = ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]);
+      await expect(
+        deedNFT.connect(user1).setTrait(1, ethers.toUtf8Bytes("assetType"), vehicle, 0)
+      ).to.be.revertedWith("Only a validator sets asset type");
+      await deedNFT.setTrait(1, ethers.toUtf8Bytes("assetType"), vehicle, 0);
+      expect(await deedNFT.getTraitValue(1, key("assetType"))).to.equal(vehicle);
+    });
+
+    it("refuses removing a reserved trait or the asset type", async function() {
+      for (const name of ["isValidated", "validator", "beneficiary", "assetType"]) {
+        await expect(deedNFT.connect(user1).removeTrait(1, name)).to.be.revertedWith("Reserved trait");
+        await expect(deedNFT.removeTrait(1, name)).to.be.revertedWith("Reserved trait");
+      }
+    });
+
+    it("still lets the owner set and remove ordinary traits", async function() {
+      await deedNFT.connect(user1).setTrait(1, ethers.toUtf8Bytes("parcelNumber"), ethers.toUtf8Bytes("123"), 1);
+      expect(await deedNFT.getTraitValue(1, key("parcelNumber"))).to.not.equal("0x");
+      await deedNFT.connect(user1).removeTrait(1, "parcelNumber");
+      expect(await deedNFT.getTraitValue(1, key("parcelNumber"))).to.equal("0x");
+    });
+  });
+
   describe("Royalty Management", function() {
     it("Should set and enforce royalties correctly", async function() {
       // Set marketplace approval
@@ -537,7 +601,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0,
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -608,7 +672,7 @@ describe("DeedNFT", function() {
       
       await deedNFT.mintAsset(
         user1.address,
-        0,
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -642,7 +706,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0,
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -669,7 +733,8 @@ describe("DeedNFT", function() {
       await deedNFT.setMetadataRenderer(await newRenderer.getAddress());
       
       expect(await deedNFT.hasRole(VALIDATOR_ROLE, await oldRenderer.getAddress())).to.be.false;
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await newRenderer.getAddress())).to.be.true;
+      // Audit D-2: the renderer no longer receives VALIDATOR_ROLE; it may only write display traits.
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await newRenderer.getAddress())).to.be.false;
     });
   });
 
@@ -730,16 +795,14 @@ describe("DeedNFT", function() {
   });
 
   describe("Transfer Validation", function() {
-    it("Should set transfer validator correctly", async function() {
-      // Use the existing validator contract instead of a non-existent TransferValidator
-      await deedNFT.setTransferValidator(await validator.getAddress());
-      expect(await deedNFT.getTransferValidator()).to.equal(await validator.getAddress());
-    });
-
-    it("Should get transfer validation function correctly", async function() {
-      const [functionSignature, isViewFunction] = await deedNFT.getTransferValidationFunction();
-      expect(functionSignature).to.equal(ethers.id("validateTransfer(address,address,address,uint256)").slice(0, 10));
-      expect(isViewFunction).to.be.true;
+    // Audit D-18: the ERC721-C transfer validator was stored but never consulted. The getters/setter are
+    // removed and ICreatorToken is no longer advertised; enforcement is the approved-marketplace list.
+    it("No longer exposes or advertises the inert ERC721-C transfer validator", async function() {
+      expect(deedNFT.interface.getFunction("setTransferValidator")).to.equal(null);
+      expect(deedNFT.interface.getFunction("getTransferValidator")).to.equal(null);
+      const sel = (sig: string) => BigInt(ethers.id(sig).slice(0, 10));
+      const creatorTokenId = sel("getTransferValidator()") ^ sel("setTransferValidator(address)") ^ sel("getTransferValidationFunction()");
+      expect(await deedNFT.supportsInterface(ethers.toBeHex(creatorTokenId, 4))).to.equal(false);
     });
   });
 

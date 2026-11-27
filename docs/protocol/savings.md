@@ -1,0 +1,377 @@
+# Savings and send
+
+**USDC goes into `ESADepositVault` and CLRUSD comes out one-for-one; CLRUSD goes back in and the
+same USDC comes out.** The rest of the savings layer is built around those two calls: gasless ways
+to reach them, a lock that stops CLRUSD backing drawn credit from leaving, and the escrow behind
+link-based send.
+
+Scope: `ClearUSD`, `ClearUSDUpgradeable`, `ESADepositVault`, `SavingsIntentFactory`,
+`SavingsIntentEscrow`, `ClaimEscrow`, and the CCIP pool for CLRUSD. Addresses are in the root
+README under [Deployed addresses](../../README.md#deployed-addresses).
+
+| Contract | Role |
+|---|---|
+| `ClearUSD` | The original CLRUSD. Chainlink `BurnMintERC20`, 6 decimals, constructor-deployed, not upgradeable, no lock |
+| `ClearUSDUpgradeable` | The replacement CLRUSD. Chainlink `BurnMintERC20UUPS`, 6 decimals, carries the redemption lock and `seize` |
+| `ESADepositVault` | Holds the USDC (or other accepted token) behind CLRUSD. Mints on deposit, burns on redeem. UUPS |
+| `SavingsIntentFactory` | Deploys single-use escrows at predictable addresses and settles or refunds them |
+| `SavingsIntentEscrow` | One clone per intent. Holds one transfer until the factory turns it into a vault deposit or redeem |
+| `ClaimEscrow` | Holds USDC for link-based send until a settler releases it or the sender is refunded after expiry. UUPS |
+| `BurnMintTokenPool` | Chainlink CCIP pool for CLRUSD. Not in `contracts/`; deployed from `@chainlink/contracts-ccip` by `deploy/15_deploy_CLRUSDTokenPool.ts` |
+
+---
+
+## CLRUSD
+
+Both tokens are named "Clear USD", symbol `CLRUSD`, 6 decimals, with an optional `maxSupply` that
+`mint` enforces when non-zero. Neither pays anything to holders; there is no accrual logic in either
+contract.
+
+### Two tokens, one vault at a time
+
+`ClearUSD` cannot be upgraded, so it could not be given the lock. `ClearUSDUpgradeable` replaces it
+rather than changing it, and `ESADepositVault.setClrusd` is how the vault moves from one to the other.
+
+**`setClrusd` refuses while any of the old token exists.** It reads `totalSupply()` on the token the
+vault currently points at and reverts with `ESADepositVaultTokenStillOutstanding` if it is non-zero.
+It then caches the new token's `decimals()` beside the address, because every conversion reads that
+cache. The order is fixed by the guard: redeem the old supply to zero, then re-point.
+
+The check reads supply on the vault's own chain. CLRUSD bridged out through a burn/mint pool is
+burned here, so it does not count toward that figure.
+
+### Roles
+
+| Role | `ClearUSD` | `ClearUSDUpgradeable` |
+|---|---|---|
+| `DEFAULT_ADMIN_ROLE` | Grants and revokes roles; `grantIssuerRoles` / `revokeIssuerRoles` (mint + burn together); `setCCIPAdmin` | Grants and revokes roles; `setEncumbranceSource`; `setCCIPAdmin` |
+| `MINTER_ROLE` | `mint` | `mint` |
+| `BURNER_ROLE` | `burn(amount)`, `burnFrom` (spends the holder's allowance) | Same |
+| `UPGRADER_ROLE` | — | `_authorizeUpgrade` |
+| `LIQUIDATOR_ROLE` | — | `seize` |
+
+`ClearUSD`'s constructor hands `DEFAULT_ADMIN_ROLE` and the CCIP admin slot to the `admin` argument
+and revokes the deployer's admin role if they differ. `ClearUSDUpgradeable` takes `defaultAdmin` and
+`defaultUpgrader` in the inherited `initialize`.
+
+`ClearUSDUpgradeable` inherits OpenZeppelin's `AccessControlDefaultAdminRulesUpgradeable`, so
+handing over `DEFAULT_ADMIN_ROLE` is a two-step begin/accept. The base initializer calls plain
+`__AccessControl_init`, which leaves `defaultAdminDelay()` at zero until `changeDefaultAdminDelay`
+is called. `deploy/21_deploy_ClearUSDUpgradeable.ts` schedules a delay after deployment.
+
+### The redemption lock
+
+**`ClearUSDUpgradeable._update` refuses to let a holder's balance drop below what is encumbered.**
+Every outflow passes through `_update`: transfers, `burnFrom` during a vault redemption, and the
+transfer into the CCIP pool. Minting has no `from` and is exempt, so an encumbered holder can still receive.
+
+| Function | Behaviour |
+|---|---|
+| `freeBalanceOf(holder)` | `balanceOf(holder)` minus `encumberedOf(holder)`, floored at zero |
+| `_update(from, to, value)` | Reverts `ClearUSDEncumbered` if `from` is non-zero and `value > freeBalanceOf(from)` |
+| `_encumberedOf(holder)` | Asks the `IEncumbranceSource`. Returns zero if no source is set. If the source reverts, returns the last lock it read for that holder (`lastKnownLockOf`) |
+| `setEncumbranceSource(source)` | Admin only. Setting it to zero lifts the lock for everyone |
+
+A fresh `ClearUSDUpgradeable` has no source and locks nothing. A source that reverts does not unlock
+anyone (audit M-3): `_encumberedOf` and `_update` fall back to the last lock read for the holder and
+emit `EncumbranceSourceReverted`, so a pledger stays locked and everyone else stays free.
+
+### Members only (spec 12.15) and de-listing (10d)
+
+**A CLRUSD transfer must be received by a listed wallet.** "A de-listing may stop receipt only, never
+sending or redemption (10d)." `_update` asks `mayReceive(to)`:
+
+| Wallet | May receive |
+|---|---|
+| Holds `MINTER_ROLE`, `BURNER_ROLE` or `LIQUIDATOR_ROLE` (the vault, the CCIP pool, the Liquidator), or is a registered redeem escrow | yes |
+| Listed (`listingOf(wallet).status == 1`) | yes, whatever the registry now says |
+| De-listed (`status == 2`) | no |
+| Never recorded (`status == 0`) | what `membershipSource` (the AccessManager's `isMember`, which also counts active MembershipRegistry wallets) answers now; yes when no source is set |
+
+- **Listing.** A wallet is recorded as listed the first time the registry reports it as a member and
+  it receives CLRUSD or a mint, or when anyone calls `syncListing(wallet)` (the app calls it when a
+  member registers or links a wallet; a backfill script calls it for existing members). From then on
+  membership expiry, tier and status changes, `revokeMember` and `unlinkWallet` do not affect its
+  receipt.
+- **De-listing.** Only `delist(wallet, reasonCode, decisionHash)`, by two distinct `LISTING_ROLE`
+  holders making the identical call. The reason code is 1 MEMBERSHIP_ENDED, 2 HOLDER_REQUEST or
+  3 FRAUD, and the decision hash is not zero. FRAUD also needs `recordFraudNotice(wallet, noticeHash)`
+  at least 10 days before the second call. Every de-listing emits `WalletDelisted`.
+- **Re-listing.** Only `relist(wallet, decisionHash)`, two-person the same way, and only for a wallet
+  the registry reports as a member at that moment (`WalletRelisted`). `syncListing` and receipt never
+  touch a de-listed wallet, so neither the registry nor a transfer can bring one back.
+- **What de-listing never does.** A de-listed holder still sends to listed wallets and redeems
+  (burns are exempt), and its pledge lock and any liquidation (`seize`) are unchanged. Mints stay
+  exempt.
+
+`setMembershipSource` is admin only, and the admin is the vault timelock. No function screens a
+transfer: OFAC screening happens in the app before it submits a Send.
+
+### Pauses (10c)
+
+`FRAUD_ROLE` pauses one account's sending and `SECURITY_ROLE` pauses everyone's; each action is
+two-person, and each pause lapses after 72 hours unless a different signer renews it. Nothing
+carries a pause past `pauseMaxTotal` (hard-coded at most 30 days; the admin may only shorten it) from
+when its chain began, except the legal-basis calls (`pauseAccountWithLegalBasis`,
+`renewAccountPauseWithLegalBasis`, `pauseForSecurityWithLegalBasis`,
+`renewSecurityPauseWithLegalBasis`), which record a legal-basis code and hash
+(`PauseLegalBasisRecorded`). A new pause set less than 30 days after the last one of the same kind
+ended (the same account, or the security pause) continues that chain, so its cap still counts from
+the first pause's start (owner decision 33). `pauseClock(account)` counts the
+seconds the security pause or that account's pause was in force, the overlap once, and
+`isPauseInForce(account)` says whether either is in force now.
+
+### Seizure
+
+**`seize(holder, to, amount)` is the one move allowed past the lock, and only up to the lock.** It
+requires `LIQUIDATOR_ROLE`, reads the live source (reverting `ClearUSDEncumbranceUnreadable` if it
+cannot), reverts with `ClearUSDSeizureExceedsEncumbrance` if `amount` exceeds the lock, and then calls the parent `_update` directly, skipping the check. It needs no
+allowance from the holder. It cannot reach a free balance, and a holder with nothing encumbered has
+nothing seizable.
+
+`seize` does not decide whether a default has happened. Its caller is `Liquidator`; see the next
+section and [Credit](./credit.md).
+
+---
+
+## Savings as credit collateral
+
+**The encumbrance source is `CollateralRegistry`, and what it locks follows what is drawn, not what is
+pledged.** `CollateralRegistry.encumberedOf(holder)` reads the kind named by `clrusdKind`
+(`setClrusdKind`, `OPERATOR_ROLE`), and returns the units of that kind needed to cover the principal
+the holder has drawn under it across their issuers (`_requiredUnits`, from the kind's `haircutBps`
+and `unitPrice`). It returns zero if `clrusdKind` is unset or unregistered, and zero for a holder
+who has drawn nothing. It does not read `pledgedOf`.
+
+Pledges are recorded by `CollateralRegistry.pledge` and freed by `release`, both `OPERATOR_ROLE`.
+Since Phase 4b (re-review L-I) a pledge also needs the member's EIP-712 signature over it.
+`release` refuses to free units that `freeCollateralOf` says are backing drawn credit. The registry
+holds no CLRUSD; the member's account does, and the token enforces the lock.
+
+When the registry cannot be read, CLRUSD falls back to the last lock it read for the holder. Since
+Phase 4b (re-review L-B) the revolving issuer calls `syncEncumbrance(member)` after every draw on
+the Savings tier, a plain transfer or a card settlement (`RevolvingIssuer.setClrusdToken`, set once
+by the owner), so that record is never older than the member's last Savings draw. If the registry
+is down at that moment the draw reverts.
+
+`Liquidator` uses `seize` in two places. `liquidate` (anyone may call it) checks that a trusted
+issuer reports a current default and that no Liquidation Hold is in force, seizes the least of the
+open Defaulted Amount, the tier's principal, the CLRUSD held and the registry's lock, records the
+seizure in the registry, redeems the CLRUSD through `ESADepositVault.redeem` and settles the tier.
+`settleFromSavings` is the member-initiated version against a trusted issuer's savings tier. Both
+are bounded by the token to what is encumbered. The rest is in [Credit](./credit.md).
+
+---
+
+## ESADepositVault
+
+**The vault holds the accepted reserve tokens and nothing else.** Its only outflow of reserve is
+`_executeRedeem`; there is no sweep or admin withdrawal. It can be upgraded by `DEFAULT_ADMIN_ROLE`
+(`_authorizeUpgrade`).
+
+### Deposit and redeem
+
+`deposit(token, amount, receiver)` pulls `amount` of an accepted token from the caller and mints
+CLRUSD to `receiver`. `redeem(token, clrusdAmount, receiver)` burns the caller's CLRUSD with
+`burnFrom` and sends the reserve token back to the caller: `receiver` must be the caller
+(`ESADepositVaultReceiverNotRedeemer`). A redemption pays anyone else only on the holder's signed
+`Redeem`, which names the receiver and which the relayer submits unchanged (Phase 2d). Both are
+`whenNotPaused`.
+
+Conversion is by decimals only (`_convertToClrUsd`, `_convertFromClrUsd`). With USDC and CLRUSD both
+at six, the amounts are equal. For a token with more decimals, both directions revert with
+`ESADepositVaultNonExactAmount` unless the amount converts back exactly, so no dust is rounded away.
+`previewDeposit` and `previewRedeem` return the converted figure without those checks.
+
+A redemption names the token it wants back and reverts with `ESADepositVaultInsufficientLiquidity` if
+the vault holds less of it than the conversion requires. `burnFrom` spends an allowance, so the
+redeemer must have approved the vault for at least `clrusdAmount`. Under `ClearUSDUpgradeable` the
+burn also passes the lock, so encumbered CLRUSD cannot be redeemed.
+
+The vault needs `MINTER_ROLE` and `BURNER_ROLE` on whichever CLRUSD it points at.
+
+### Gasless paths
+
+Each of these is `RELAYER_ROLE` and `whenNotPaused`. The relayer holding `RELAYER_ROLE` pays gas;
+the member signs. `OPERATOR_ROLE` opens none of them (audit H-3).
+
+| Function | What the member signs | Replay protection |
+|---|---|---|
+| `depositWithAuthorization` | An EIP-3009 `receiveWithAuthorization` on the reserve token, payee = vault. Mints only to the depositor | The token's own authorization nonce |
+| `depositWithAuthorizationFor` | The same authorization, plus an EIP-712 `DepositIntent(depositor, token, amount, receiver, authNonce)` naming who receives the CLRUSD | The authorization's nonce, which the intent names |
+| `redeemWithAuthorization`, `redeemWithSignature` | EIP-712 `Redeem(redeemer, token, clrusdAmount, receiver, nonce, deadline)`; the first takes `v, r, s`, the second a signature of any length | `redeemNonces[redeemer]`, used in order; `deadline` |
+| `executeMandateDeposit` | EIP-712 `DepositMandate(depositor, token, amountPerRun, interval, maxRuns, startAt, expiry, nonce)` | `depositMandates[digest]` run count |
+
+Redeem signatures are checked with `SignatureChecker` (audit M-5), so a smart-contract wallet
+(EIP-1271) can sign as `redeemer`. It still
+burns through `burnFrom`, so the redeemer needs a standing CLRUSD allowance to the vault.
+
+`executeMandateDeposit` is autopay: one signature authorizes up to `maxRuns` deposits of
+`amountPerRun`, each pulled with `safeTransferFrom` against an allowance the depositor has already
+granted, and minted to the depositor. The signature is checked with `SignatureChecker`, so EOAs and
+EIP-1271 contract wallets both work. Run `i` is allowed from `startAt + interval * i` until `expiry`,
+so runs that fell behind can execute back to back. `cancelMandate(digest)` is `RELAYER_ROLE`; a
+depositor can also stop it with `cancelOwnMandate`, or by removing the allowance.
+
+### Roles
+
+Every power is Clear Financial Co.'s, under two-person control (addendum 10g; see
+[UPGRADEABILITY.md](../audit/UPGRADEABILITY.md)).
+
+| Role | May call | Two-person by |
+|---|---|---|
+| `DEFAULT_ADMIN_ROLE` | upgrades, `setAcceptedToken`, `setClrusd`, `setStateSource`, `setPauseWindow`, `setPauseMaxTotal` (shorter only), `setPilotOff`, role grants | the vault timelock: a Clear Financial Safe proposes, 7 days pass |
+| `RELAYER_ROLE` | the gasless deposit and redeem functions, `executeMandateDeposit`, `cancelMandate` | not two-person: it only submits what a member signed |
+| `PAUSER_ROLE` | `pause`, `pauseWithLegalBasis`, `renewPause`, `renewPauseWithLegalBasis`, `unpause` | two distinct holders make the identical call |
+| `PILOT_ROLE` | `pauseCaMints`, `unpauseCaMints` | the same |
+| Anyone | `deposit`, `redeem` (for their own CLRUSD), `cancelOwnMandate`, previews | |
+
+`OPERATOR_ROLE` is legacy: nothing accepts it. `initialize` gives `DEFAULT_ADMIN_ROLE`,
+`RELAYER_ROLE` and `PAUSER_ROLE` to `admin`. Pausing stops deposits, redemptions and mandate runs,
+lapses after 72 hours, and does not stop admin calls or `cancelMandate`. Nothing carries the pause
+past 30 days from when its chain began (`pauseMaxTotal`, hard-coded at most 30 days); a pause set
+less than 30 days after the last one ended continues that chain (owner decision 33). Past the cap only
+`pauseWithLegalBasis` or `renewPauseWithLegalBasis` acts: two-person, with a legal-basis code (1 a court order, 2 other legal
+process, 3 a written law-enforcement or regulatory request) and the document's hash, logged by
+`PauseLegalBasisRecorded`. `pauseClock()` counts the seconds the pause has been in force, and
+`isPauseInForce()` says whether it is now; the credit side extends grace and cure periods by the
+difference of two readings.
+
+### The reserve and the pilot
+
+The reserve is the accepted token the vault holds; it leaves only through a redemption, which burns
+the redeemer's CLRUSD one-for-one first. The Liquidator reaches it the same way, as the holder of
+CLRUSD it seized. There is no sweep, rescue or admin withdrawal, and the vault earns nothing.
+
+The DFAL pilot measure (spec item 11) is tracked off chain from `Deposited`, `Redeemed`, CLRUSD
+`Transfer` and NetworkRegistry's state attestations. On chain, while the pilot is on:
+- a mint needs the receiver's attested state once `setStateSource` names NetworkRegistry;
+- `pauseCaMints(reason)`, set and cleared by two `PILOT_ROLE` holders, stops new mints whose receiver
+  or depositor is in CA (a receiver with no state counts as CA). It never stops a redemption.
+
+`setPilotOff(true)` switches all of that off.
+
+---
+
+## Savings intents
+
+**A member funds an address before any contract exists there, with one ordinary transfer.**
+`SavingsIntentFactory.predictIntentAddress(userSalt, config)` returns the EIP-1167 clone address for
+a salt bound to the whole config. The
+member sends USDC (to save) or CLRUSD (to withdraw) to it. A settler later deploys the escrow and
+runs the vault call in one transaction.
+
+```mermaid
+flowchart LR
+  M["Member"] -->|"one transfer"| P["Predicted escrow address"]
+  S["Settler (SETTLER_ROLE)"] -->|"settleDeterministic(salt, config)"| F["SavingsIntentFactory"]
+  F -->|"clone + initialize"| P
+  F -->|"finalize()"| P
+  P -->|"deposit or redeem"| V["ESADepositVault"]
+  V -->|"CLRUSD or USDC"| R["receiver"]
+```
+
+`IntentConfig` carries `depositor`, `receiver`, `transferToken` (what the member sent), `vaultToken`
+(the reserve token passed to the vault), `vault`, `amount`, `expiry` and `action` (`0` deposit,
+`1` redeem).
+
+| Function | Role | Behaviour |
+|---|---|---|
+| `announceIntent` | `CREATOR_ROLE` | For a redeem intent only: records the escrow address before it is funded, so CLRUSD lets it receive. Deploys nothing |
+| `createIntentDeterministic` | `CREATOR_ROLE` | Deploys and initializes the clone, or checks the config against an existing one |
+| `settleDeterministic` | `SETTLER_ROLE` | Same provisioning, then `SavingsIntentEscrow.finalize` |
+| `refundDeterministic` | `SETTLER_ROLE` | Same provisioning, then `SavingsIntentEscrow.refund` |
+
+The clone salt is `intentSalt(userSalt, config)`, `keccak256(abi.encode(userSalt, config))` (audit
+H-4), so funding an address commits to every field of the config and any other config deploys
+elsewhere. A later call on an existing clone must still match its config field for field
+(`_assertConfigMatches`). Neither contract checks `vault` against a known vault.
+
+The escrow accepts calls only from its factory (`onlyFactory`).
+
+- `finalize` requires status `Pending` and a balance of at least `amount`
+  (`SavingsIntentEscrowFundingIncomplete` otherwise). It sends exactly `amount` on and returns any
+  excess to `depositor` (audit M-4). It approves the vault and calls `deposit` or `redeem` as itself, so the vault sees the
+  escrow as caller. It does not check `expiry`.
+- `refund` requires status `Pending` and `block.timestamp > expiry`, and returns the escrow's whole
+  balance of `transferToken` to `depositor`. It reverts on a zero balance.
+
+A redeem escrow redeems to itself and forwards the reserve token to `receiver`, because the vault
+pays a plain `redeem` only to its caller.
+
+**Redeem intents and members-only CLRUSD (Phase 2d).** The member funds a redeem escrow before it
+exists, and CLRUSD is received only by members. So the factory records each redeem escrow's address
+when it is announced (`announceIntent`, `CREATOR_ROLE`, deploys nothing) or provisioned
+(`isIntentEscrow`). CLRUSD exempts those addresses while this factory is its registered
+`intentFactory`, which only CLRUSD's default admin (the vault timelock) sets. Two-person control is
+on registering the factory, not on each escrow. The factory records a redeem escrow only while its
+depositor may receive CLRUSD (`mayReceive` on the transfer token, failing closed:
+`SavingsIntentFactoryDepositorNotMember`), so a refund cannot carry CLRUSD to a non-member. An
+escrow's own transfers out are exempt on receipt, so a refund reaches a depositor who was a member
+when the escrow was recorded and has since been de-listed.
+If the factory is unregistered, an escrow still sends, since the rule is about receipt. The factory
+is not upgradeable, so this needs a new deployment of it.
+
+`initialize` rejects an `expiry` that has already passed, and `refund` rejects one that has not. An
+escrow must therefore be provisioned (by `createIntentDeterministic` or a settle attempt) before its
+expiry for `refundDeterministic` to succeed later. A balance below `amount` cannot be finalized; it
+leaves only through `refund`.
+
+Both factory roles and `DEFAULT_ADMIN_ROLE` go to `admin` in the constructor. The factory is not
+upgradeable; the escrow implementation is deployed inside its constructor.
+
+---
+
+## Link-based send
+
+**`ClaimEscrow` holds a sender's USDC under a `transferId` until a settler releases it or it expires.**
+It holds only the USDC set at `initialize`. `PAYOUT_TREASURY` is also set there and has no setter.
+
+```mermaid
+flowchart LR
+  C["createTransfer / createTransferWithAuthorization"] --> L["Locked: principal + sponsor fee"]
+  L -->|"claimToWalletWithSignature (claim key or sender signs)"| W["principal to recipient, fee to PAYOUT_TREASURY"]
+  L -->|"claimToPayoutTreasuryWithSignature (SETTLER_ROLE; claim key or sender signs)"| T["total to PAYOUT_TREASURY"]
+  L -->|"refundExpired (anyone, after expiry)"| B["total back to sender"]
+```
+
+`_record` requires a non-zero, unused `transferId`, a non-zero principal and an expiry in the future,
+and stores `principalUsdc + sponsorFeeUsdc` as `totalLockedUsdc`. The `recipientHintHash` is stored
+and emitted; no function reads it.
+
+| Function | Caller | Behaviour |
+|---|---|---|
+| `createTransfer` | Anyone | Records the transfer and pulls the total from `msg.sender` |
+| `createTransferWithAuthorization` | `SETTLER_ROLE` | Records it for `sender` and pulls the total with EIP-3009 `receiveWithAuthorization` |
+| `claimToWalletWithSignature` | Anyone, with the claim authority's `Claim(transferId, recipientWallet)` signature | Principal to `recipientWallet`, sponsor fee to `PAYOUT_TREASURY` |
+| `claimToPayoutTreasuryWithSignature` | `SETTLER_ROLE`, with a `PayoutClaim(transferId, payoutTreasury, payoutRefHash)` signature from the claim key or the sender | The whole total to `PAYOUT_TREASURY`, for a card or bank payout; logs `payoutRefHash` |
+| `claimToWallet`, `claimToPayoutTreasury` | `SETTLER_ROLE` | Retired: they revert `ClaimEscrowSignatureRequired` |
+| `refundExpired` | Anyone | After `expiry`, the whole total back to the recorded sender |
+
+Each record ends once: claims and refund all require `!claimed && !refunded`. Claims are allowed up
+to and including `expiry`, refunds only after it.
+`refundExpired` pays only the recorded sender, whoever calls it.
+
+`initialize` grants `DEFAULT_ADMIN_ROLE` and `SETTLER_ROLE` to `admin`. `DEFAULT_ADMIN_ROLE` authorizes
+upgrades. The contract has no pause.
+
+---
+
+## Cross-chain
+
+CLRUSD crosses chains through Chainlink CCIP with a `BurnMintTokenPool`. On the way out the pool
+calls the token's `burn(amount)` on what the router sent it; on the way in it calls `mint`. It needs
+`MINTER_ROLE` and `BURNER_ROLE` on the token. Under `ClearUSDUpgradeable` the member's transfer to the
+pool passes `_update`, so encumbered CLRUSD cannot be bridged.
+
+The pool's token is fixed at construction. `deploy/15_deploy_CLRUSDTokenPool.ts` binds it to the
+`ClearUSD` deployment record, or to `CLRUSD_ADDRESS`, so a pool for `ClearUSDUpgradeable` is a
+separate deployment.
+
+---
+
+## Not on-chain
+
+Equity credits are recorded on a credits ledger of their own by the Points Issuer, and the Housing
+Allowance on the Housing Allowance Record. Neither touches the savings vault or CLRUSD.
+Savings in this layer are CLRUSD balances and the reserve in the vault.

@@ -1,0 +1,1235 @@
+{
+ "products": [
+  {
+   "id": "lts",
+   "n": "Logo Tee",
+   "v": "Short sleeve",
+   "line": "logo",
+   "g": "tee",
+   "price": 46,
+   "c": [
+    9.8,
+    4.6,
+    1.2,
+    1.1
+   ],
+   "st": "on",
+   "cols": [
+    "Black",
+    "White"
+   ],
+   "lead": 3,
+   "slug": "logo-tee"
+  },
+  {
+   "id": "ltl",
+   "n": "Logo Tee",
+   "v": "Long sleeve",
+   "line": "logo",
+   "g": "ls",
+   "price": 54,
+   "c": [
+    11.9,
+    4.6,
+    1.2,
+    1.1
+   ],
+   "st": "on",
+   "cols": [
+    "Black",
+    "White"
+   ],
+   "lead": 3,
+   "slug": "logo-tee-long"
+  },
+  {
+   "id": "tn",
+   "n": "Turtleneck",
+   "v": "Rib knit",
+   "line": "layers",
+   "g": "turtle",
+   "price": 72,
+   "c": [
+    16.4,
+    5.2,
+    1.2,
+    1.3
+   ],
+   "st": "on",
+   "cols": [
+    "Black"
+   ],
+   "lead": 3,
+   "slug": "turtleneck"
+  },
+  {
+   "id": "hd",
+   "n": "Hoodie",
+   "v": "Heavy fleece",
+   "line": "layers",
+   "g": "hood",
+   "price": 98,
+   "c": [
+    26.8,
+    6.4,
+    1.2,
+    1.6
+   ],
+   "st": "off",
+   "cols": [
+    "Black"
+   ],
+   "lead": 5,
+   "slug": "hoodie",
+   "why": "Sold out 9 Oct · 120 arrive 30 Oct"
+  },
+  {
+   "id": "gcm",
+   "n": "Graphic Tee",
+   "v": "Carousel Mall",
+   "line": "graphic",
+   "g": "gtee",
+   "price": 44,
+   "c": [
+    8.6,
+    5.8,
+    1.2,
+    1.1
+   ],
+   "st": "on",
+   "cols": [
+    "Black",
+    "Cobalt",
+    "White"
+   ],
+   "lead": 3,
+   "slug": "carousel-mall"
+  },
+  {
+   "id": "gtt",
+   "n": "Graphic Tee",
+   "v": "Two Ten Overpass",
+   "line": "graphic",
+   "g": "gtee",
+   "price": 44,
+   "c": [
+    8.6,
+    5.8,
+    1.2,
+    1.1
+   ],
+   "st": "on",
+   "cols": [
+    "Black",
+    "Cobalt",
+    "White"
+   ],
+   "lead": 3,
+   "slug": "two-ten-overpass"
+  },
+  {
+   "id": "gdv",
+   "n": "Graphic Tee",
+   "v": "Devore",
+   "line": "graphic",
+   "g": "gtee",
+   "price": 44,
+   "c": [
+    8.6,
+    5.8,
+    1.2,
+    1.1
+   ],
+   "st": "draft",
+   "cols": [
+    "Black",
+    "Cobalt",
+    "White"
+   ],
+   "lead": 3,
+   "slug": "devore",
+   "why": "Sample arrives 28 Oct"
+  },
+  {
+   "id": "psq",
+   "n": "Clear patch",
+   "v": "Square",
+   "line": "patch",
+   "g": "psq",
+   "price": 9,
+   "c": [
+    1.6,
+    0,
+    0,
+    0.35
+   ],
+   "st": "on",
+   "cols": [
+    "One size"
+   ],
+   "lead": 2,
+   "slug": "patch-square"
+  },
+  {
+   "id": "pci",
+   "n": "Clear patch",
+   "v": "Circle",
+   "line": "patch",
+   "g": "pci",
+   "price": 9,
+   "c": [
+    1.6,
+    0,
+    0,
+    0.35
+   ],
+   "st": "on",
+   "cols": [
+    "One size"
+   ],
+   "lead": 2,
+   "slug": "patch-circle"
+  },
+  {
+   "id": "cpt",
+   "n": "Clear Point",
+   "v": "Counter or table",
+   "line": "hw",
+   "g": "point",
+   "price": 60,
+   "dep": 1,
+   "st": "on",
+   "cols": [
+    "Counter",
+    "Table"
+   ],
+   "slug": "clear-point"
+  },
+  {
+   "id": "c8",
+   "n": "Clear Counter",
+   "v": "8-inch",
+   "line": "hw",
+   "g": "tab",
+   "price": 140,
+   "dep": 1,
+   "st": "on",
+   "cols": [
+    "8-inch"
+   ],
+   "slug": "clear-counter-8"
+  },
+  {
+   "id": "c10",
+   "n": "Clear Counter",
+   "v": "10-inch",
+   "line": "hw",
+   "g": "tab",
+   "price": 180,
+   "dep": 1,
+   "st": "draft",
+   "cols": [
+    "10-inch"
+   ],
+   "slug": "clear-counter-10",
+   "why": "Waiting on the enclosure"
+  },
+  {
+   "id": "ft",
+   "n": "Founding Tee",
+   "v": "First run",
+   "line": "logo",
+   "g": "tee",
+   "price": 40,
+   "c": [
+    8.9,
+    4.2,
+    1,
+    1
+   ],
+   "st": "arch",
+   "cols": [
+    "Black"
+   ],
+   "lead": 3,
+   "slug": "founding-tee",
+   "why": "Sold out, replaced by the Logo Tee"
+  }
+ ],
+ "stock": {
+  "lts": {
+   "Black": [
+    4,
+    11,
+    18,
+    16,
+    9,
+    3
+   ],
+   "White": [
+    2,
+    6,
+    9,
+    3,
+    5,
+    1
+   ]
+  },
+  "ltl": {
+   "Black": [
+    3,
+    8,
+    12,
+    10,
+    6,
+    2
+   ],
+   "White": [
+    1,
+    4,
+    6,
+    5,
+    3,
+    0
+   ]
+  },
+  "tn": {
+   "Black": [
+    0,
+    1,
+    2,
+    1,
+    1,
+    0
+   ]
+  },
+  "hd": {
+   "Black": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "gcm": {
+   "Black": [
+    2,
+    5,
+    7,
+    6,
+    4,
+    1
+   ],
+   "Cobalt": [
+    1,
+    4,
+    5,
+    4,
+    2,
+    0
+   ],
+   "White": [
+    2,
+    4,
+    6,
+    5,
+    3,
+    1
+   ]
+  },
+  "gtt": {
+   "Black": [
+    1,
+    3,
+    4,
+    4,
+    2,
+    1
+   ],
+   "Cobalt": [
+    2,
+    6,
+    9,
+    8,
+    4,
+    2
+   ],
+   "White": [
+    0,
+    2,
+    3,
+    2,
+    1,
+    0
+   ]
+  },
+  "gdv": {
+   "Black": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "Cobalt": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "White": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "psq": {
+   "One size": [
+    64
+   ]
+  },
+  "pci": {
+   "One size": [
+    58
+   ]
+  },
+  "ft": {
+   "Black": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "shelf": {
+  "lts": [
+   [
+    "on",
+    1788220800000,
+    null
+   ]
+  ],
+  "ltl": [
+   [
+    "on",
+    1789430400000,
+    null
+   ]
+  ],
+  "tn": [
+   [
+    "on",
+    1788220800000,
+    null
+   ]
+  ],
+  "hd": [
+   [
+    "on",
+    1788220800000,
+    1791504000000
+   ],
+   [
+    "off",
+    1791504000000,
+    null
+   ],
+   [
+    "proj",
+    null,
+    1793318400000
+   ]
+  ],
+  "gcm": [
+   [
+    "draft",
+    1789430400000,
+    1790640000000
+   ],
+   [
+    "on",
+    1790640000000,
+    null
+   ]
+  ],
+  "gtt": [
+   [
+    "draft",
+    1789430400000,
+    1790640000000
+   ],
+   [
+    "on",
+    1790640000000,
+    1791763200000
+   ],
+   [
+    "off",
+    1791763200000,
+    1792454400000
+   ],
+   [
+    "on",
+    1792454400000,
+    null
+   ]
+  ],
+  "gdv": [
+   [
+    "draft",
+    1791763200000,
+    null
+   ]
+  ],
+  "psq": [
+   [
+    "on",
+    1788825600000,
+    null
+   ]
+  ],
+  "pci": [
+   [
+    "on",
+    1788825600000,
+    null
+   ]
+  ],
+  "cpt": [
+   [
+    "on",
+    1791244800000,
+    null
+   ]
+  ],
+  "c8": [
+   [
+    "on",
+    1791244800000,
+    null
+   ]
+  ],
+  "c10": [
+   [
+    "draft",
+    1791244800000,
+    null
+   ]
+  ],
+  "ft": [
+   [
+    "on",
+    1787529600000,
+    1788134400000
+   ]
+  ]
+ },
+ "history": {
+  "lts": [
+   [
+    1791936000000,
+    "Restocked White · 24 units",
+    "Kai"
+   ],
+   [
+    1788220800000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ],
+  "ltl": [
+   [
+    1789430400000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ],
+  "tn": [
+   [
+    1788220800000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ],
+  "hd": [
+   [
+    1790899200000,
+    "Ordered a restock · 120 units",
+    "Kai · approved by Dana Ruiz"
+   ],
+   [
+    1791504000000,
+    "Taken off the shelf · sold out",
+    "System"
+   ],
+   [
+    1788220800000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ],
+  "gcm": [
+   [
+    1790640000000,
+    "Put on the shelf",
+    "Kai"
+   ],
+   [
+    1789430400000,
+    "Added as a draft",
+    "Kai"
+   ]
+  ],
+  "gtt": [
+   [
+    1792454400000,
+    "Back on the shelf · cobalt restocked",
+    "Kai"
+   ],
+   [
+    1791763200000,
+    "Taken off the shelf · cobalt sold out",
+    "Kai"
+   ],
+   [
+    1790640000000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ],
+  "gdv": [
+   [
+    1791763200000,
+    "Added as a draft · sample ordered",
+    "Kai"
+   ]
+  ],
+  "psq": [
+   [
+    1788825600000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ],
+  "pci": [
+   [
+    1788825600000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ],
+  "cpt": [
+   [
+    1791244800000,
+    "Opened for pre-orders",
+    "Kai"
+   ]
+  ],
+  "c8": [
+   [
+    1791244800000,
+    "Opened for pre-orders",
+    "Kai"
+   ]
+  ],
+  "c10": [
+   [
+    1791244800000,
+    "Added as a draft",
+    "Kai"
+   ]
+  ],
+  "ft": [
+   [
+    1788134400000,
+    "Archived · sold out",
+    "Kai"
+   ],
+   [
+    1787529600000,
+    "Put on the shelf",
+    "Kai"
+   ]
+  ]
+ },
+ "orders": [
+  [
+   "1094",
+   1792586400000,
+   "Ana R.",
+   1,
+   [
+    [
+     "lts",
+     "Black",
+     "M",
+     1
+    ],
+    [
+     "pci",
+     "One size",
+     "",
+     1
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "paid",
+   "Redlands"
+  ],
+  [
+   "1093",
+   1792577100000,
+   "Jordan P.",
+   0,
+   [
+    [
+     "gcm",
+     "Cobalt",
+     "L",
+     1
+    ]
+   ],
+   "card",
+   "ship",
+   "",
+   "paid",
+   "Riverside"
+  ],
+  [
+   "1092",
+   1792524120000,
+   "Mia T.",
+   1,
+   [
+    [
+     "ltl",
+     "White",
+     "S",
+     1
+    ]
+   ],
+   "clear",
+   "pickup",
+   "Uptown Barber",
+   "paid",
+   "Redlands"
+  ],
+  [
+   "1091",
+   1792512600000,
+   "Chris D.",
+   0,
+   [
+    [
+     "tn",
+     "Black",
+     "M",
+     1
+    ]
+   ],
+   "wallet",
+   "ship",
+   "",
+   "paid",
+   "Pasadena"
+  ],
+  [
+   "1090",
+   1792488600000,
+   "Leo M.",
+   1,
+   [
+    [
+     "psq",
+     "One size",
+     "",
+     2
+    ],
+    [
+     "pci",
+     "One size",
+     "",
+     1
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "paid",
+   "Colton"
+  ],
+  [
+   "1089",
+   1792432800000,
+   "Sam K.",
+   1,
+   [
+    [
+     "lts",
+     "White",
+     "L",
+     2
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "packed",
+   "San Bernardino"
+  ],
+  [
+   "1088",
+   1792415700000,
+   "Nina V.",
+   0,
+   [
+    [
+     "gtt",
+     "Black",
+     "M",
+     1
+    ]
+   ],
+   "card",
+   "pickup",
+   "Mesa Laundry",
+   "ready",
+   "Redlands"
+  ],
+  [
+   "1087",
+   1792407600000,
+   "Omar H.",
+   1,
+   [
+    [
+     "ltl",
+     "Black",
+     "L",
+     1
+    ],
+    [
+     "psq",
+     "One size",
+     "",
+     1
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "packed",
+   "Highland"
+  ],
+  [
+   "1086",
+   1792337400000,
+   "Tess W.",
+   1,
+   [
+    [
+     "lts",
+     "Black",
+     "S",
+     1
+    ]
+   ],
+   "clear",
+   "pickup",
+   "Redlands Tire & Lube",
+   "ready",
+   "Redlands"
+  ],
+  [
+   "1085",
+   1792316700000,
+   "Ben A.",
+   0,
+   [
+    [
+     "tn",
+     "Black",
+     "L",
+     1
+    ]
+   ],
+   "card",
+   "ship",
+   "",
+   "shipped",
+   "Los Angeles"
+  ],
+  [
+   "1084",
+   1792257600000,
+   "Kim L.",
+   1,
+   [
+    [
+     "gcm",
+     "White",
+     "M",
+     1
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "shipped",
+   "Fontana"
+  ],
+  [
+   "1083",
+   1792238400000,
+   "Ray C.",
+   0,
+   [
+    [
+     "lts",
+     "Black",
+     "XL",
+     1
+    ]
+   ],
+   "wallet",
+   "ship",
+   "",
+   "shipped",
+   "Yucaipa"
+  ],
+  [
+   "1082",
+   1792181400000,
+   "Ivy N.",
+   1,
+   [
+    [
+     "pci",
+     "One size",
+     "",
+     3
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "shipped",
+   "Loma Linda"
+  ],
+  [
+   "1081",
+   1792159200000,
+   "Dev S.",
+   1,
+   [
+    [
+     "ltl",
+     "Black",
+     "M",
+     1
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "shipped",
+   "Redlands"
+  ],
+  [
+   "1080",
+   1792064400000,
+   "Lia F.",
+   0,
+   [
+    [
+     "gcm",
+     "Black",
+     "S",
+     1
+    ]
+   ],
+   "card",
+   "ship",
+   "",
+   "shipped",
+   "Rialto"
+  ],
+  [
+   "1079",
+   1791540900000,
+   "Theo B.",
+   1,
+   [
+    [
+     "hd",
+     "Black",
+     "M",
+     1
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "refund",
+   "Redlands"
+  ],
+  [
+   "1078",
+   1791993600000,
+   "Gia P.",
+   1,
+   [
+    [
+     "lts",
+     "White",
+     "M",
+     1
+    ],
+    [
+     "psq",
+     "One size",
+     "",
+     1
+    ]
+   ],
+   "clear",
+   "pickup",
+   "Uptown Barber",
+   "picked",
+   "Redlands"
+  ],
+  [
+   "1077",
+   1791973200000,
+   "Max O.",
+   0,
+   [
+    [
+     "gtt",
+     "Cobalt",
+     "L",
+     1
+    ]
+   ],
+   "card",
+   "ship",
+   "",
+   "done",
+   "Ontario"
+  ],
+  [
+   "1076",
+   1791916200000,
+   "Eli J.",
+   1,
+   [
+    [
+     "tn",
+     "Black",
+     "S",
+     1
+    ]
+   ],
+   "clear",
+   "ship",
+   "",
+   "done",
+   "Redlands"
+  ]
+ ],
+ "preorders": [
+  [
+   "p1",
+   "Mesa Laundry",
+   "cpt",
+   "Counter",
+   1,
+   "held",
+   1791244800000
+  ],
+  [
+   "p2",
+   "Uptown Barber",
+   "cpt",
+   "Table",
+   2,
+   "held",
+   1791417600000
+  ],
+  [
+   "p3",
+   "Redlands Tire & Lube",
+   "c8",
+   "",
+   1,
+   "held",
+   1791504000000
+  ],
+  [
+   "p4",
+   "Sixth St. Tacos",
+   "cpt",
+   "Table",
+   3,
+   "signup",
+   1791936000000
+  ],
+  [
+   "p5",
+   "Inland Cycle Works",
+   "cpt",
+   "Counter",
+   1,
+   "agreement",
+   1792281600000
+  ],
+  [
+   "p6",
+   "Mesa Laundry",
+   "c8",
+   "",
+   1,
+   "held",
+   1792368000000
+  ]
+ ],
+ "incoming": [
+  [
+   "Hoodie restock",
+   "120 units · Black",
+   [
+    [
+     "done",
+     1790899200000,
+     1792108800000
+    ],
+    [
+     "make",
+     1792108800000,
+     1792972800000
+    ],
+    [
+     "ship",
+     1792972800000,
+     1793318400000
+    ]
+   ],
+   "30 Oct",
+   "hd"
+  ],
+  [
+   "Devore sample",
+   "1 of each colour",
+   [
+    [
+     "done",
+     1791763200000,
+     1792368000000
+    ],
+    [
+     "ship",
+     1792368000000,
+     1793145600000
+    ]
+   ],
+   "28 Oct",
+   "gdv"
+  ],
+  [
+   "Turtleneck reorder",
+   "Suggested · 36 units",
+   [
+    [
+     "plan",
+     null,
+     1794355200000
+    ]
+   ],
+   "11 Nov",
+   "tn"
+  ],
+  [
+   "Clear Point · first build",
+   "Pre-orders with a deposit",
+   [
+    [
+     "plan",
+     1793577600000,
+     1796342400000
+    ]
+   ],
+   "Dec",
+   "cpt"
+  ]
+ ],
+ "returns": [
+  {
+   "order": "1079",
+   "item": "Hoodie · M",
+   "reason": "Wrong size",
+   "returned": 1792368000000,
+   "condition": "unworn",
+   "proposedBy": "Kai",
+   "proposedAt": 1792581600000,
+   "second": "Dana Ruiz",
+   "refundedAt": null,
+   "amount": null
+  },
+  {
+   "order": "1071",
+   "item": "Logo Tee · S",
+   "reason": "Wrong size",
+   "returned": 1791763200000,
+   "condition": "",
+   "proposedBy": "Kai",
+   "proposedAt": 1791763200000,
+   "second": null,
+   "refundedAt": 1791763200000,
+   "amount": 46
+  }
+ ],
+ "check": {
+  "SHOP": {
+   "rev": 4931,
+   "prev": 4093,
+   "ord": 74,
+   "cost": 1727.9499999999998,
+   "ship": 84,
+   "fees": 165.19899999999998,
+   "gross": 2953.851,
+   "line": 500,
+   "left": 2453.851,
+   "tax": 351.58029999999997,
+   "items": 127,
+   "shipped": 60,
+   "picked": 14
+  },
+  "GP_W": [
+   423.988,
+   654.643,
+   636.187,
+   757.5350000000001,
+   896.367,
+   850.3610000000001,
+   581.7079999999999,
+   625.499
+  ],
+  "SET_ASIDE": {
+   "salesTax": 351.58029999999997,
+   "preorderDeposits": 460
+  }
+ }
+}

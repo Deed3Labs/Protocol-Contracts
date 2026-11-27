@@ -1,0 +1,219 @@
+/*
+ * Kept by hand, not copied from the reference (scripts/port/sheets.cjs leaves it alone): fixes for what
+ * real data draws that the reference's own data never did. Adopted last by every page's shadow root.
+ */
+
+/* Shop: the shelf drew its lines by position, so a last row that isn't full was left open. Each tile draws
+   its right and bottom line instead, and the shelf clips the outer edge's */
+.sx-shf{overflow:hidden}
+.sx-t,.sx-t:nth-child(n){border-left:0;border-top:0;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair);margin:0 -1px -1px 0}
+
+/* Records: a long name or email in the week grid is cut, not run into the days (the full text is its title) */
+.ad-wk-p{min-width:0}
+.ad-wk-p > *{flex:none}
+.ad-wk-p b{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* a cell's right-hand label gives way to its title instead of running past a narrow cell (Team's at 1100) */
+.hd .r{min-width:0}
+.hd .r > .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+/* a hatched "Not real yet" bar or block: the n sheet makes .hatch a 10px swatch for its keys, which shrank them to squares */
+.mb.hatch{display:block;width:auto}
+.bk-empty.hatch{display:block;width:auto;height:auto}
+
+/* Settings → Organization: the profile's rows are the ledger's, as buttons that open each one's panel */
+.ad-led > .ad-pf{display:flex;justify-content:space-between;align-items:baseline;gap:16px;width:100%;padding:10px 0;border-bottom:1px solid var(--hair);font-size:14px;text-align:left;min-width:0}
+.ad-led > .ad-pf:last-child{border-bottom:0}
+.ad-led > .ad-pf:hover{background:color-mix(in srgb,var(--raised) 70%,transparent)}
+.ad-pf > span{color:var(--fg-70);flex:none}
+.ad-pf > b{font-weight:500;text-align:right;min-width:0;overflow-wrap:anywhere}
+.ad-pf > b.quiet{color:var(--fg-50,var(--fg-70));font-weight:400}
+.ad-pf .ad-pd{display:block;font-style:normal;font-size:12px;color:var(--underway)}
+/* Settings → Key age: a connection with no swap recorded says so where its bar would be */
+.ad-hb-r > .small.quiet{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Governance → an agreement's panel: adopting a draft, and starting a new version */
+.gt-vf{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.gt-vf .btn{align-self:flex-start}
+.gt-vfl{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;min-width:0}
+.gt-vfl > span{color:var(--fg-70);flex:none}
+.gt-vfl > .vin{flex:1 1 auto;min-width:0;max-width:62%}
+.gt-vfl.col{flex-direction:column;align-items:stretch}
+.gt-vfl.col > span{flex:initial}
+.gt-vfl.col > .vin{max-width:none}
+
+/* Members → a person's tags: each one comes off with its × */
+.tg3 .chip .untag{margin-left:6px;padding:0 2px;font:inherit;line-height:1;color:var(--fg-50);background:none;border:0;cursor:pointer}
+.tg3 .chip .untag:hover{color:var(--fg)}
+
+/* Merchants: the refurb units' controls sit in their rows; on a phone the stage and shop stay (the ships day, cost and moved go) */
+.bt.mr-rf .vin{margin-top:0;height:32px;padding:0 8px}
+@media (max-width:760px){
+  .bt.mr-rf tr > :nth-child(2),.bt.mr-rf tr > :nth-child(3){display:table-cell}
+  .bt.mr-rf tr > :nth-child(4),.bt.mr-rf tr > :nth-child(5),.bt.mr-rf tr > :nth-child(6){display:none}
+  .bt.mr-rf td{padding-left:6px;padding-right:6px}
+  .bt.mr-rf{table-layout:fixed}
+  .bt.mr-rf td.tn b,.bt.mr-rf td.tn span{overflow-wrap:anywhere}
+  /* adding a unit: its three boxes and buttons one under the other */
+  .bt.mr-rf tr.mr-add{display:flex;flex-direction:column}
+  .bt.mr-rf tr.mr-add > td,.bt.mr-rf tr.mr-add > :nth-child(4){display:block;width:auto;border-bottom:0}
+}
+
+/* Field: the van's load, a row a thing with its count (the reference draws no such form) */
+.fvl{display:flex;flex-direction:column;margin-top:4px}
+.fvl-r{display:grid;grid-template-columns:24px minmax(0,1fr) 88px;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--hair)}
+.fvl-r:first-child{border-top:0}
+.fvl-r .vin{margin-top:0;text-align:right;font-variant-numeric:tabular-nums}
+/* a shop's name that opens its record, in a list row */
+button.fw-k{text-align:left;cursor:pointer}
+
+/* Build → Every change: a column's Show more, Show fewer and Clear shipped rows, as the Pipeline's .kb-more */
+.bd-more{height:48px;flex:none;padding:0 18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--hair);text-align:left;font-size:13px;font-weight:500;color:var(--fg-70);width:100%;background-color:var(--ground)}
+.bd-more:hover{background:color-mix(in srgb,var(--raised) 70%,var(--ground));color:var(--fg)}
+/* Money → Loss cover: who takes a loss, in order, kept to the cell's small type */
+.ngt-wf div{font-size:12.5px;padding:7px 0;min-width:0} .ngt-wf div span{white-space:nowrap} .ngt-wf div b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the empty state, as Governance's .gv-e and Build's .bd-e draw it: hatched, the reason in a label. Any
+   cell whose list or table has nothing in it shows this, never a blank body (one class for every page) */
+.lv-e{flex:1;display:grid;place-items:center;min-height:120px;padding:16px;text-align:center;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+.lv-e span{font-size:12.5px;color:var(--fg-70);background:var(--ground);padding:4px 10px}
+/* the empty messages the pages already draw, given the same hatch as .lv-e: Money's .nmv-e, the shared
+   .bk-empty (not the "Not real yet" pair, which has its own), a table whose only row is the message,
+   a stat cell's legend with nothing in it, and Build's audits ledger */
+.nmv-e,.bk-empty:not(.hatch):not(.hatch + .bk-empty),.mk2 > span:only-child:not(:has(i)){flex:1;align-self:stretch;display:grid;place-items:center;min-height:120px;margin:0;padding:16px;text-align:center;font-size:12.5px;color:var(--fg-70);background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+.mk2:has(> span:only-child:not(:has(i))){flex:1;display:flex}
+.bt tbody tr > td[colspan]:only-child:has(> span.quiet:only-child){height:120px;text-align:center !important;font-size:12.5px;color:var(--fg-70);background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+.led > div:only-child:has(> span:only-child){display:grid;place-items:center;min-height:120px;border-bottom:0;font-size:12.5px;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+/* a list's group label is the style guide's tinted band (useclear.org/style, A product list): 10px mono
+   on a 4% tint, 32px, a hairline under it. Shop's "Pickup points · 4 weeks" and every other .gv-g group
+   in a list, and Team's Grow / Hold / Rules / Admin over the permission columns */
+.gv-g{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;padding:0 22px;background:color-mix(in srgb,var(--fg) 4%,transparent);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+.gv-g .lbl{font-size:10px;letter-spacing:.1em;color:var(--fg-50);padding:0}
+.ad-mx-g > span:not(:first-child){display:flex;align-items:center;height:32px;padding:0 10px;margin:0 1px;font:400 10px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fg-50);background:color-mix(in srgb,var(--fg) 4%,transparent);border-bottom:1px solid var(--hair);box-shadow:none}
+/* lists (the style guide's product list): rows keep their natural height, and the space under a short
+   list takes the hatch, edge to edge, never stretched rows. Each list's rows stop growing and a filler
+   after the last row takes what's left (nothing, when the list is full). Not a fixed ladder that is meant
+   to fill its cell: Money's Claims in order, Members' funnel in Where people stop, Governance's Reserved
+   matters, Build's Who can do what. The lists that grow with the data: Merchants' cities, Needs you */
+.mo-r.city,.al > .alr{flex:none}
+.mo-s::after,.al::after{content:'';flex:1 1 0;min-height:0;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+.al:has(> .lv-e)::after,.mo-s:has(> .lv-e)::after{display:none}
+/* an empty state that is all a block holds fills the cell edge to edge, not inside the block's padding */
+.cell :has(> .lv-e:only-child){padding:0 !important;display:flex;flex-direction:column;flex:1 1 auto}
+/* Build → Who can do what: a holder's name, turned on its side, stays inside its 80px column head (its
+   long names, RevolvingIssuerV1, ran up into the cell's header); the full name is on hover */
+.bd-ro-x em{max-width:78px;overflow:hidden;text-overflow:ellipsis}
+/* Growth's Next moves with fewer than three: the slots no move fills are hatched, not blank */
+.mv.mv-x{background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+@media (max-width:1024px){.mv.mv-x{display:none}}
+/* Growth › Campaigns detail: the recorded costs' remove button, and the form that records one */
+.led [data-ccost-rm]{border:0;background:none;color:var(--fg-50);cursor:pointer;padding:0 0 0 6px;font:inherit;line-height:1}
+.led [data-ccost-rm]:hover{color:var(--fg)}
+.cc-f{display:flex;flex-direction:column;gap:10px}
+.cc-f > .btn{align-self:flex-start}
+
+/* a row whose cells end in both kinds of footer (Growth › Apps: What they use's note, Issues' Error log): the
+   button footer is 44px and the note 52, so side by side their lines missed by 8px. The button takes the note's height */
+.bento:has(> .cell > .bk-ft) > .cell > .foot{min-height:52px}
+
+/* Shop › What's for sale: the shelf shows two rows, then a row at a time, as the Pipeline's .kb-more; a tile
+   past the rows showing is hidden */
+.sx-shf > [hidden]{display:none !important}
+.sx-more{display:block;height:48px;padding:0 22px;border-top:1px solid var(--hair);text-align:left;font-size:13px;font-weight:500;color:var(--fg-70);width:100%;background:none;cursor:pointer}
+.sx-more:hover{background:color-mix(in srgb,var(--raised) 70%,var(--ground));color:var(--fg)}
+.sx-more[hidden]{display:none}
+
+/* Money › Where it sits: a bracket too narrow for its label (fitBrackets marks it .thin) shows the bracket
+   alone, so its figure never runs into the next label; hovering it names it */
+.nh-br > span.thin b,.nh-br > span.thin em{visibility:hidden}
+
+/* a pipeline shop's street address, a link to the map: in the ledger's own ink, underlined */
+.led b a{color:inherit;text-decoration:underline;text-decoration-color:var(--fg-50);text-underline-offset:3px}
+.led b a:hover{text-decoration-color:currentColor}
+
+/* no scrollbars inside the pages either (command.css hides the document's): everything still scrolls */
+*{scrollbar-width:none !important}
+*::-webkit-scrollbar{display:none}
+
+/* Merchants › Where the shops are, a city picked: each shop's row picks it on the map; the picked one is marked and
+   opens from its Open → */
+.mo-rw{display:flex;align-items:center;border-top:1px solid var(--hair)}
+.mo-c .mo-rw:first-of-type{border-top:0}
+.mo-rw .mo-r{border-top:0;flex:1;min-width:0}
+.mo-rw.now{background:color-mix(in srgb,var(--fg) 6%,transparent)}
+.mo-rw.now .mo-r b{font-weight:600}
+.mo-op{flex:none;margin-right:22px;white-space:nowrap}
+/* a shop's pin: the city tag's look, one line, its name */
+.fsp.mshop .fsp-t{cursor:pointer}
+.fsp.mshop .mc-h b{white-space:nowrap}
+.fsp.mcity.mshop .fsp-d{left:-5px;top:-5px;width:10px;height:10px;box-shadow:inset 0 0 0 1.5px var(--fg),0 0 0 2px var(--ground)}
+.fsp.mcity.mshop.now .fsp-d{box-shadow:0 0 0 2px var(--ground),0 0 0 3.5px var(--fg)}
+
+/* Members › Next: a window's bar keeps to its own width, and its days sit clear of it */
+.nx2 .wrow .wbar{flex:none;overflow:hidden}
+
+/* Members › the list's Show names switch, beside Show everyone; on, it's marked as the sort's picked button is */
+.m-sw{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--line);font-size:13px;color:var(--fg-70);white-space:nowrap}
+.m-sw svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4}
+.m-sw:hover{color:var(--fg)}
+.m-sw.on{background:var(--fg);color:var(--ground);box-shadow:none}
+/* the member number, its own column */
+td.c-id{font-family:var(--f-mono);font-size:12px;color:var(--fg-70);white-space:nowrap}
+.m-idn{display:none;font-style:normal}
+/* narrower than the table needs for it, the number goes back under the name and its column goes */
+@media (max-width:1180px){ th.c-id,td.c-id,col.c-id{display:none} .m-idn{display:inline} }
+/* on a phone the list keeps what it kept before the number had a column: who, and what's next */
+@media (max-width:760px){ .bt.pp tr > :nth-child(5){display:none} }
+/* a long email (or name) wraps inside its cell rather than widening the table; so does a stage on a narrow screen */
+.bt.pp .pn b,.bt.pp .pn > span{overflow-wrap:anywhere;white-space:normal}
+.bt.pp .stg{white-space:normal}
+
+/* Money: an account holding nothing is a hairline in the Where it sits bar, as a zero is on Home, not a padded sliver */
+.nh-bar button.z{padding:0}
+/* Merchants: the founding seats sat on the fee ledger for their bottom space; live has no ledger, so the tiles keep their own */
+.fsx{padding-bottom:20px}
+@media (max-width:760px){ .fsx{padding-bottom:16px} }
+
+/* Money · Loss cover: the history line's top border is the ladder's last rule, so the AssurancePool row is as tall as the others */
+.ngt-wf + .ngt-h{margin-top:-18px}
+
+/* Settings · Devices: a row fills its share of the list, so its content centres beside Worth a look's; and with no Sign out
+   button (only Team signs people out) the empty column goes, so the time sits on the right edge under the header's count */
+.ad-dl > .ad-dr{flex:1 0 auto}
+.ad-dr:has(> span:last-child:empty){grid-template-columns:26px minmax(0,1fr) auto} .ad-dr > span:last-child:empty{display:none}
+/* Build · From change to live: one bar across the card, a segment a stage coloured as its chip, as Money's Where it sits.
+   It never grows taller; a segment too narrow for its stage's name keeps the count, and one narrower still keeps nothing */
+.bd-fz{display:flex;gap:2px;height:40px;margin:22px 22px 0}
+/* the same 22px above the bar as below it: the cards end at their text (the min-height lined up the squares), and a taller
+   neighbour's extra height goes under the list, not between the cards and the bar */
+.bd-fl{flex:none} .bd-fs .bd-ft{min-height:0} .bd-lw{flex:1}
+.bd-fz-s{--c:var(--fg);background:var(--c);min-width:0;padding:0 10px;display:flex;align-items:center;color:var(--ground);text-align:left;container-type:inline-size;transition:filter .2s var(--ease)}
+.bd-fz-s:hover{filter:brightness(1.12)} .bd-fz-s:empty{padding:0}
+.bd-fz-s.review{--c:color-mix(in srgb,var(--fg) 55%,var(--ground))} .bd-fz-s.safe{--c:var(--live)} .bd-fz-s.shipped{--c:var(--settled)}
+.bd-fz-s > span{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap}
+.bd-fz-s em{font-style:normal;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.bd-fz-s b{font:500 11px/1 var(--f-mono);opacity:.8}
+@container (max-width:110px){ .bd-fz-s em{display:none} }
+@container (max-width:6px){ .bd-fz-s > span{display:none} }
+@media (max-width:760px){ .bd-fz{margin:16px 16px 0} }
+
+/* Governance and Community calendars: the pager's 30px circle (.pg2 button) outranked Today's own size, so the word spilled
+   out of a circle; it's a pill as tall as the arrows, with the same border */
+.pg2 .gm-today{width:auto;height:30px;padding:0 12px;box-shadow:none;margin-right:0;white-space:nowrap}
+
+/* Build → Deploys: a deploy that failed */
+.bd-en-c.bad > i{background:var(--absent)}
+
+/* Money → Pools · AssurancePool: the Assurance fees card (a2f76e0), until the new reference's layout replaces it */
+.naf-m{font-size:12px;font-weight:600;color:var(--fg-50);text-transform:uppercase;letter-spacing:.04em}
+.naf-st{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;font-size:11.5px;color:var(--fg-50)}
+.naf-st i{font-style:normal;padding:1px 6px;border:1px solid var(--hair)}
+.naf-st i.on{color:var(--fg);border-color:var(--fg-50)}
+.naf-st i.now{background:var(--fg);border-color:var(--fg);color:var(--ground)}
+.naf-a{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:6px;font-size:12px}
+.naf-a a{color:inherit}
+.nl-r > span .naf-w,.naf-w{color:var(--underway);font-size:12.5px}
+
+/* Money › Where it sits: an account nothing reads yet (Member cash and the Credit Settlement Account, until Lithic is
+   wired) says so in the Source column, with a hollow dot, and shows a dash, never a $0 nobody read */
+.nh-src.none{color:var(--fg-50)}
+.nh-src.none i{background:transparent;box-shadow:inset 0 0 0 1px var(--fg-50)}

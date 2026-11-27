@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { MockERC20 } from "../../typechain-types/contracts/mocks/MockERC20";
 import { ClaimEscrow } from "../../typechain-types/contracts/peripherals/ClaimEscrow";
 
@@ -26,10 +26,10 @@ describe("ClaimEscrow", function () {
     await usdc.waitForDeployment();
 
     const ClaimEscrowFactory = await ethers.getContractFactory("ClaimEscrow");
-    claimEscrow = await ClaimEscrowFactory.deploy(
-      await usdc.getAddress(),
-      treasury.address,
-      deployer.address
+    claimEscrow = await upgrades.deployProxy(
+      ClaimEscrowFactory,
+      [await usdc.getAddress(), treasury.address, deployer.address],
+      { kind: "uups" }
     );
     await claimEscrow.waitForDeployment();
 
@@ -67,14 +67,28 @@ describe("ClaimEscrow", function () {
     expect(await usdc.balanceOf(await claimEscrow.getAddress())).to.equal(total);
   });
 
-  it("allows settler to claim to wallet and routes sponsor fee to treasury", async function () {
+  // Audit H-4: the settler alone no longer chooses the recipient. A claim to a wallet carries the
+  // claim authority's signature (here the sender, since this transfer has no claim key).
+  async function signClaim(signer: any, transferId: string, wallet: string) {
+    const domain = {
+      name: "ClaimEscrow",
+      version: "1",
+      chainId: (await ethers.provider.getNetwork()).chainId,
+      verifyingContract: await claimEscrow.getAddress(),
+    };
+    const types = { Claim: [{ name: "transferId", type: "bytes32" }, { name: "recipientWallet", type: "address" }] };
+    return signer.signTypedData(domain, types, { transferId, recipientWallet: wallet });
+  }
+
+  it("claims to the wallet the claim authority signed for, and routes sponsor fee to treasury", async function () {
     const transferId = ethers.keccak256(ethers.toUtf8Bytes("t2"));
     await createTransfer(transferId);
 
     const recipientBefore = await usdc.balanceOf(recipient.address);
     const treasuryBefore = await usdc.balanceOf(treasury.address);
 
-    await claimEscrow.connect(settler).claimToWallet(transferId, recipient.address);
+    const sig = await signClaim(sender, transferId, recipient.address);
+    await claimEscrow.connect(settler).claimToWalletWithSignature(transferId, recipient.address, sig);
 
     expect(await usdc.balanceOf(recipient.address) - recipientBefore).to.equal(principal);
     expect(await usdc.balanceOf(treasury.address) - treasuryBefore).to.equal(sponsorFee);
@@ -83,26 +97,43 @@ describe("ClaimEscrow", function () {
     expect(record.claimed).to.equal(true);
 
     await expect(
-      claimEscrow.connect(settler).claimToWallet(transferId, recipient.address)
+      claimEscrow.connect(settler).claimToWalletWithSignature(transferId, recipient.address, sig)
     ).to.be.revertedWith("ClaimEscrow: already claimed");
   });
 
-  it("rejects non-settler claim", async function () {
+  it("refuses the unsigned settler claim and a signature for a different wallet", async function () {
     const transferId = ethers.keccak256(ethers.toUtf8Bytes("t3"));
     await createTransfer(transferId);
 
     await expect(
+      claimEscrow.connect(settler).claimToWallet(transferId, recipient.address)
+    ).to.be.revertedWithCustomError(claimEscrow, "ClaimEscrowSignatureRequired");
+    await expect(
       claimEscrow.connect(sender).claimToWallet(transferId, recipient.address)
     ).to.be.reverted;
+    const sig = await signClaim(sender, transferId, recipient.address);
+    await expect(
+      claimEscrow.connect(settler).claimToWalletWithSignature(transferId, settler.address, sig)
+    ).to.be.revertedWithCustomError(claimEscrow, "ClaimEscrowBadClaimSignature");
   });
 
-  it("allows claim to payout treasury", async function () {
+
+  it("allows claim to payout treasury with the sender's signature (Phase 2d, L-D)", async function () {
     const transferId = ethers.keccak256(ethers.toUtf8Bytes("t4"));
     await createTransfer(transferId);
 
     const treasuryBefore = await usdc.balanceOf(treasury.address);
 
-    await claimEscrow.connect(settler).claimToPayoutTreasury(transferId);
+    // The settler alone cannot route it any more.
+    await expect(claimEscrow.connect(settler).claimToPayoutTreasury(transferId))
+      .to.be.revertedWithCustomError(claimEscrow, "ClaimEscrowSignatureRequired");
+    const payoutRef = ethers.id("bank-payout-1");
+    const sig = await sender.signTypedData(
+      { name: "ClaimEscrow", version: "1", chainId: (await ethers.provider.getNetwork()).chainId, verifyingContract: await claimEscrow.getAddress() },
+      { PayoutClaim: [{ name: "transferId", type: "bytes32" }, { name: "payoutTreasury", type: "address" }, { name: "payoutRefHash", type: "bytes32" }] },
+      { transferId, payoutTreasury: treasury.address, payoutRefHash: payoutRef }
+    );
+    await claimEscrow.connect(settler).claimToPayoutTreasuryWithSignature(transferId, payoutRef, sig);
 
     expect(await usdc.balanceOf(treasury.address) - treasuryBefore).to.equal(total);
 
@@ -112,9 +143,10 @@ describe("ClaimEscrow", function () {
 
   it("refunds expired transfer to sender", async function () {
     const transferId = ethers.keccak256(ethers.toUtf8Bytes("t5"));
-    await createTransfer(transferId, 1);
+    // TTL must outlast the approve tx that the helper mines before createTransfer.
+    await createTransfer(transferId, 60);
 
-    await ethers.provider.send("evm_increaseTime", [2]);
+    await ethers.provider.send("evm_increaseTime", [61]);
     await ethers.provider.send("evm_mine", []);
 
     const senderBefore = await usdc.balanceOf(sender.address);

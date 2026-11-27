@@ -1,0 +1,64 @@
+/*
+ * The rewards app's decisions over the spec's stylesheet (reference.css is generated: don't edit it).
+ * Each rule says why. Recorded in docs/rewards-reference/DECISIONS.md, Phase 4.
+ */
+
+/* The page is the screen: no document padding, the shop's paper edge to edge. */
+html, body { margin: 0; padding: 0; background: var(--bp, #DFE3DE); }
+body { font-family: var(--font-text); font-size: var(--t-body); line-height: 1.6; color: var(--ink); font-variant-numeric: tabular-nums; }
+#root { min-height: 100dvh; }
+
+/* A phone frame in the spec is the whole screen here: full width, no rounded device edge. On a wide
+   screen the app stays phone-width, centred, as a web app installed to a phone would look. */
+.sa-ph { width: 100%; max-width: 480px; margin: 0 auto; min-height: 100dvh; border: 0; border-radius: 0; border-left: 1px solid var(--seam); border-right: 1px solid var(--seam); }
+@media (max-width: 480px) { .sa-ph { border-left: 0; border-right: 0; } }
+
+/* The device's own status bar is the phone's; the app doesn't draw one. The top bar keeps its
+   breathing room under the notch. */
+.sa-top { padding-top: max(8px, env(safe-area-inset-top)); }
+.sa-nav { position: sticky; bottom: 0; background: var(--bp); padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+
+/* The shop's text font, where it chose one. Clear's parts keep Clear's type (rewards spec, "The
+   shop's brand around, Clear's inside"). */
+.sa-ph { font-family: var(--bt, var(--font-text)); }
+.sa-clear, .sa-sheet, .sa-amt { font-family: var(--font-text); }
+.sa-amt { font-family: var(--font-display); }
+
+/* Controls are buttons and links here, not drawings. */
+.sa-ph button { cursor: pointer; }
+.sa-ph a { text-decoration: none; }
+a.sa-av { color: inherit; }
+.sa-nav a { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-50); }
+.sa-nav a.on { color: var(--b); }
+.sa-nav a b { font-size: 10.5px; font-weight: 500; }
+.sa-nav a.on b { font-weight: 600; }
+.sa-r.tap, .sa-shop.tap { cursor: pointer; }
+.sa-switch { background: none; border: 0; padding: 0; display: flex; align-items: center; gap: 10px; color: inherit; }
+.sa-av { background: none; color: inherit; }
+button.sa-av { cursor: pointer; }
+.tg { border: 1px solid var(--ink-28); }
+button.tg { padding: 0; }
+
+/* Inputs are real inputs, drawn as the spec's field. */
+input.sa-in { width: 100%; display: block; font: inherit; font-size: 15px; color: var(--ink); outline: none; border-radius: 0; }
+input.sa-in::placeholder { color: var(--ink-50); }
+input.sa-in:focus { border-color: var(--ink); }
+
+/* A sheet over the screen. The spec draws the screen behind it as a dimmed band (sa-dim); here it's
+   the real screen under a scrim, and the sheet rises from the bottom. Square, as every sheet is. */
+.r-scrim { position: fixed; inset: 0; background: rgba(22, 33, 29, 0.35); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
+.r-scrim > .sa-sheet2, .r-scrim > .sa-sheet { width: 100%; max-width: 480px; max-height: 92dvh; overflow: auto; border-radius: 0; }
+.r-scrim > .sa-sheet { min-height: 100dvh; }
+
+/* A scanner that isn't scanning (no camera, or the preview) is the spec's viewfinder. */
+.sa-vf video { width: 100%; height: 100%; object-fit: cover; }
+.sa-vf.live { position: relative; padding: 0; }
+.sa-vf.live .sa-vfbox { position: absolute; }
+.sa-vf.live p { position: absolute; bottom: 24px; left: 30px; right: 30px; margin: 0; }
+
+.r-err { color: var(--absent); font-size: var(--t-detail); margin: 8px 0 0; }
+.r-hide { display: none; }
+
+/* The viewfinder's line keeps the paragraph margin the spec's browser default gives it (Tailwind's
+   reset removes it), so it sits where the spec draws it, below the box. */
+.sa-vf > p { margin: 1em 0; }

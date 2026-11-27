@@ -1,0 +1,44 @@
+{
+  "name": "@useclear/node",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Pay with Clear for your server: payments, payment links, refunds, webhook endpoints and webhook signatures.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Deed3Labs/Protocol-Contracts.git",
+    "directory": "packages/clear-node"
+  },
+  "homepage": "https://app.useclear.org/docs/server.md",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/types/clear-node/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/clear-node/src/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit",
+    "build": "node ../../scripts/sdk/build-js.mjs && node ../../scripts/sdk/build-types.mjs"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@clear/public-api-contracts": "file:../public-api-contracts",
+    "@types/node": "^22.15.3",
+    "typescript": "~5.8.3"
+  }
+}

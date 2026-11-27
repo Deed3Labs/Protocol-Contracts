@@ -151,6 +151,20 @@ contract FractionToken is
         _burn(from, amount);
     }
 
+    /**
+     * @notice Burns shares surrendered to redeem the underlying asset.
+     * @dev Only the Fractionalize contract (MINTER_ROLE), from unlockAsset. Ignores `burnable` and pause
+     *      (audit D-4): `burnable` decides whether holders may burn shares for nothing, never whether the
+     *      holder of every share can take the asset back. With `burnable=false` the asset was otherwise
+     *      locked in Fractionalize forever once a share was minted.
+     * @param from Address whose shares are burned
+     * @param amount Amount of shares to burn
+     */
+    function burnForRedemption(address from, uint256 amount) external onlyRole(MINTER_ROLE) {
+        require(from != address(0), "Cannot burn from zero address");
+        _burn(from, amount);
+    }
+
     // ============ Transfer Functions ============
 
     /**

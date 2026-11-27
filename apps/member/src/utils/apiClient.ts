@@ -1,0 +1,4232 @@
+/**
+ * API Client for backend server
+ * 
+ * This utility provides a centralized way to call the backend API
+ * with automatic caching and error handling.
+ */
+import type {
+  ClaimPayoutResponse,
+  ClaimSession,
+  ConfirmSendTransferLockRequest,
+  ConfirmSendTransferLockResponse,
+  PrepareSendTransferRequest,
+  PrepareSendTransferResponse,
+  SendTransferSummary,
+  VerifyClaimOtpResponse,
+} from '@/types/send';
+import type {
+  CreateSavingsIntentRequest,
+  CreateSavingsIntentResponse,
+  FinalizeSavingsIntentResponse,
+  RefundSavingsIntentResponse,
+} from '@/types/savings';
+import { getAccessToken } from '@privy-io/react-auth';
+import type { AutoClearTypedData, CollateralTypedData, PlanTerms, PlanTermsTypedData, ResplitTypedData, payoutClaimTypedData } from '@clear/domain';
+import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
+import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
+import type { AccountDetailsSource, FullNumberRead, MaskedAccountDetails, MaskedRead } from '@/lib/accountDetails';
+import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
+import { notifyServerLocked } from '@/lib/appLock';
+import { readApproval, type ApprovalRead } from '@/lib/approvalPage';
+import { postJoinDone, readJoinWindow, type JoinFinished, type JoinRead, type JoinWindowView } from '@/lib/joinPay';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
+
+// Log API base URL in development to help debug
+if (import.meta.env.DEV) {
+  console.log('[apiClient] API_BASE_URL:', API_BASE_URL);
+}
+
+interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+  /**
+   * The server's reason, where the app acts on it: REAUTH_REQUIRED (sign in again with a code) and
+   * STEP_UP_UNAVAILABLE (no way to confirm it's you yet), from middleware/stepUp's requireReauth.
+   */
+  code?: string;
+  cached?: boolean;
+  timestamp?: number;
+}
+
+interface RequestInitWithTimeout extends RequestInit {
+  timeout?: number; // Custom timeout in milliseconds (overrides default 30s)
+}
+
+/**
+ * Generic API request function
+ * Handles errors gracefully, including HTML responses (server down, wrong endpoint, etc.)
+ * Includes timeout and abort handling to prevent resource exhaustion
+ */
+/**
+ * A request, and -- when the server wants a fresh Face ID first (middleware/stepUp) -- that check and
+ * one retry. So every guarded call gets the server's answer, not the app's guess about it.
+ */
+async function apiRequest<T>(endpoint: string, options: RequestInitWithTimeout = {}): Promise<ApiResponse<T>> {
+  const first = await apiRequestOnce<T>(endpoint, options);
+  if (!first.stepUpRequired) return first;
+  try {
+    await confirmForServer();
+  } catch {
+    return { error: STEP_UP_DECLINED };
+  }
+  const second = await apiRequestOnce<T>(endpoint, options);
+  return second.stepUpRequired ? { error: second.error } : second;
+}
+
+async function apiRequestOnce<T>(
+  endpoint: string,
+  options: RequestInitWithTimeout = {}
+): Promise<ApiResponse<T> & { stepUpRequired?: boolean }> {
+  // Create abort controller for timeout
+  const timeoutController = new AbortController();
+  const timeoutMs = options.timeout || 30000; // Default 30 seconds, longer for NFT requests
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  try {
+    const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
+    const authToken = await getAccessToken().catch(() => null);
+    const activeWallet = getActiveWallet();
+    const stepUpToken = currentStepUpToken();
+    const method = (fetchOptions.method ?? 'GET').toUpperCase();
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      // Just after an action, reads skip the service worker's cache (see lib/freshReads).
+      ...(method === 'GET' && readsMustBeFresh() ? { cache: 'no-cache' as RequestCache } : {}),
+      ...fetchOptions,
+      signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...(activeWallet ? { 'X-Wallet-Address': activeWallet } : {}),
+        ...(stepUpToken ? { 'X-Step-Up': stepUpToken } : {}),
+        ...(REOWN_PROJECT_ID
+          ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID }
+          : {}),
+        ...options.headers,
+      },
+    });
+
+    clearTimeout(timeoutId);
+    // Anything that is not a read is an action: what the screens show next must be after it.
+    if (method !== 'GET') wantFreshReads();
+
+    // Check if response is actually JSON before trying to parse
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType?.includes('application/json');
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearSiwxAuthToken();
+        notifyAuthExpired({ endpoint, status: response.status });
+        throw new Error('Authentication expired. Please reconnect and sign in again.');
+      }
+
+      // Try to parse error as JSON, but handle HTML/other responses
+      if (isJson) {
+        const errorData = await response.json().catch(() => null);
+        // Locked by the server (idle too long): not signed out, so no 401 handling -- show the lock.
+        if (response.status === 423 && (errorData as { code?: unknown } | null)?.code === 'APP_LOCKED') {
+          notifyServerLocked();
+          return { error: 'Clear is locked. Open it with Face ID.' };
+        }
+        if (response.status === 403 && (errorData as { code?: unknown } | null)?.code === 'STEP_UP_REQUIRED') {
+          return { error: STEP_UP_DECLINED, stepUpRequired: true };
+        }
+        const reauthCode = (errorData as { code?: unknown } | null)?.code;
+        if (response.status === 403 && (reauthCode === 'REAUTH_REQUIRED' || reauthCode === 'STEP_UP_UNAVAILABLE')) {
+          const said = (errorData as { error?: unknown }).error;
+          return { error: typeof said === 'string' && said ? said : 'Confirm it\u2019s you to continue.', code: reauthCode };
+        }
+        if (errorData && typeof errorData === 'object') {
+          // Routes in this codebase are inconsistent: some return { message }, many return { error }.
+          // Reading only `message` silently dropped every `error`-shaped body, so real server
+          // explanations surfaced as a bare "HTTP 502: ". Accept either.
+          const raw = (errorData as { message?: unknown }).message;
+          const fallback = (errorData as { error?: unknown }).error;
+          const message =
+            typeof raw === 'string' && raw.length > 0
+              ? raw
+              : typeof fallback === 'string' && fallback.length > 0
+                ? fallback
+                : '';
+          const plaidCode = (errorData as { plaid_error_code?: unknown }).plaid_error_code;
+          if (message.length > 0) {
+            if (typeof plaidCode === 'string' && plaidCode.length > 0) {
+              throw new Error(`${message} (${plaidCode})`);
+            }
+            throw new Error(message);
+          }
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      } else {
+        // Non-JSON response (likely HTML error page)
+        throw new Error(`HTTP ${response.status}: Server returned non-JSON response (Server may be down or endpoint incorrect)`);
+      }
+    }
+
+    // Parse response as JSON only if content-type indicates JSON
+    if (!isJson) {
+      // If we expected JSON but got something else, it's likely an error
+      const text = await response.text();
+      // Check if it's HTML (common when server is down or wrong endpoint)
+      if (text.trim().startsWith('<!doctype') || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+        throw new Error('Server returned HTML instead of JSON (Server may be down or endpoint incorrect)');
+      }
+      throw new Error(`Server returned non-JSON response: ${contentType || 'unknown'}`);
+    }
+
+    const data = await response.json();
+    return { data: data as T, cached: data.cached, timestamp: data.timestamp };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    // Handle abort errors gracefully
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        error: 'Request timeout - the server took too long to respond',
+      };
+    }
+    
+    // Log errors in development and production for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (import.meta.env.DEV) {
+      console.warn('[apiClient] Request failed:', {
+        endpoint,
+        error: errorMessage,
+        apiBaseUrl: API_BASE_URL
+      });
+    } else if (import.meta.env.PROD) {
+      // In production, log errors to help diagnose issues
+      console.error('[apiClient] Production API request failed:', {
+        endpoint,
+        error: errorMessage,
+        apiBaseUrl: API_BASE_URL || 'NOT SET - Check VITE_API_BASE_URL environment variable'
+      });
+    }
+    
+    return {
+      error: errorMessage,
+    };
+  }
+}
+
+/**
+ * Get token price from server
+ */
+export async function getTokenPrice(
+  chainId: number,
+  tokenAddress: string
+): Promise<{ price: number; cached: boolean } | null> {
+  const response = await apiRequest<{ price: number; cached: boolean }>(
+    `/api/prices/${chainId}/${tokenAddress}`
+  );
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Get multiple token prices in batch
+ */
+export async function getTokenPricesBatch(
+  prices: Array<{ chainId: number; tokenAddress: string }>
+): Promise<Array<{ chainId: number; tokenAddress: string; price: number | null; cached: boolean }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; tokenAddress: string; price: number | null; cached: boolean }>;
+  }>('/api/prices/batch', {
+    method: 'POST',
+    body: JSON.stringify({ prices }),
+  });
+
+  if (response.error || !response.data) {
+    return prices.map((p) => ({ ...p, price: null, cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Get balance from server
+ */
+export async function getBalance(
+  chainId: number,
+  address: string
+): Promise<{ balance: string; balanceWei: string; cached: boolean } | null> {
+  const response = await apiRequest<{ balance: string; balanceWei: string; cached: boolean }>(
+    `/api/balances/${chainId}/${address}`
+  );
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Get multiple balances in batch
+ */
+export async function getBalancesBatch(
+  balances: Array<{ chainId: number; address: string }>
+): Promise<Array<{ chainId: number; address: string; balance: string | null; balanceWei: string | null; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; address: string; balance: string | null; balanceWei: string | null; cached: boolean; error?: string }>;
+  }>('/api/balances/batch', {
+    method: 'POST',
+    body: JSON.stringify({ balances }),
+  });
+
+  if (response.error || !response.data) {
+    return balances.map((b) => ({ ...b, balance: null, balanceWei: null, cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Get NFTs from server
+ * 
+ * @param chainId - Chain ID
+ * @param address - User address
+ * @param contractAddress - Optional contract address. If provided with type='general', fetches general NFTs.
+ *                          If not provided, fetches T-Deeds (DeedNFT protocol contracts).
+ * @param type - Optional. 't-deed' or 'general'. Defaults based on contractAddress.
+ */
+export async function getNFTs(
+  chainId: number,
+  address: string,
+  contractAddress?: string,
+  type?: 't-deed' | 'general'
+): Promise<{ nfts: any[]; cached: boolean } | null> {
+  const params = new URLSearchParams();
+  if (contractAddress) {
+    params.append('contractAddress', contractAddress);
+  }
+  if (type) {
+    params.append('type', type);
+  }
+  // Note: If contractAddress is provided but no type, server will default based on contractAddress
+  // For T-Deeds, explicitly pass type='t-deed'
+  // For general NFTs, explicitly pass type='general'
+  
+  const query = params.toString() ? `?${params.toString()}` : '';
+  // NFT requests can take longer, use 60 second timeout
+  const response = await apiRequest<{ nfts: any[]; cached: boolean }>(
+    `/api/nfts/${chainId}/${address}${query}`,
+    { timeout: 60000 }
+  );
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Get multiple NFT lists in batch
+ */
+export async function getNFTsBatch(
+  requests: Array<{ chainId: number; address: string; contractAddress?: string }>
+): Promise<Array<{ chainId: number; address: string; nfts: any[]; cached: boolean; error?: string }>> {
+  // Batch NFT requests can take even longer, use 90 second timeout
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; address: string; nfts: any[]; cached: boolean; error?: string }>;
+  }>('/api/nfts/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+    timeout: 90000, // 90 seconds for batch requests
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, nfts: [], cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Get transactions from server
+ */
+export async function getTransactions(
+  chainId: number,
+  address: string,
+  limit: number = 20
+): Promise<{ transactions: any[]; cached: boolean } | null> {
+  const response = await apiRequest<{ transactions: any[]; cached: boolean }>(
+    `/api/transactions/${chainId}/${address}?limit=${limit}`
+  );
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Get multiple transaction lists in batch
+ */
+export async function getTransactionsBatch(
+  requests: Array<{ chainId: number; address: string; limit?: number }>
+): Promise<Array<{ chainId: number; address: string; transactions: any[]; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; address: string; transactions: any[]; cached: boolean; error?: string }>;
+  }>('/api/transactions/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, transactions: [], cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Get token balance from server
+ */
+export async function getTokenBalance(
+  chainId: number,
+  userAddress: string,
+  tokenAddress: string
+): Promise<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string; cached: boolean } | null> {
+  const response = await apiRequest<{
+    address: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    balance: string;
+    balanceRaw: string;
+    cached: boolean;
+  }>(`/api/token-balances/${chainId}/${userAddress}/${tokenAddress}`);
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Get multiple token balances in batch
+ */
+export async function getTokenBalancesBatch(
+  requests: Array<{ chainId: number; tokenAddress: string; userAddress: string }>
+): Promise<Array<{ chainId: number; tokenAddress: string; userAddress: string; data: any | null; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; tokenAddress: string; userAddress: string; data: any | null; cached: boolean; error?: string }>;
+  }>('/api/token-balances/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, data: null, cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Get ALL ERC20 token balances for an address using Alchemy API
+ * This is more efficient than checking individual tokens
+ */
+export async function getAllTokenBalances(
+  chainId: number,
+  userAddress: string
+): Promise<Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>> {
+  const response = await apiRequest<{
+    tokens: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>;
+    cached: boolean;
+    timestamp: number;
+    fallback?: string;
+  }>(`/api/token-balances/all/${chainId}/${userAddress}`, {
+    timeout: 60000, // Increased to 60 seconds for fetching all tokens
+  });
+
+  if (response.error || !response.data) {
+    return [];
+  }
+
+  return response.data.tokens || [];
+}
+
+/**
+ * Get ALL token balances for multiple chains in batch
+ */
+export async function getAllTokenBalancesBatch(
+  requests: Array<{ chainId: number; userAddress: string }>
+): Promise<Array<{ chainId: number; userAddress: string; tokens: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; userAddress: string; tokens: any[]; cached: boolean; error?: string }>;
+  }>('/api/token-balances/all/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+    timeout: 60000, // 60 second timeout for batch fetching all tokens
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, tokens: [], cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Get tokens (ERC20, Native, SPL) across multiple chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch tokens across multiple chains
+ * 
+ * @param requests - Array of { address, chainIds[] } to fetch tokens for
+ *                   Maximum 2 addresses, 5 networks per address
+ * @param options - Optional parameters
+ * @returns Map of address -> chainId -> tokens (Portfolio API format)
+ */
+export async function getTokensByAddressPortfolio(
+  requests: Array<{ address: string; chainIds: number[] }>,
+  options: {
+    withMetadata?: boolean;
+    withPrices?: boolean;
+    includeNativeTokens?: boolean;
+    includeErc20Tokens?: boolean;
+    skipCache?: boolean;
+  } = {}
+): Promise<{
+  results: Array<{
+    address: string;
+    chainId: number;
+    tokens: any[]; // Portfolio API format - includes metadata, prices, logos
+    cached: boolean;
+    error?: string;
+  }>;
+}> {
+  const response = await apiRequest<{
+    results: Array<{
+      address: string;
+      chainId: number;
+      tokens: any[];
+      cached: boolean;
+      error?: string;
+    }>;
+  }>(`/api/token-balances/portfolio${options.skipCache ? `?refresh=1&_t=${Date.now()}` : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests,
+      withMetadata: options.withMetadata ?? true,
+      withPrices: options.withPrices ?? true,
+      includeNativeTokens: options.includeNativeTokens ?? true,
+      includeErc20Tokens: options.includeErc20Tokens ?? true,
+    }),
+    ...(options.skipCache && { cache: 'no-store' as RequestCache }),
+    timeout: 60000, // 60 second timeout
+  });
+
+  if (response.error || !response.data) {
+    return { results: [] };
+  }
+
+  return response.data;
+}
+
+/**
+ * Get NFTs (ERC721, ERC1155) across multiple chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch NFTs across multiple chains
+ * 
+ * @param requests - Array of { address, chainIds[] } to fetch NFTs for
+ *                   Maximum 2 addresses, 15 networks per address
+ * @param options - Optional parameters
+ * @returns Map of address -> chainId -> { nfts, totalCount?, pageKey? } (Portfolio API format)
+ */
+export async function getNFTsByAddressPortfolio(
+  requests: Array<{ address: string; chainIds: number[] }>,
+  options: {
+    withMetadata?: boolean;
+    pageKey?: string;
+    pageSize?: number;
+    orderBy?: 'transferTime';
+    sortOrder?: 'asc' | 'desc';
+    excludeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+    includeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+    spamConfidenceLevel?: 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW';
+  } = {}
+): Promise<{
+  results: Array<{
+    address: string;
+    chainId: number;
+    nfts: any[]; // Portfolio API format - includes full metadata, images, attributes
+    totalCount?: number;
+    pageKey?: string;
+    cached: boolean;
+    error?: string;
+  }>;
+}> {
+  const response = await apiRequest<{
+    results: Array<{
+      address: string;
+      chainId: number;
+      nfts: any[];
+      totalCount?: number;
+      pageKey?: string;
+      cached: boolean;
+      error?: string;
+    }>;
+  }>('/api/nfts/portfolio', {
+    method: 'POST',
+    body: JSON.stringify({
+      requests,
+      withMetadata: options.withMetadata ?? true,
+      pageKey: options.pageKey,
+      pageSize: options.pageSize,
+      orderBy: options.orderBy,
+      sortOrder: options.sortOrder,
+      excludeFilters: options.excludeFilters,
+      includeFilters: options.includeFilters,
+      spamConfidenceLevel: options.spamConfidenceLevel,
+    }),
+    timeout: 90000, // 90 second timeout for NFT requests
+  });
+
+  if (response.error || !response.data) {
+    return { results: [] };
+  }
+
+  return response.data;
+}
+
+/**
+ * Get unified portfolio data (balances, tokens, NFTs, cash balance)
+ * This is an optimized endpoint that fetches everything in one call
+ * Note: This endpoint may not be available on all server versions
+ */
+export async function getPortfolio(
+  address: string
+): Promise<{
+  holdings: any[];
+  cashBalance: {
+    totalCash: number;
+    usdcBalance: number;
+    otherStablecoinsBalance: number;
+  };
+  totalValueUSD: number;
+  cached: boolean;
+} | null> {
+  const response = await apiRequest<{
+    holdings: any[];
+    cashBalance: {
+      totalCash: number;
+      usdcBalance: number;
+      otherStablecoinsBalance: number;
+    };
+    totalValueUSD: number;
+    cached: boolean;
+  }>(`/api/portfolio/${address}`);
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Create a Stripe crypto onramp session
+ */
+export async function createStripeOnrampSession(params: {
+  wallet_addresses?: Record<string, string>;
+  customer_ip_address?: string;
+  source_currency?: string;
+  destination_currency?: string;
+  destination_network?: string;
+  destination_amount?: string;
+  source_amount?: string;
+  destination_currencies?: string[];
+  destination_networks?: string[];
+}): Promise<{
+  id: string;
+  client_secret: string;
+  status: string;
+  transaction_details: any;
+} | null> {
+  const response = await apiRequest<{
+    id: string;
+    client_secret: string;
+    status: string;
+    transaction_details: any;
+  }>('/api/stripe/create-onramp-session', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function createStripeOnrampSessionDetailed(params: {
+  wallet_addresses?: Record<string, string>;
+  customer_ip_address?: string;
+  source_currency?: string;
+  destination_currency?: string;
+  destination_network?: string;
+  destination_amount?: string;
+  source_amount?: string;
+  destination_currencies?: string[];
+  destination_networks?: string[];
+}): Promise<{
+  session: {
+    id: string;
+    client_secret: string;
+    status: string;
+    transaction_details: any;
+  } | null;
+  error?: string;
+}> {
+  const response = await apiRequest<{
+    id: string;
+    client_secret: string;
+    status: string;
+    transaction_details: any;
+  }>('/api/stripe/create-onramp-session', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+
+  if (response.error || !response.data) {
+    return {
+      session: null,
+      error: response.error || 'Failed to create Stripe onramp session.',
+    };
+  }
+
+  return { session: response.data };
+}
+
+/**
+ * Plaid: create link token for Plaid Link (bank linking)
+ */
+export async function getPlaidLinkToken(walletAddress: string): Promise<{ link_token: string } | null> {
+  const response = await apiRequest<{ link_token: string }>('/api/plaid/link-token', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/**
+ * Plaid: exchange public token for access token (after user completes Link)
+ */
+export async function exchangePlaidToken(
+  walletAddress: string,
+  publicToken: string
+): Promise<{ success: boolean } | null> {
+  const response = await apiRequest<{ success: boolean }>('/api/plaid/exchange-token', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress, publicToken }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export interface BankAccountBalance {
+  account_id: string;
+  name: string;
+  mask?: string;
+  current: number | null;
+  available: number | null;
+  /** Credit limit for liability accounts when provided by institution */
+  limit?: number | null;
+  /** Plaid item id for this connection (for optional per-institution disconnect) */
+  item_id?: string;
+  /** Plaid account type: depository, credit, loan, investment, other */
+  type?: string;
+  /** Plaid account subtype e.g. checking, savings, credit card, brokerage */
+  subtype?: string;
+}
+
+export interface BankBalancesResponse {
+  accounts: BankAccountBalance[];
+  totalBankBalance: number;
+  linked: boolean;
+}
+
+/**
+ * Plaid: get linked bank account balances for a wallet address.
+ * Server caches responses; pass skipCache: true to force a fresh Plaid call (e.g. on manual refresh).
+ */
+export async function getBankBalances(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<BankBalancesResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}${qs}`, {
+    ...(options?.skipCache && { cache: 'no-store' as RequestCache }),
+  });
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  if (response.data) return response.data;
+  return { accounts: [], totalBankBalance: 0, linked: false };
+}
+
+/**
+ * Plaid: disconnect (remove stored access token) for a wallet address
+ */
+/**
+ * Disconnect one or all Plaid connections for a wallet.
+ * - Omit itemId to disconnect all linked institutions.
+ * - Pass itemId (from account.item_id) to disconnect only that institution.
+ */
+export async function disconnectPlaid(
+  walletAddress: string,
+  itemId?: string
+): Promise<{ success: boolean } | null> {
+  const response = await apiRequest<{ success: boolean }>('/api/plaid/disconnect', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress, ...(itemId != null && { itemId }) }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/** Plaid investment holding (from /investments/holdings/get, normalized by server) */
+export interface PlaidInvestmentHolding {
+  holding_id: string;
+  account_id: string;
+  security_id: string;
+  name: string;
+  ticker_symbol: string | null;
+  security_type: string | null;
+  quantity: number;
+  institution_value: number;
+  cost_basis: number | null;
+  institution_price: number;
+  iso_currency_code: string | null;
+  item_id: string;
+}
+
+export interface PlaidInvestmentsHoldingsResponse {
+  holdings: PlaidInvestmentHolding[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get investment holdings for linked brokerage accounts.
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidInvestmentsHoldings(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidInvestmentsHoldingsResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidInvestmentsHoldingsResponse>(
+    `/api/plaid/investments/holdings?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { holdings: [], linked: false };
+}
+
+/**
+ * Plaid: trigger on-demand refresh of investment data (holdings/transactions).
+ * See https://plaid.com/docs/investments/#investmentsrefresh
+ */
+export async function plaidInvestmentsRefresh(walletAddress: string): Promise<{ success: boolean } | null> {
+  const response = await apiRequest<{ success: boolean }>('/api/plaid/investments/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export interface PlaidLiabilityAccount {
+  account_id: string;
+  item_id: string;
+  liability_type: 'credit' | 'mortgage' | 'student';
+  apr_percentage: number | null;
+  is_overdue: boolean | null;
+  last_payment_amount: number | null;
+  last_payment_date: string | null;
+  last_statement_balance: number | null;
+  minimum_payment_amount: number | null;
+  next_payment_due_date: string | null;
+  origination_principal_amount: number | null;
+  loan_term: string | null;
+}
+
+export interface PlaidLiabilitiesResponse {
+  accounts: PlaidLiabilityAccount[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get liability details (credit/mortgage/student) for linked accounts.
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidLiabilities(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidLiabilitiesResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidLiabilitiesResponse>(
+    `/api/plaid/liabilities?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { accounts: [], linked: false };
+}
+
+export interface PlaidInvestmentAccountSummary {
+  account_id: string;
+  item_id: string;
+  name: string;
+  mask?: string;
+  subtype?: string;
+  current: number | null;
+  available: number | null;
+  iso_currency_code: string | null;
+  holdings_count: number;
+  holdings_value: number;
+  security_types: string[];
+}
+
+export interface PlaidInvestmentAccountsResponse {
+  accounts: PlaidInvestmentAccountSummary[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get investment account summaries (account metadata + aggregated holdings).
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidInvestmentAccounts(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidInvestmentAccountsResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidInvestmentAccountsResponse>(
+    `/api/plaid/investments/accounts?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { accounts: [], linked: false };
+}
+
+/** Recurring stream from Plaid /transactions/recurring/get (normalized by server) */
+export interface RecurringStream {
+  stream_id: string;
+  name: string;
+  amount: number;
+  day: number;
+  iso_currency_code: string | null;
+}
+
+export interface PlaidRecurringResponse {
+  inflowStreams: RecurringStream[];
+  outflowStreams: RecurringStream[];
+  linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get recurring transaction streams (inflow = deposits, outflow = subscriptions/expenses).
+ * Server caches responses; pass refresh: true to force a fresh Plaid call.
+ * Only call when user has linked accounts to avoid unnecessary requests.
+ */
+export async function getPlaidRecurringTransactions(
+  walletAddress: string,
+  options?: { refresh?: boolean }
+): Promise<PlaidRecurringResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.refresh ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidRecurringResponse>(
+    `/api/plaid/recurring-transactions?walletAddress=${encoded}${qs}`,
+    { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { inflowStreams: [], outflowStreams: [], linked: false };
+}
+
+export interface PlaidRecentTransaction {
+  transaction_id: string;
+  account_id: string | null;
+  account_name: string;
+  account_mask: string | null;
+  item_id: string;
+  name: string;
+  merchant_name: string | null;
+  amount: number;
+  signed_amount: number;
+  direction: 'inflow' | 'outflow';
+  iso_currency_code: string | null;
+  unofficial_currency_code: string | null;
+  date: string;
+  authorized_date: string | null;
+  pending: boolean;
+  category_primary: string | null;
+  category_detailed: string | null;
+  payment_channel: string | null;
+}
+
+export interface PlaidRecentTransactionsResponse {
+  transactions: PlaidRecentTransaction[];
+  linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get recent bank transactions (rolling 90 days) across all linked items.
+ * Returns newest first. Pass refresh: true to bypass cache.
+ */
+export async function getPlaidRecentTransactions(
+  walletAddress: string,
+  options?: { refresh?: boolean; limit?: number }
+): Promise<PlaidRecentTransactionsResponse | null> {
+  const search = new URLSearchParams();
+  search.set('walletAddress', walletAddress);
+  if (options?.limit && Number.isFinite(options.limit) && options.limit > 0) {
+    search.set('limit', String(Math.floor(options.limit)));
+  }
+  if (options?.refresh) {
+    search.set('refresh', '1');
+    search.set('_t', String(Date.now()));
+  }
+
+  const response = await apiRequest<PlaidRecentTransactionsResponse>(
+    `/api/plaid/transactions/recent?${search.toString()}`,
+    { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { transactions: [], linked: false };
+}
+
+export interface PlaidHistoricalTransactionsResponse {
+  transactions: PlaidRecentTransaction[];
+  linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get historical bank transactions (last 2 years) across linked items.
+ * Returns newest first. Pass refresh: true to bypass cache.
+ */
+export async function getPlaidHistoricalTransactions(
+  walletAddress: string,
+  options?: { refresh?: boolean; limit?: number }
+): Promise<PlaidHistoricalTransactionsResponse | null> {
+  const search = new URLSearchParams();
+  search.set('walletAddress', walletAddress);
+  if (options?.limit && Number.isFinite(options.limit) && options.limit > 0) {
+    search.set('limit', String(Math.floor(options.limit)));
+  }
+  if (options?.refresh) {
+    search.set('refresh', '1');
+    search.set('_t', String(Date.now()));
+  }
+
+  const response = await apiRequest<PlaidHistoricalTransactionsResponse>(
+    `/api/plaid/transactions/historical?${search.toString()}`,
+    { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { transactions: [], linked: false };
+}
+
+export interface PortfolioHistoryPoint {
+  date: string; // YYYY-MM-DD
+  onchainUsd: number;
+  bankUsd: number;
+  totalUsd: number;
+}
+
+/**
+ * Portfolio value history (daily): on-chain stablecoins + Plaid bank. Auth-protected; backed by
+ * the server's snapshot store (first call backfills from transaction flows).
+ */
+export async function getPortfolioHistory(
+  walletAddress: string,
+  range: string = 'All'
+): Promise<{ points: PortfolioHistoryPoint[]; configured: boolean } | null> {
+  const enc = encodeURIComponent(walletAddress);
+  const response = await apiRequest<{ points: PortfolioHistoryPoint[]; configured: boolean }>(
+    `/api/portfolio/history?walletAddress=${enc}&range=${encodeURIComponent(range)}`
+  );
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/** Spend-by-day: day of month (1–31) -> total outflows for that day */
+export type SpendingByDay = Record<number, number>;
+
+export interface PlaidSpendResponse {
+  spendingByDay: SpendingByDay;
+  totalSpent: number;
+  linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get spend this month (outflows by day) for SpendTracker.
+ * Server caches responses; pass refresh: true to bypass cache.
+ */
+export async function getPlaidSpend(
+  walletAddress: string,
+  options?: { refresh?: boolean }
+): Promise<PlaidSpendResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.refresh ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidSpendResponse>(
+    `/api/plaid/transactions/spend?walletAddress=${encoded}${qs}`,
+    { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { spendingByDay: {}, totalSpent: 0, linked: false };
+}
+
+/**
+ * Bridge: get URL to open Bridge onboarding flow for direct deposit setup
+ */
+export interface BridgeOnboardingResponse {
+  url: string;
+  source?: 'existing_customer' | 'new_customer' | 'configured_url';
+  customerId?: string | null;
+  kycUrl?: string | null;
+  tosUrl?: string | null;
+}
+
+export async function getBridgeOnboardingUrl(
+  walletAddress: string,
+  options?: {
+    hasPlaidAccount?: boolean;
+    fullName?: string;
+    email?: string;
+    customerType?: 'individual' | 'business';
+  }
+): Promise<BridgeOnboardingResponse | null> {
+  const response = await apiRequest<BridgeOnboardingResponse>('/api/bridge/onboarding-url', {
+    method: 'POST',
+    body: JSON.stringify({
+      walletAddress,
+      ...(options?.hasPlaidAccount != null ? { hasPlaidAccount: options.hasPlaidAccount } : {}),
+      ...(options?.fullName ? { fullName: options.fullName } : {}),
+      ...(options?.email ? { email: options.email } : {}),
+      ...(options?.customerType ? { customerType: options.customerType } : {}),
+    }),
+  });
+  if (response.error || !response.data?.url) return null;
+  return response.data;
+}
+
+/**
+ * Bridge: get URL to open Bridge funding flow (ACH/wire) with wallet, amount, destination currency and network
+ */
+export async function getBridgeFundingUrl(
+  walletAddress: string,
+  amount: string,
+  destinationCurrency: string,
+  destinationNetwork: string
+): Promise<string | null> {
+  const response = await apiRequest<{ url: string }>('/api/bridge/funding-url', {
+    method: 'POST',
+    body: JSON.stringify({
+      walletAddress,
+      amount,
+      destinationCurrency,
+      destinationNetwork,
+    }),
+  });
+  if (response.error || !response.data?.url) return null;
+  return response.data.url;
+}
+
+export async function prepareSendTransfer(
+  payload: PrepareSendTransferRequest
+): Promise<PrepareSendTransferResponse | null> {
+  const response = await apiRequest<PrepareSendTransferResponse>('/api/send/transfers/prepare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Record a direct (non-escrow) wallet→wallet send so both parties get an immediate in-app
+ * notification without waiting on the on-chain watcher. Best-effort — the watcher is the fallback.
+ */
+export async function notifyDirectSend(input: {
+  to: string;
+  amount: number;
+  txHash?: string;
+  chainId?: number;
+}): Promise<void> {
+  try {
+    await apiRequest('/api/send/notify-direct', { method: 'POST', body: JSON.stringify(input) });
+  } catch {
+    // non-fatal; the transfer already happened on-chain
+  }
+}
+
+export async function confirmSendTransferLock(
+  id: number,
+  payload: ConfirmSendTransferLockRequest
+): Promise<ConfirmSendTransferLockResponse | null> {
+  const response = await apiRequest<ConfirmSendTransferLockResponse>(`/api/send/transfers/${id}/confirm-lock`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function listSendTransfers(limit: number = 50): Promise<SendTransferSummary[]> {
+  const response = await apiRequest<{ transfers: SendTransferSummary[] }>(`/api/send/transfers?limit=${limit}`);
+
+  if (response.error || !response.data) {
+    return [];
+  }
+
+  return response.data.transfers;
+}
+
+export async function getSendTransferById(id: number): Promise<SendTransferSummary | null> {
+  const response = await apiRequest<{ transfer: SendTransferSummary }>(`/api/send/transfers/${id}`);
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data.transfer;
+}
+
+export async function startClaim(claimToken: string): Promise<ClaimSession | null> {
+  const response = await apiRequest<ClaimSession>('/api/send/claim/start', {
+    method: 'POST',
+    body: JSON.stringify({ claimToken }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function verifyClaimOtp(
+  claimSessionId: number,
+  otp: string
+): Promise<VerifyClaimOtpResponse | null> {
+  const response = await apiRequest<VerifyClaimOtpResponse>('/api/send/claim/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionId, otp }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function resendClaimOtp(
+  claimSessionId: number
+): Promise<{ success: boolean; resendCount: number; otpExpiresAt: string; resendCooldownSeconds: number } | null> {
+  const response = await apiRequest<{
+    success: boolean;
+    resendCount: number;
+    otpExpiresAt: string;
+    resendCooldownSeconds: number;
+  }>('/api/send/claim/resend-otp', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionId }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function claimPayoutDebit(
+  claimSessionToken: string,
+  options?: { bridgeFullName?: string; bridgeEmail?: string; payoutSignature?: string }
+): Promise<ClaimPayoutResponse | null> {
+  const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/debit', {
+    method: 'POST',
+    body: JSON.stringify({
+      claimSessionToken,
+      ...(options?.payoutSignature ? { payoutSignature: options.payoutSignature } : {}),
+      ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
+      ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
+    }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function claimPayoutBank(
+  claimSessionToken: string,
+  options?: { bridgeFullName?: string; bridgeEmail?: string; payoutSignature?: string }
+): Promise<ClaimPayoutResponse | null> {
+  const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/bank', {
+    method: 'POST',
+    body: JSON.stringify({
+      claimSessionToken,
+      ...(options?.payoutSignature ? { payoutSignature: options.payoutSignature } : {}),
+      ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
+      ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
+    }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Claim to a wallet. `claimSignature` is the claim key's EIP-712 signature over
+ * Claim(transferId, recipientWallet), made in this browser from the claim link (lib/claimKey):
+ * ClaimEscrow releases the money only to the wallet the key signed for (audit H-4).
+ */
+export async function claimPayoutWallet(
+  claimSessionToken: string,
+  recipientWallet: string,
+  claimSignature: string,
+): Promise<ClaimPayoutResponse | null> {
+  const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/wallet', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionToken, recipientWallet, claimSignature }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function createSavingsIntent(
+  payload: CreateSavingsIntentRequest
+): Promise<CreateSavingsIntentResponse> {
+  const response = await apiRequest<CreateSavingsIntentResponse>('/api/savings/intents/create', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to create savings intent.');
+  }
+
+  return response.data;
+}
+
+export async function finalizeSavingsIntent(
+  intentToken: string,
+  fundingTxHash: string
+): Promise<FinalizeSavingsIntentResponse> {
+  const response = await apiRequest<FinalizeSavingsIntentResponse>('/api/savings/intents/finalize', {
+    method: 'POST',
+    body: JSON.stringify({ intentToken, fundingTxHash }),
+    timeout: 120000,
+  });
+
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to finalize savings intent.');
+  }
+
+  return response.data;
+}
+
+export async function refundSavingsIntent(
+  intentToken: string
+): Promise<RefundSavingsIntentResponse> {
+  const response = await apiRequest<RefundSavingsIntentResponse>('/api/savings/intents/refund', {
+    method: 'POST',
+    body: JSON.stringify({ intentToken }),
+    timeout: 120000,
+  });
+
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to refund savings intent.');
+  }
+
+  return response.data;
+}
+
+export interface BridgeVirtualAccount {
+  available: boolean;
+  bankName?: string | null;
+  accountNumber?: string | null;
+  routingNumber?: string | null;
+  accountLast4?: string | null;
+}
+
+export interface BridgeStatus {
+  configured: boolean;
+  /** Set when we couldn't reach /status at all — distinguishes "not set up" from "couldn't ask". */
+  error?: string;
+  customerId?: string | null;
+  /** Which of the account's emails Bridge already knows them by, if any. */
+  matchedEmail?: string | null;
+  verified: boolean;
+  kycStatus: string;
+  tosAccepted?: boolean;
+  baseEndorsement?: 'incomplete' | 'approved' | 'revoked';
+  payinFiat?: 'pending' | 'active' | 'inactive' | 'rejected';
+  payoutFiat?: 'pending' | 'active' | 'inactive' | 'rejected';
+  rejectionReason?: string | null;
+  virtualAccount: {
+    accountNumber: string | null;
+    routingNumber: string | null;
+    bankName: string | null;
+    beneficiary: string | null;
+    paymentRails?: string[];
+  } | null;
+}
+
+/** Bridge verification + USD account state for the signed-in member. Never creates anything. */
+export async function getBridgeStatus(): Promise<BridgeStatus> {
+  const r = await apiRequest<BridgeStatus>('/api/bridge/status');
+  if (r.error || !r.data) {
+    // Every failure used to collapse into `configured: false`, so a 403, a 404 and a genuinely
+    // unconfigured backend were indistinguishable — which hid a permission deadlock behind a
+    // "verification unavailable" message. Keep the safe default, but say why.
+    console.warn('[bridge] status unavailable:', r.error);
+    return { configured: false, verified: false, kycStatus: 'not_started', virtualAccount: null, error: r.error };
+  }
+  return r.data;
+}
+
+/** Hosted Bridge verification link (ToS first, then KYC). Reuses an existing Bridge customer. */
+export async function startBridgeKyc(
+  fullName: string,
+): Promise<{ url?: string; kycUrl?: string | null; tosUrl?: string | null; customerId?: string | null; message?: string }> {
+  const r = await apiRequest<{ url: string; kycUrl: string | null; tosUrl: string | null; customerId: string | null }>(
+    '/api/bridge/kyc-link',
+    { method: 'POST', body: JSON.stringify({ fullName }) },
+  );
+  return r.error || !r.data ? { message: r.error || 'Could not start verification.' } : r.data;
+}
+
+/** Open (or fetch) the member's USD account — this is what mints their account + routing numbers. */
+export async function openBridgeVirtualAccount(): Promise<BridgeVirtualAccount & { message?: string }> {
+  const r = await apiRequest<BridgeVirtualAccount>('/api/bridge/virtual-account', { method: 'POST' });
+  return r.error || !r.data ? { available: false, message: r.error } : r.data;
+}
+
+/**
+ * The signed-in member's Bridge virtual account (USDC funding via ACH account/routing).
+ * { available:false } if none. The customer is resolved server-side from the emails Privy verified
+ * for this session — deliberately NOT a parameter, since the response carries bank details.
+ */
+export async function getBridgeVirtualAccount(): Promise<BridgeVirtualAccount> {
+  const r = await apiRequest<BridgeVirtualAccount>('/api/bridge/virtual-account');
+  return r.error || !r.data ? { available: false } : r.data;
+}
+
+// --- Fully-gasless savings (Cash USDC ↔ Savings CLRUSD) + gasless Send lock ---
+
+export interface Eip712TypedData {
+  domain: { name: string; version: string; chainId: number; verifyingContract: string };
+  primaryType: string;
+  types: Record<string, { name: string; type: string }[]>;
+  message: Record<string, string>;
+}
+
+export interface PrepareGaslessSavingsResponse {
+  chainId: number;
+  action: 'deposit' | 'redeem';
+  vaultAddress: string;
+  token: string;
+  amountMicros: string;
+  typedData: Eip712TypedData;
+  submit: Record<string, string>;
+  approve?: { token: string; spender: string };
+}
+
+export async function prepareGaslessSavings(payload: {
+  action: 'deposit' | 'redeem';
+  ownerWallet: string;
+  amount: string;
+  chainId?: number;
+}): Promise<PrepareGaslessSavingsResponse> {
+  const response = await apiRequest<PrepareGaslessSavingsResponse>('/api/savings/gasless/prepare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to prepare transfer.');
+  }
+  return response.data;
+}
+
+export async function submitGaslessSavings(payload: {
+  action: 'deposit' | 'redeem';
+  chainId?: number;
+  signature: string;
+  submit: Record<string, string>;
+}): Promise<{ success: boolean; txHash: string; chainId: number; vaultAddress: string }> {
+  const response = await apiRequest<{ success: boolean; txHash: string; chainId: number; vaultAddress: string }>(
+    '/api/savings/gasless/submit',
+    { method: 'POST', body: JSON.stringify(payload), timeout: 120000 },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to complete transfer.');
+  }
+  return response.data;
+}
+
+/** Move USDC from a linked external wallet → the Clear smart wallet (gasless, EIP-3009). Prepare the
+ *  TransferWithAuthorization the linked wallet signs; the relayer submits it. */
+export async function prepareWalletTransfer(payload: {
+  fromWallet: string;
+  amount: string;
+  chainId?: number;
+}): Promise<{ chainId: number; token: string; amountMicros: string; typedData: Eip712TypedData; submit: Record<string, string> }> {
+  const response = await apiRequest<{ chainId: number; token: string; amountMicros: string; typedData: Eip712TypedData; submit: Record<string, string> }>(
+    '/api/savings/gasless/wallet-transfer/prepare',
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to prepare wallet transfer.');
+  }
+  return response.data;
+}
+
+export async function submitWalletTransfer(payload: {
+  chainId?: number;
+  signature: string;
+  submit: Record<string, string>;
+}): Promise<{ success: boolean; txHash: string; chainId: number }> {
+  const response = await apiRequest<{ success: boolean; txHash: string; chainId: number }>(
+    '/api/savings/gasless/wallet-transfer/submit',
+    { method: 'POST', body: JSON.stringify(payload), timeout: 120000 },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to complete wallet transfer.');
+  }
+  return response.data;
+}
+
+/** Record equity credits for an AA-submitted (client-side) savings deposit/redeem, by tx hash. */
+export async function recordGaslessSavings(p: {
+  action: 'deposit' | 'redeem';
+  amount: string;
+  txHash: string;
+  chainId: number;
+}): Promise<void> {
+  await apiRequest('/api/savings/gasless/record', { method: 'POST', body: JSON.stringify(p) });
+}
+
+export async function prepareSendLockAuthorization(id: number, claimToken: string): Promise<{
+  transferId: string;
+  chainId: number;
+  escrowAddress: string;
+  typedData: Eip712TypedData;
+}> {
+  const response = await apiRequest<{ transferId: string; chainId: number; escrowAddress: string; typedData: Eip712TypedData }>(
+    `/api/send/transfers/${id}/lock-authorization`,
+    { method: 'POST', body: JSON.stringify({ claimToken }) },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to prepare send.');
+  }
+  return response.data;
+}
+
+export async function submitSendLockAuthorization(
+  id: number,
+  signature: string,
+  claimToken: string,
+): Promise<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }> {
+  const response = await apiRequest<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }>(
+    `/api/send/transfers/${id}/submit-authorization`,
+    { method: 'POST', body: JSON.stringify({ signature, claimToken }), timeout: 120000 },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to complete send.');
+  }
+  return response.data;
+}
+
+/**
+ * Check server health (uses cached version to avoid race conditions)
+ * @deprecated Use checkServerHealthCached from serverHealth.ts instead
+ */
+export async function checkServerHealth(): Promise<boolean> {
+  // Import dynamically to avoid circular dependencies
+  const { checkServerHealthCached } = await import('./serverHealth.js');
+  return checkServerHealthCached();
+}
+
+export type MemberStatus =
+  | 'ONBOARDING'
+  | 'BASIC_ACTIVE'
+  | 'VERIFICATION_ELIGIBLE'
+  | 'VERIFICATION_PENDING'
+  | 'VERIFIED'
+  | 'RESTRICTED';
+
+export type MemberVerificationStatus =
+  | 'NOT_STARTED'
+  | 'ELIGIBLE'
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'RESTRICTED';
+
+export type MemberMembershipStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+export type MemberMembershipPlan = 'YEARLY' | 'LIFETIME' | null;
+
+export interface MemberRecordResponse {
+  id: number;
+  authSubject: string;
+  primaryWallet: string;
+  reownProfileUuid: string | null;
+  status: MemberStatus;
+  verificationStatus: MemberVerificationStatus;
+  membershipPlan: MemberMembershipPlan;
+  membershipStatus: MemberMembershipStatus;
+  residencyCountry: string | null;
+  settlementCurrency: string | null;
+  membershipRegistryMemberId: number | null;
+  membershipChainId: number | null;
+  membershipTxHash: string | null;
+  membershipSyncedAt: string | null;
+  membershipMetadataHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastAuthenticatedAt: string;
+}
+
+export interface MemberPublicProfileResponse {
+  username: string | null;
+  displayName: string | null;
+  bio: string | null;
+  timezone: string | null;
+  locale: string | null;
+  avatarUrl: string | null;
+  notificationsOptIn: boolean;
+  updatedAt: string;
+}
+
+export interface MemberPrivateProfileResponse {
+  legalName: string | null;
+  email: string | null;
+  phone: string | null;
+  cityRegion: string | null;
+  /** Where post goes, in the pieces a shipping label needs. Private, like the legal name. */
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressCity: string | null;
+  addressState: string | null;
+  addressPostalCode: string | null;
+}
+
+export interface MemberProfileViewResponse {
+  publicProfile: MemberPublicProfileResponse;
+  privateProfile: MemberPrivateProfileResponse | null;
+  privateProfileExists: boolean;
+  privateProfileLocked: boolean;
+}
+
+export interface MemberOnboardingResponse {
+  currentStep: string;
+  accessTrack: string;
+  accountMethod: string;
+  identityModeSelected: string;
+  referralSource: string | null;
+  inviteCode: string | null;
+  incomeSource: string | null;
+  reasons: string[];
+  goalsNote: string | null;
+  recoveryMethod: string | null;
+  cardWaitlist: boolean;
+  localPools: boolean;
+  draftStatus: 'in_progress' | 'submitted' | 'complete';
+  submittedAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+}
+
+export interface MemberSecuritySettingsResponse {
+  signatureLock: boolean;
+  sessionReview: boolean;
+  biometricAccess: boolean;
+  socialDiscovery: boolean;
+  transferAlerts: boolean;
+  /** Back the line with Savings and Earn in the background. Absent from an API that predates it: on. */
+  autoPledge?: boolean;
+  updatedAt: string;
+}
+
+export interface MemberVerificationSummaryResponse {
+  status: MemberVerificationStatus;
+  provider: string | null;
+  verificationLevel: string | null;
+  providerCustomerId: string | null;
+  providerCaseId: string | null;
+  requirements: unknown;
+  resultSummary: unknown;
+  submittedAt: string | null;
+  decidedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface MemberWalletResponse {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  description: string | null;
+  kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+  status: 'ACTIVE' | 'REMOVED';
+  isPrimary: boolean;
+  verifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberWalletLinkChallengeResponse {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  description: string | null;
+  kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+  message: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface MemberWalletLinkHandoffResponse {
+  token: string;
+  label: string | null;
+  description: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface MemberSocialAccountResponse {
+  id: number;
+  platform: string;
+  handle: string;
+  visibility: 'PUBLIC' | 'PRIVATE';
+  status: 'CONNECTED' | 'PENDING' | 'REMOVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberCapabilitiesResponse {
+  canEditProfile: boolean;
+  canJoinWaitlists: boolean;
+  canStartVerification: boolean;
+  canUsePlaid: boolean;
+  canUseBridge: boolean;
+  canAccessDirectDeposit: boolean;
+  canAccessCard: boolean;
+  canUseRegulatedTransfers: boolean;
+}
+
+export interface MemberTermsSummaryItemResponse {
+  documentType: string;
+  documentVersion: string;
+  acceptedAt: string;
+}
+
+export interface MemberBillingCustomerResponse {
+  memberId: number;
+  stripeCustomerId: string;
+  email: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberBillingCheckoutSessionResponse {
+  memberId: number;
+  stripeSessionId: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  plan: 'YEARLY' | 'LIFETIME';
+  mode: 'payment' | 'subscription';
+  status: string | null;
+  paymentStatus: string | null;
+  checkoutUrl: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  payload: unknown;
+}
+
+export interface MemberBillingSubscriptionResponse {
+  memberId: number;
+  stripeSubscriptionId: string;
+  stripeCustomerId: string | null;
+  plan: 'YEARLY' | 'LIFETIME';
+  status: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  lastInvoiceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberBillingPaymentResponse {
+  id: number;
+  memberId: number;
+  stripePaymentIntentId: string | null;
+  stripeInvoiceId: string | null;
+  stripeCheckoutSessionId: string | null;
+  plan: 'YEARLY' | 'LIFETIME';
+  amountTotal: number | null;
+  currency: string | null;
+  status: string;
+  payload: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberBillingSummaryResponse {
+  customer: MemberBillingCustomerResponse | null;
+  latestCheckoutSession: MemberBillingCheckoutSessionResponse | null;
+  subscription: MemberBillingSubscriptionResponse | null;
+  latestPayment: MemberBillingPaymentResponse | null;
+}
+
+export interface MemberAccountCenterResponse {
+  member: MemberRecordResponse;
+  profile: MemberProfileViewResponse;
+  onboarding: MemberOnboardingResponse;
+  security: MemberSecuritySettingsResponse;
+  verification: MemberVerificationSummaryResponse;
+  wallets: MemberWalletResponse[];
+  socialAccounts: MemberSocialAccountResponse[];
+  capabilities: MemberCapabilitiesResponse;
+  terms: MemberTermsSummaryItemResponse[];
+}
+
+export async function bootstrapMemberAccount(): Promise<{
+  member: MemberRecordResponse;
+  onboarding: MemberOnboardingResponse;
+  capabilities: MemberCapabilitiesResponse;
+} | null> {
+  const response = await apiRequest<{
+    member: MemberRecordResponse;
+    onboarding: MemberOnboardingResponse;
+    capabilities: MemberCapabilitiesResponse;
+  }>('/api/members/me/bootstrap', {
+    method: 'PUT',
+    body: JSON.stringify({}),
+  });
+
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/** Save my XMTP messaging address (the embedded EOA) so peers can resolve it from my wallet. */
+export async function saveMyXmtpAddress(xmtpAddress: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>('/api/members/me/xmtp-address', {
+    method: 'POST',
+    body: JSON.stringify({ xmtpAddress }),
+  });
+  return !r.error;
+}
+
+/** Resolve a member's XMTP messaging address (embedded EOA) from a wallet address, for starting a DM. */
+export async function resolveXmtpAddress(walletAddress: string): Promise<string | null> {
+  const r = await apiRequest<{ xmtpAddress: string | null }>(`/api/members/xmtp-address/${walletAddress.toLowerCase()}`);
+  return r.error || !r.data ? null : r.data.xmtpAddress;
+}
+
+export async function getMemberAccountCenter(): Promise<MemberAccountCenterResponse | null> {
+  const response = await apiRequest<MemberAccountCenterResponse>('/api/members/me/account-center');
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function getMemberCapabilities(): Promise<MemberCapabilitiesResponse | null> {
+  const response = await apiRequest<{ capabilities: MemberCapabilitiesResponse }>('/api/members/me/capabilities');
+  if (response.error || !response.data) return null;
+  return response.data.capabilities;
+}
+
+export async function updateMemberOnboarding(
+  payload: Partial<{
+    currentStep: string | null;
+    accessTrack: string | null;
+    accountMethod: string | null;
+    identityModeSelected: string | null;
+    referralSource: string | null;
+    inviteCode: string | null;
+    incomeSource: string | null;
+    reasons: string[] | null;
+    goalsNote: string | null;
+    recoveryMethod: string | null;
+    residencyCountry: string | null;
+    settlementCurrency: string | null;
+    membershipPlan: MemberMembershipPlan;
+    cardWaitlist: boolean;
+    localPools: boolean;
+  }>
+): Promise<{ onboarding: MemberOnboardingResponse; capabilities: MemberCapabilitiesResponse | null } | null> {
+  const response = await apiRequest<{
+    onboarding: MemberOnboardingResponse;
+    capabilities: MemberCapabilitiesResponse | null;
+  }>('/api/members/me/onboarding', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function submitMemberOnboarding(): Promise<MemberAccountCenterResponse | null> {
+  const response = await apiRequest<MemberAccountCenterResponse>('/api/members/me/onboarding/submit', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function updateMemberProfile(
+  payload: Partial<{
+    username: string | null;
+    displayName: string | null;
+    bio: string | null;
+    timezone: string | null;
+    locale: string | null;
+    avatarUrl: string | null;
+    notificationsOptIn: boolean;
+    residencyCountry: string | null;
+    settlementCurrency: string | null;
+    legalName: string | null;
+    email: string | null;
+    phone: string | null;
+    cityRegion: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    addressCity: string | null;
+    addressState: string | null;
+    addressPostalCode: string | null;
+  }>
+): Promise<{ profile: MemberProfileViewResponse; capabilities: MemberCapabilitiesResponse | null } | null> {
+  const response = await apiRequest<{
+    profile: MemberProfileViewResponse;
+    capabilities: MemberCapabilitiesResponse | null;
+  }>('/api/members/me/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/** Upload the member's avatar (compressed data URL). Returns the served avatar URL. */
+/**
+ * The member's Lithic banking identity and, when it exists, the numbers their employer needs.
+ *
+ * `hasCashAccount` is separate from `provisioned` on purpose: a member can be banked (cards work)
+ * while the program still has no routable Financial Account, and the two states read differently.
+ */
+export interface LithicAccountResponse {
+  configured: boolean;
+  provisioned: boolean;
+  status?: string;
+  statusReasons?: string[];
+  hasCashAccount?: boolean;
+  /** The last four only. The full number is getSpendableAccountNumber, behind Face ID. */
+  deposit: { routingNumber: string; accountNumberLast4: string; accountType: string } | null;
+}
+
+
+export interface BankIdentity {
+  legalName: string | null;
+  address: {
+    address1: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
+    country: string | null;
+  } | null;
+}
+
+/**
+ * The account holder as the linked bank knows them, for the verification screen to show.
+ *
+ * Nulls are ordinary: Plaid Identity is optional per institution, so a member at a bank without it
+ * types what a member at one confirms.
+ */
+export async function getBankIdentity(wallet: string): Promise<BankIdentity> {
+  const r = await apiRequest<BankIdentity>(`/api/plaid/identity?walletAddress=${encodeURIComponent(wallet.toLowerCase())}`);
+  return r.error || !r.data ? { legalName: null, address: null } : r.data;
+}
+
+/** Submit identity details for verification. They pass through to the card issuer; we keep none. */
+export async function submitIdentity(input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  dob: string;
+  governmentId: string;
+  address: { address1: string; address2?: string; city: string; state: string; postal_code: string; country?: string };
+}): Promise<{ ok: boolean; status?: string; kycStatus?: string; error?: string }> {
+  const r = await apiRequest<{ status: string; kycStatus: string | null }>('/api/lithic/account', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (r.error) return { ok: false, error: r.error };
+  return { ok: true, status: r.data?.status, kycStatus: r.data?.kycStatus ?? undefined };
+}
+
+
+export interface RequiredDocumentInfo {
+  entityToken: string;
+  validDocuments: string[];
+  statusReasons: string[];
+}
+export interface UploadTarget {
+  imageType: 'FRONT' | 'BACK';
+  uploadUrl: string;
+  uploadToken: string;
+}
+
+/** What the card issuer still wants a photo of. Empty when nothing is outstanding. */
+export async function getRequiredDocuments(): Promise<RequiredDocumentInfo[]> {
+  const r = await apiRequest<{ required: RequiredDocumentInfo[] }>('/api/lithic/documents');
+  return r.error || !r.data ? [] : r.data.required;
+}
+
+/** Ask the issuer where to put the images. Returns their URLs — we are not a destination. */
+export async function startDocumentUpload(
+  documentType: string,
+  entityToken: string,
+): Promise<{ documentToken: string; targets: UploadTarget[] } | { error: string }> {
+  const r = await apiRequest<{ documentToken: string; targets: UploadTarget[] }>('/api/lithic/documents', {
+    method: 'POST',
+    body: JSON.stringify({ documentType, entityToken }),
+  });
+  if (r.error || !r.data) return { error: r.error ?? 'Could not start the upload' };
+  return r.data;
+}
+
+/**
+ * PUT one image straight to the issuer.
+ *
+ * Deliberately a bare `fetch`, not `apiRequest`: this does not go to our API, and it must not carry
+ * our session headers to somebody else's storage. The photo never reaches a server of ours — that
+ * is the entire point of doing it this way rather than accepting an upload and forwarding it.
+ */
+export async function putDocumentImage(uploadUrl: string, file: File): Promise<boolean> {
+  try {
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function getLithicAccount(): Promise<LithicAccountResponse | null> {
+  const r = await apiRequest<LithicAccountResponse>('/api/lithic/account');
+  return r.error ? null : (r.data ?? null);
+}
+
+/**
+ * Spendable account details, read from Lithic as the surface opens: holder, bank, routing number,
+ * the account number's last four, account type. `no-store` so neither the browser nor the service
+ * worker keeps them (public/sw.js also never caches /api/lithic/account*).
+ */
+export async function getSpendableAccountDetails(): Promise<MaskedRead> {
+  const r = await apiRequest<{ configured: boolean; details: MaskedAccountDetails | null }>('/api/lithic/account-details', {
+    cache: 'no-store',
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not load your account details.' };
+  return r.data;
+}
+
+/**
+ * The full account number. The server never serves it on the session alone (middleware/stepUp's
+ * requireReauth): with Face ID it wants a fresh check, which apiRequest asks for and retries once;
+ * without Face ID it wants a sign-in made in the last ten minutes, and its refusal says so (`reauth`).
+ * Callers ask first (lib/accountDetails' obtainFullNumber). Held by the caller in component memory,
+ * never stored.
+ */
+export async function getSpendableAccountNumber(): Promise<FullNumberRead> {
+  const r = await apiRequest<{ accountNumber: string }>('/api/lithic/account-details/account-number', {
+    cache: 'no-store',
+  });
+  if (r.error || !r.data?.accountNumber) {
+    // Without Face ID the server wants a fresh sign-in; with no way to confirm at all, Face ID set up.
+    const reauth = r.code === 'REAUTH_REQUIRED' ? 'sign_in' : r.code === 'STEP_UP_UNAVAILABLE' ? 'set_up' : undefined;
+    return { error: r.error || 'We could not load your account number.', ...(reauth ? { reauth } : {}) };
+  }
+  return { accountNumber: r.data.accountNumber };
+}
+
+/** The app's source for the Spendable account details surface. */
+export const liveAccountDetails: AccountDetailsSource = {
+  readMasked: getSpendableAccountDetails,
+  readFullNumber: getSpendableAccountNumber,
+};
+
+/**
+ * Lithic cards — spec step 8.
+ *
+ * These work in sandbox today without Financial Accounts: a card can be issued, frozen, limited and
+ * revealed. What it cannot do until Financial Accounts are enabled is SETTLE, because there is no
+ * balance behind it. So the controls on this page are real while the money behind them is not yet.
+ */
+export interface MemberCard {
+  token: string;
+  type: string;
+  state: string;
+  lastFour: string | null;
+  memo: string | null;
+  spendLimitCents: number;
+  spendLimitDuration: string | null;
+  frozen: boolean;
+  /** The post, from the issuer's shipped event. Null until it leaves, and always null for virtual. */
+  shippedAt: string | null;
+  trackingNumber: string | null;
+  shippingMethod: string | null;
+  createdAt: string;
+}
+
+/**
+ * How a card call reports failure.
+ *
+ * `unavailable` is the integration being switched off (LITHIC_API_KEY unset — the server says
+ * 'Cards unavailable'), which is not something a member can retry. Everything else is a failure
+ * they can. Collapsing both to `null` is what made pressing Activate look like pressing nothing.
+ */
+export interface CardResult<T> {
+  value: T | null;
+  error?: string;
+  /** The integration is switched off (no LITHIC_API_KEY). Nothing the member can do. */
+  unavailable?: boolean;
+  /**
+   * The member has no Lithic account holder yet, so there is nothing to issue a card against.
+   *
+   * Distinct from `unavailable` because the cause is different and so is the fix: the key is set
+   * and Lithic is answering, but provisioning needs KYC fields (date of birth, government id,
+   * street address) that no screen collects and no code path submits. Not a retry, and not an
+   * outage — a step that does not exist yet.
+   */
+  needsSetup?: boolean;
+}
+
+function cardFailure<T>(error: string): CardResult<T> {
+  return {
+    value: null,
+    error,
+    unavailable: /unavailable/i.test(error),
+    // The server's exact words. Matched here rather than shown, because "Member is not
+    // provisioned" is a sentence about our database, not about the person reading it.
+    needsSetup: /not provisioned/i.test(error),
+  };
+}
+
+/**
+ * The member's cards.
+ *
+ * An empty list and a failed read used to be the same `[]`, and the card page renders "no cards"
+ * as **Activate card** — so a member who has a card was shown a button to create one whenever the
+ * read hiccuped. That is worse than the silent Activate failure: it does not merely fail to
+ * inform, it asserts something false about their account.
+ */
+export async function getCards(): Promise<CardResult<MemberCard[]>> {
+  const r = await apiRequest<{ configured: boolean; cards: MemberCard[] }>('/api/lithic/cards');
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.cards ?? [] };
+}
+
+/** Issue a virtual card — what "Activate card" does. */
+/**
+ * Issue a virtual card.
+ *
+ * Returns the reason on failure rather than collapsing to null. Null told the caller "no card" and
+ * nothing else, so a 503 from an unconfigured Lithic and a successful no-op were the same value —
+ * and pressing Activate produced no card, no error and no clue.
+ *
+ * `unavailable` separates "this isn't switched on yet" from "that didn't work", because a member
+ * should be told to wait in the first case and to try again in the second.
+ */
+
+export interface CardTransaction {
+  id: string;
+  name: string;
+  at: string;
+  /** What the merchant asked for at the swipe. */
+  amountCents: number;
+  /** What is still held — 0 once voided, a different figure once it clears for one. */
+  heldCents?: number;
+  /** Voided. The row stays, marked: a charge that vanishes is one the member still remembers. */
+  reversed?: boolean;
+  mcc: string | null;
+  city: string | null;
+  state: string | null;
+  draws: Array<{ source: string; amountCents: number }>;
+  cardToken: string;
+  /** What it drew on credit, and how much of that has been repaid (oldest purchase first). */
+  creditCents?: number;
+  creditRepaidCents?: number;
+  /**
+   * The card credit fee on this purchase (decision 55), in cents; 0 or absent when it carried none.
+   * Never part of `amountCents`, which is the merchant's figure.
+   */
+  creditFeeCents?: number;
+  /** `charged` while owed, `returned` after a full refund; `released` and `waived` were never charged. */
+  creditFeeState?: 'charged' | 'returned' | 'released' | 'waived' | null;
+  creditFeeReturned?: boolean;
+  /** How much of the fee has been given back so far, in cents. */
+  creditFeeReturnedCents?: number;
+}
+
+/** Card credit fees over a window: what was charged, and what of it was given back, in cents. */
+export interface CreditFeeWindow {
+  chargedCents: number;
+  returnedCents: number;
+}
+
+export interface CardCreditFees {
+  /** Whether the fee is charged now, and its amount in cents (0 while it is not set). */
+  fee: { cents: number; on: boolean };
+  /** This cycle, when a cycle start was given. */
+  cycle: CreditFeeWindow | null;
+  /** January 1 to now. */
+  yearToDate: CreditFeeWindow;
+}
+
+/**
+ * The card credit fee for the statement view: this cycle's total and the year to date (Reg Z
+ * §1026.7(b)(6)). Null when it could not be read.
+ */
+export async function getCardCreditFees(cycleStartSeconds?: number): Promise<CardCreditFees | null> {
+  const query = cycleStartSeconds && cycleStartSeconds > 0 ? `?cycleStart=${Math.floor(cycleStartSeconds)}` : '';
+  const r = await apiRequest<CardCreditFees>(`/api/lithic/cards/credit-fees${query}`);
+  return r.error || !r.data ? null : r.data;
+}
+
+/**
+ * What the member's cards have spent.
+ *
+ * These are approved AUTHORIZATIONS. The amount can move before settlement — a tip added, a fuel
+ * pump authorizing a round number — so this is what was approved, which is also what a member sees
+ * on the day.
+ */
+export async function getCardTransactions(limit = 50): Promise<CardResult<CardTransaction[]>> {
+  const r = await apiRequest<{ transactions: CardTransaction[] }>(`/api/lithic/cards/transactions?limit=${limit}`);
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.transactions ?? [] };
+}
+
+export async function createCard(memo?: string): Promise<CardResult<MemberCard>> {
+  const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards', {
+    method: 'POST',
+    body: JSON.stringify(memo ? { memo } : {}),
+  });
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
+}
+
+/**
+ * Order a physical card, posted to the address on the member's identity record.
+ *
+ * Shipping is required by the issuer and is not asked for again here: it comes from Personal
+ * information, so a card cannot be sent somewhere the identity record has never heard of.
+ */
+export async function orderPhysicalCard(
+  shipping: { firstName: string; lastName: string; address1: string; address2?: string; city: string; state: string; postalCode: string },
+  memo?: string,
+): Promise<CardResult<MemberCard>> {
+  const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards/physical', {
+    method: 'POST',
+    body: JSON.stringify(memo ? { shipping, memo } : { shipping }),
+  });
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
+}
+
+/**
+ * Activate the card that came in the post.
+ *
+ * The digits are checked against the card we posted, on the server as well as the screen: a check
+ * that only exists in the browser is not one, and this is the only evidence anybody has that the
+ * member is holding it.
+ */
+export async function activateCard(token: string, lastFour: string): Promise<CardResult<MemberCard>> {
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/activate`,
+    { method: 'POST', body: JSON.stringify({ lastFour }) },
+  );
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
+}
+
+/** Freeze or unfreeze. Reports why it failed — a toggle that springs back explains nothing. */
+export async function setCardFrozen(token: string, frozen: boolean): Promise<CardResult<MemberCard>> {
+  // Freezing is always one tap — it is what you do when something is wrong. Unfreezing is not.
+  if (!frozen) {
+    const denied = await stepUpDenied();
+    if (denied) return cardFailure(denied);
+  }
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/freeze`,
+    { method: 'POST', body: JSON.stringify({ frozen }) },
+  );
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
+}
+
+export async function setCardSpendLimit(
+  token: string,
+  spendLimitCents: number,
+  duration = 'MONTHLY',
+): Promise<MemberCard | null> {
+  // Changing what the card can spend: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return null;
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/spend-limit`,
+    { method: 'POST', body: JSON.stringify({ spendLimitCents, duration }) },
+  );
+  return r.error ? null : (r.data?.card ?? null);
+}
+
+/**
+ * A short-lived URL for Lithic's card-details iframe.
+ *
+ * Returns a URL, never card data. The browser loads it directly from Lithic, so the PAN and CVV
+ * never pass through our servers — which is why this is a URL and not a number.
+ */
+/** A session for the modern embedded card UI: the SDK exchanges it for the card's own frames. */
+export async function getCardEmbedSession(
+  token: string,
+  /** 'pin' asks for the issuer's PIN field instead of the card's numbers. */
+  kind: 'card' | 'pin' = 'card',
+): Promise<{ session: string; environment: 'sandbox' | 'production' } | null> {
+  const r = await apiRequest<{ session: string; environment: 'sandbox' | 'production' }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/embed-session${kind === 'pin' ? '?type=pin' : ''}`,
+  );
+  return r.error || !r.data?.session ? null : r.data;
+}
+
+export async function getCardEmbedUrl(
+  token: string,
+  /** The sheet's ground, so the issuer's frame is styled for the one it opens in. */
+  theme: 'light' | 'dusk' | 'dark' = 'light',
+): Promise<string | null> {
+  const r = await apiRequest<{ url: string }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/embed?theme=${theme}`,
+  );
+  return r.error ? null : (r.data?.url ?? null);
+}
+
+export async function uploadMemberAvatar(dataUrl: string): Promise<{ avatarUrl: string } | null> {
+  const response = await apiRequest<{ avatarUrl: string }>('/api/members/me/avatar', {
+    method: 'POST',
+    body: JSON.stringify({ dataUrl }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function deleteMemberAvatar(): Promise<boolean> {
+  const response = await apiRequest<{ ok: boolean }>('/api/members/me/avatar', { method: 'DELETE' });
+  return !response.error;
+}
+
+/** The member's account switches, read on their own (Settings and the background pledge). */
+export async function getMemberSecurity(): Promise<MemberSecuritySettingsResponse | null> {
+  const response = await apiRequest<{ security: MemberSecuritySettingsResponse }>('/api/members/me/security');
+  if (response.error || !response.data) return null;
+  return response.data.security;
+}
+
+export async function updateMemberSecurity(
+  payload: Partial<{
+    signatureLock: boolean;
+    sessionReview: boolean;
+    biometricAccess: boolean;
+    socialDiscovery: boolean;
+    transferAlerts: boolean;
+    autoPledge: boolean;
+  }>
+): Promise<MemberSecuritySettingsResponse | null> {
+  const response = await apiRequest<{ security: MemberSecuritySettingsResponse }>('/api/members/me/security', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.security;
+}
+
+export async function acceptMemberTerms(documentType: string, documentVersion: string): Promise<{
+  terms: MemberTermsSummaryItemResponse[];
+  capabilities: MemberCapabilitiesResponse | null;
+} | null> {
+  const response = await apiRequest<{
+    terms: MemberTermsSummaryItemResponse[];
+    capabilities: MemberCapabilitiesResponse | null;
+  }>('/api/members/me/terms/accept', {
+    method: 'POST',
+    body: JSON.stringify({ documentType, documentVersion }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function createMemberWallet(payload: {
+  label?: string | null;
+  description?: string | null;
+  walletAddress: string;
+  kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+  status?: 'ACTIVE' | 'REMOVED';
+}): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>('/api/members/me/wallets', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function createMemberWalletLinkHandoff(payload: {
+  label: string;
+  description?: string | null;
+}): Promise<MemberWalletLinkHandoffResponse | null> {
+  const response = await apiRequest<{ handoff: MemberWalletLinkHandoffResponse }>(
+    '/api/members/me/wallet-link-handoffs',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (response.error || !response.data) return null;
+  return response.data.handoff;
+}
+
+export async function updateMemberWallet(
+  walletId: number,
+  payload: Partial<{
+    label: string | null;
+    description: string | null;
+    walletAddress: string | null;
+    kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+    status: 'ACTIVE' | 'REMOVED';
+  }>
+): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(`/api/members/me/wallets/${walletId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function deleteMemberWallet(walletId: number): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(`/api/members/me/wallets/${walletId}`, {
+    method: 'DELETE',
+  });
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function createMemberWalletLinkChallenge(payload: {
+  walletAddress: string;
+  label?: string | null;
+  description?: string | null;
+  kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+}): Promise<MemberWalletLinkChallengeResponse | null> {
+  const response = await apiRequest<{ challenge: MemberWalletLinkChallengeResponse }>(
+    '/api/members/me/wallet-links/challenge',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (response.error || !response.data) return null;
+  return response.data.challenge;
+}
+
+export async function prepareMemberWalletLinkHandoff(payload: {
+  token: string;
+  walletAddress: string;
+}): Promise<{
+  message: string;
+  handoff: Omit<MemberWalletLinkHandoffResponse, 'token'>;
+} | null> {
+  const response = await apiRequest<{
+    message: string;
+    handoff: Omit<MemberWalletLinkHandoffResponse, 'token'>;
+  }>('/api/member-links/wallet-link-handoffs/prepare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function completeMemberWalletLinkHandoff(payload: {
+  token: string;
+  walletAddress: string;
+  signature: string;
+  kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+}): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(
+    '/api/member-links/wallet-link-handoffs/complete',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function verifyMemberWalletLink(payload: {
+  challengeId: number;
+  signature: string;
+}): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(
+    '/api/members/me/wallet-links/verify',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function createMemberSocialAccount(payload: {
+  platform: string;
+  handle: string;
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  status?: 'CONNECTED' | 'PENDING' | 'REMOVED';
+}): Promise<MemberSocialAccountResponse[] | null> {
+  const response = await apiRequest<{ socialAccounts: MemberSocialAccountResponse[] }>('/api/members/me/socials', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.socialAccounts;
+}
+
+export async function updateMemberSocialAccount(
+  socialId: number,
+  payload: Partial<{
+    platform: string | null;
+    handle: string | null;
+    visibility: 'PUBLIC' | 'PRIVATE';
+    status: 'CONNECTED' | 'PENDING' | 'REMOVED';
+  }>
+): Promise<MemberSocialAccountResponse[] | null> {
+  const response = await apiRequest<{ socialAccounts: MemberSocialAccountResponse[] }>(`/api/members/me/socials/${socialId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.socialAccounts;
+}
+
+export async function deleteMemberSocialAccount(socialId: number): Promise<MemberSocialAccountResponse[] | null> {
+  const response = await apiRequest<{ socialAccounts: MemberSocialAccountResponse[] }>(`/api/members/me/socials/${socialId}`, {
+    method: 'DELETE',
+  });
+  if (response.error || !response.data) return null;
+  return response.data.socialAccounts;
+}
+
+export async function getMemberMembershipSummary(): Promise<{
+  member: MemberRecordResponse;
+  billing: MemberBillingSummaryResponse;
+} | null> {
+  const response = await apiRequest<{
+    member: MemberRecordResponse;
+    billing: MemberBillingSummaryResponse;
+  }>('/api/members/me/membership');
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function createMemberMembershipCheckout(payload: {
+  plan: 'YEARLY' | 'LIFETIME';
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{
+  session: { url: string; sessionId: string };
+  billing: MemberBillingSummaryResponse | null;
+} | null> {
+  const response = await apiRequest<{
+    session: { url: string; sessionId: string };
+    billing: MemberBillingSummaryResponse | null;
+  }>('/api/members/me/membership/checkout', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  if (!response.data) return null;
+  return response.data;
+}
+
+// ---- Clear Pay (rent/bill → equity-credit ledger) ----
+
+export type PayBillerType = 'rent' | 'utility' | 'subscription' | 'card' | 'phone' | 'other';
+
+export interface PayBiller {
+  id: string;
+  name: string;
+  payee: string | null;
+  type: PayBillerType;
+  defaultAmount: number;
+  dueDay: number | null;
+  source: 'manual' | 'plaid';
+  plaidStreamId: string | null;
+  payable: boolean;
+  payoutLast4: string | null;
+  payoutBank: string | null;
+  bridgeExternalAccountId: string | null;
+  portalUrl: string | null;
+  address: string | null;
+  reminders: boolean;
+}
+
+export interface PaySummary {
+  dueThisMonth: number;
+  paid30: number;
+  totalEquity: number;
+  vestedEquity: number;
+  pendingEquity: number;
+  equityThisMonth: number;
+  streak: number;
+  sources: { match: number; rent: number; bills: number };
+  series: { label: string; rent: number; equity: number }[];
+}
+
+export interface CreditTierRow {
+  /** Tier kind as the contract names it, e.g. "SAVINGS", "ASSET_INTERNAL". */
+  kind: string;
+  limitCents: number;
+  usedCents: number;
+  /** Carry rate in basis points per cycle. */
+  rateBps: number;
+  /** Principal drawn, before carry. */
+  principalCents: number;
+  /** Carry accrued so far this cycle. Already inside `usedCents`. */
+  carryCents: number;
+  /** Pledged under this kind, before haircut. */
+  collateralValueCents: number;
+  /** The haircut applied to it, in basis points. */
+  haircutBps: number;
+  active: boolean;
+}
+
+export interface CreditCycleRow {
+  /** Unix seconds. Zero when no line has ever been opened. */
+  issuedAt: number;
+  expiration: number;
+  graceLength: number;
+  paused: boolean;
+  /** The network's cycle, carried whether or not this member has a period running. */
+  networkCycleSeconds: number;
+}
+
+export interface CreditTermPlanRow {
+  planId: number;
+  principalCents: number;
+  outstandingCents: number;
+  repaidCents: number;
+  installments: number;
+  installmentCents: number;
+  scheduleTotalCents: number;
+  /** Unix seconds — the shelf shows the month beside the name. */
+  openedAt: number;
+  /** Carry in basis points per cycle, as the plan was written. */
+  rateBps: number;
+  /**
+   * The name a member would recognise, from the charge that opened this plan. Null when the plan
+   * did not come from a charge, or its row has since gone — the shelf shows the plan either way.
+   * The only field on this route that is not read from chain.
+   */
+  merchantName: string | null;
+  closed: boolean;
+  /** What clears the plan today, carry included. */
+  owedCents: number;
+  /** How far behind its schedule the plan is. */
+  arrearsCents: number;
+  installmentsDue: number;
+  /** Anything behind plus the next installment — what squares the plan through its next due date. */
+  nextPaymentCents: number;
+  /** Unix seconds. Null once every installment has come due. */
+  nextDueAt: number | null;
+  /** Unix seconds the plan can be declared in default, if behind. Null when on time. */
+  defaultsAt?: number | null;
+  /** Re-splits left (of three), and the earliest the next is allowed. */
+  splitChangesLeft?: number;
+  nextSplitAt?: number | null;
+}
+
+export interface CreditState {
+  wallet: string;
+  tiers: CreditTierRow[];
+  plans: CreditTermPlanRow[];
+  cycle: CreditCycleRow | null;
+  /**
+   * Savings that must stay put because credit is drawn against them, in cents. Null when unread.
+   *
+   * What CLRUSD enforces on transfer, so what a member may withdraw is `balance − this`. Not
+   * `balance − pledged`: a fully pledged line nobody has drawn on encumbers nothing.
+   */
+  savingsEncumberedCents: number | null;
+  /**
+   * Card authorizations held right now, per tier, in cents — the one field here not from chain.
+   *
+   * An authorization is a hold rather than a settled borrow, so the contracts do not carry it and
+   * are right not to: it can still be voided. But the member cannot spend it twice from the moment
+   * it is approved, and a live charge against a line reading "not drawn" is this page contradicting
+   * the card in their pocket.
+   */
+  pendingCardDraws?: Partial<Record<'cash' | 'savings' | 'asset' | 'income' | 'boost', number>>;
+  /**
+   * The ceiling a split plan draws on, read from TermIssuer — separate from the revolving tiers,
+   * which are backed by pledged collateral. Null when that read failed, which is not a member with
+   * no line.
+   */
+  term: CreditTermCeiling | null;
+  /**
+   * Phase 2: whether the member's state of residence is attested on chain. Lines and plans need it,
+   * so `false` means credit waits for it ("not confirmed yet"), not that the member was declined.
+   * Null or absent: unread, or a network from before Phase 2.
+   */
+  stateConfirmed?: boolean | null;
+  /** Phase 2b (12.3-12.5): cycles judged, cure notice, Boost cap, excess. Null before Phase 2b. */
+  standing?: import('@/lib/cycleStanding').CycleStanding | null;
+  source: string;
+  complete: boolean;
+}
+
+export interface CreditTermCeiling {
+  limitCents: number;
+  usedCents: number;
+  availableCents: number;
+  /**
+   * Owed on the ledger but on no open plan and no tier — carry a plan left behind when it closed,
+   * which a refund does over whatever had accrued. Belongs with the rest of the carry a member is
+   * being charged, because that is what it is.
+   */
+  carryOwedCents: number;
+  /** Term credit paused by a default, and what it wrote off and has been paid back of it. */
+  suspended?: boolean;
+  writtenOffCents?: number;
+  recoveredCents?: number;
+}
+
+/**
+ * A member's credit line, read from the contracts that hold it.
+ *
+ * Returns null on failure rather than an empty line, and the distinction is the point: the route
+ * answers 503 when it could not read the chain, because a member whose RPC blipped has not had
+ * their credit withdrawn. A caller that cannot tell those apart will tell them they have.
+ */
+export async function getCredit(wallet: string): Promise<CreditState | null> {
+  const r = await apiRequest<CreditState>(`/api/credit/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface EarnPoolRow {
+  apyPercent: number;
+  lentCents: number;
+  capacityCents: number;
+  positionCents: number;
+  /** Position above cost basis, summed from the pool's own deposit and withdrawal events. */
+  earnedCents: number;
+}
+
+export interface EarnBondRow {
+  bondId: string;
+  faceCents: number;
+  paidCents: number;
+  /** What it is worth today — what the credit line lends against, not the face. */
+  worthTodayCents: number;
+  maturityUnix: number;
+  /** When it was issued. The term is this to maturity; months left is now to maturity. */
+  issuedAtUnix: number;
+  redeemed: boolean;
+  /** The collection that issued it, which is the one to redeem or roll it with. */
+  collection?: string;
+  /** Whether it rolls into a new bond at maturity rather than paying out. */
+  autoRoll?: boolean;
+  /** Pledged and holding up drawn credit, so it can't be redeemed from the app. */
+  backsDrawnCredit?: boolean;
+}
+
+export interface EarnTermRow {
+  months: number;
+  priceCents: number;
+  faceCents: number;
+  ratePercent: number;
+}
+
+export interface EarnState {
+  wallet: string;
+  /** Null when the pool is not deployed — a different thing from a pool holding nothing. */
+  pool: EarnPoolRow | null;
+  bonds: EarnBondRow[];
+  terms: EarnTermRow[];
+  /** Bonds accrued, bonds already redeemed, and the pool — everything Earn has made. */
+  earnedToDateCents: number;
+  source: string;
+  complete: boolean;
+}
+
+/** The lending pool and the member's bonds, priced by the contracts rather than by a copy. */
+export async function getEarn(wallet: string): Promise<EarnState | null> {
+  const r = await apiRequest<EarnState>(`/api/credit/${wallet.toLowerCase()}/earn`);
+  return r.error || !r.data ? null : r.data;
+}
+
+/**
+ * ZIP prefixes the co-op serves.
+ *
+ * Read rather than compiled in: regions open when enough people are waiting, so this changes
+ * without the product changing. Returns null when it cannot be read, which the caller must not
+ * treat as "nowhere is served" -- see the note at the call site.
+ */
+export async function getServedZipPrefixes(): Promise<string[] | null> {
+  const r = await apiRequest<{ zipPrefixes: string[] }>(`/api/members/served-regions`);
+  return r.error || !r.data ? null : r.data.zipPrefixes;
+}
+
+export async function getPaySummary(wallet: string): Promise<PaySummary | null> {
+  const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/summary`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface AssuranceClaim {
+  token: string;
+  wallet: string;
+  protectionId: string;
+  protectionName: string;
+  detail: string;
+  status: 'open' | 'more_needed' | 'paid' | 'declined';
+  decision: string | null;
+  paidCents: number | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+/**
+ * File a claim.
+ *
+ * Returns the stored claim or an error message, and never a quiet success. The whole flow is built
+ * against a form that looked like it worked on the day somebody needed it to, so a failure has to
+ * reach the member in words — the server says "nothing was sent" for exactly this reason.
+ */
+export async function fileAssuranceClaim(
+  wallet: string,
+  input: { protectionId: string; protectionName: string; detail: string },
+): Promise<{ claim?: AssuranceClaim; error?: string }> {
+  const r = await apiRequest<{ claim: AssuranceClaim }>(
+    `/api/assurance/${wallet.toLowerCase()}/claims`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  if (r.error || !r.data) return { error: r.error || 'We could not file that just now. Nothing was sent.' };
+  return { claim: r.data.claim };
+}
+
+/** A payment this member can dispute, read by the server from its own records. */
+export interface DisputeCandidateResponse {
+  kind: 'card' | 'partner' | 'member';
+  ref: string;
+  label: string;
+  amountCents: number;
+  at: string;
+}
+
+/** `include` is the payment a member tapped "Something wrong" on; the server puts it first. */
+export async function getDisputeCandidates(include?: {
+  kind: DisputeCandidateResponse['kind'];
+  ref: string;
+}): Promise<DisputeCandidateResponse[] | null> {
+  const query = include ? `?kind=${include.kind}&ref=${encodeURIComponent(include.ref)}` : '';
+  const r = await apiRequest<{ candidates: DisputeCandidateResponse[] }>(`/api/disputes/candidates${query}`);
+  return r.error || !r.data ? null : r.data.candidates;
+}
+
+/**
+ * File a dispute. `network` says whether a card dispute reached Lithic; the dispute is ours either
+ * way, and a refusal there is reported rather than hidden.
+ */
+export async function fileDispute(input: {
+  kind: 'card' | 'partner' | 'member';
+  ref: string;
+  detail: string;
+  reason?: string;
+}): Promise<{ token?: string; networkFiled?: boolean | null; error?: string }> {
+  const r = await apiRequest<{ dispute: { token: string }; network: { filed: boolean } | null }>('/api/disputes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not file that just now. Nothing was sent.' };
+  return { token: r.data.dispute.token, networkFiled: r.data.network ? r.data.network.filed : null };
+}
+
+/** A repayment against the member's credit, whichever way it was made. */
+export interface CreditRepaymentEntry {
+  id: string;
+  at: string;
+  amountCents: number;
+  method: 'manual' | 'auto' | 'savings' | 'bank';
+  txHash: string | null;
+  /** Set when this paid a term plan. */
+  plan?: { planId: number; name: string | null; index: number; count: number };
+}
+
+export async function getCreditRepayments(wallet: string): Promise<CreditRepaymentEntry[]> {
+  const r = await apiRequest<{ repayments: CreditRepaymentEntry[] }>(`/api/credit/${wallet.toLowerCase()}/repayments`);
+  return r.error || !r.data ? [] : r.data.repayments;
+}
+
+/** A shop charge the member paid now, from their Clear cash — for Activity. */
+export interface ChargePayment {
+  code: string;
+  merchantName: string;
+  amountCents: number;
+  /** `refunded` once the shop refunded it; `disputed` while a dispute is open. */
+  status: string;
+  paidAt: string | null;
+  txHash: string | null;
+  /** The transfers that brought a refund back, when there was one. */
+  refundTxHashes: string[];
+}
+
+/** A shop charge the member has had, whatever became of it: their Charges page and Activity. */
+export interface MemberCharge {
+  code: string;
+  merchantName: string;
+  amountCents: number;
+  status: 'pending' | 'resolving' | 'approved' | 'declined' | 'expired' | 'cancelled' | 'refunded' | 'disputed';
+  /** Paid from their Clear cash rather than over time. */
+  paidNow: boolean;
+  /** Over time: how many payments. Null when paid now, or not answered. */
+  splitInto: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  expiresAt: string;
+  /** They pressed Pay now and it is going through. */
+  payingNow: boolean;
+}
+
+/** Every charge the member has had, newest first. Null when it couldn't be read (keep what's shown). */
+export async function getChargeHistory(): Promise<MemberCharge[] | null> {
+  const r = await apiRequest<{ charges: MemberCharge[] }>('/api/charges/history');
+  return r.error || !r.data ? null : r.data.charges;
+}
+
+export async function getChargePayments(): Promise<ChargePayment[]> {
+  const r = await apiRequest<{ payments: ChargePayment[] }>('/api/charges');
+  return r.error || !r.data ? [] : r.data.payments;
+}
+
+/** Record a repayment the member made on chain. The server reads the amount from the transaction. */
+export async function recordCreditRepayment(
+  wallet: string,
+  txHash: string,
+): Promise<{ ok: boolean; revolvingCents?: number; error?: string }> {
+  const r = await apiRequest<{ ok: boolean; revolvingCents?: number }>(`/api/credit/${wallet.toLowerCase()}/repayments`, {
+    method: 'POST',
+    body: JSON.stringify({ txHash }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'Repaid on chain, but not yet recorded.' } : r.data;
+}
+
+/** Whether USDC deposits repay card debt automatically, and what is waiting to be repaid. */
+/** Auto-clear as the chain has it (Phase 2b, 12.2), plus the Savings draw allowance (12.7). */
+export interface AutoRepayState {
+  enabled: boolean;
+  dueCents: number;
+  /** 0 = income-backed and Boost only (the default), 1 = everything. Null when unread. */
+  scope?: number | null;
+  /** Switched off network-wide by the governed switch. */
+  pausedForEveryone?: boolean;
+  /** Owed within the scope now, for "Clear $X now?". Null when unread. */
+  owedInScopeCents?: number | null;
+  /** What card spending may still draw against Savings; -1 = no limit. Null when unread. */
+  savingsDrawAllowanceCents?: number | null;
+  /** The card credit fee, for the disclosure before card spending from Savings is allowed. */
+  cardCreditFee?: { cents: number; on: boolean };
+}
+
+export async function getAutoRepay(wallet: string): Promise<AutoRepayState | null> {
+  const r = await apiRequest<AutoRepayState>(`/api/credit/${wallet.toLowerCase()}/auto-repay`);
+  return r.error || !r.data ? null : r.data;
+}
+
+/** Tell the server the member's wallet set it on chain. The server checks the chain before recording. */
+export async function recordAutoRepay(wallet: string, enabled: boolean, scope?: number): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/auto-repay`, {
+    method: 'POST',
+    body: JSON.stringify(scope === undefined ? { enabled } : { enabled, scope }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'Could not save that just now.' } : { ok: true };
+}
+
+/**
+ * Auto-clear by signature (Phase 2b): the `AutoClear` typed data to sign, then the signature for the
+ * server to submit (`setAutoClearWithSignature`). How onboarding turns it on.
+ */
+export async function prepareAutoClear(wallet: string, on: boolean, scope: number): Promise<{ typedData?: AutoClearTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: AutoClearTypedData }>(`/api/credit/${wallet.toLowerCase()}/auto-clear/prepare`, {
+    method: 'POST',
+    body: JSON.stringify({ on, scope }),
+  });
+  return r.error || !r.data?.typedData ? { error: r.error || 'Could not get that ready.' } : { typedData: r.data.typedData };
+}
+
+export async function submitAutoClear(
+  wallet: string,
+  input: { on: boolean; scope: number; deadline: string; signature: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/auto-clear`, {
+    method: 'POST',
+    body: JSON.stringify({ ...input, deadline: Number(input.deadline) }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'Could not set that just now.' } : { ok: true };
+}
+
+// --- The server-side lock (api middleware/sessionLock) ---
+
+/** Whether the server has locked this session. Null if it could not say. */
+export async function getSessionLock(): Promise<boolean | null> {
+  const r = await apiRequest<{ locked: boolean }>('/api/session', { cache: 'no-store' });
+  return r.error || !r.data ? null : r.data.locked;
+}
+
+/** The member used the app. Sent at most once a minute; survives the page being hidden. */
+export async function reportActive(): Promise<void> {
+  await apiRequest('/api/session/active', { method: 'POST', keepalive: true });
+}
+
+// --- Server-verified Face ID (lib/serverStepUp; api routes/stepUp) ---
+
+export type StepUpGrant = { token: string; expiresAt: number };
+
+export async function getStepUpStatus(): Promise<{ enrolled: boolean; available: boolean } | null> {
+  const r = await apiRequest<{ enrolled: boolean; available: boolean }>('/api/step-up/status', { cache: 'no-store' });
+  return r.error || !r.data ? null : r.data;
+}
+
+export async function getStepUpRegisterOptions(): Promise<{ options?: unknown; error?: string }> {
+  const r = await apiRequest<{ options: unknown }>('/api/step-up/register/options', { method: 'POST' });
+  return r.error || !r.data ? { error: r.error || 'Face ID could not start.' } : { options: r.data.options };
+}
+
+export async function verifyStepUpRegistration(response: unknown): Promise<StepUpGrant | null> {
+  const r = await apiRequest<StepUpGrant>('/api/step-up/register/verify', { method: 'POST', body: JSON.stringify({ response }) });
+  return r.error || !r.data ? null : r.data;
+}
+
+export async function getStepUpOptions(): Promise<{ options?: unknown; notEnrolled?: boolean; error?: string }> {
+  const r = await apiRequest<{ options: unknown }>('/api/step-up/options', { method: 'POST' });
+  if (r.error || !r.data) return { error: r.error || 'Face ID could not start.', notEnrolled: /No Face ID set up/.test(r.error ?? '') };
+  return { options: r.data.options };
+}
+
+export async function verifyStepUp(response: unknown): Promise<StepUpGrant | null> {
+  const r = await apiRequest<StepUpGrant>('/api/step-up/verify', { method: 'POST', body: JSON.stringify({ response }) });
+  return r.error || !r.data ? null : r.data;
+}
+
+/**
+ * Face ID off for the whole account, for a passkey that is gone from the phone: ours, and the Privy
+ * one the app cannot unlink without the passkey itself. Needs a sign-in made minutes ago.
+ */
+export async function resetFaceId(): Promise<{ ok: boolean; message?: string }> {
+  const r = await apiRequest<{ removed: number }>('/api/step-up/face-id/reset', { method: 'POST' });
+  return r.error ? { ok: false, message: r.error } : { ok: true };
+}
+
+/** Face ID off: the server stops asking. Takes a Face ID check itself (the retry in apiRequest). */
+export async function removeStepUp(): Promise<boolean> {
+  const r = await apiRequest<{ removed: number }>('/api/step-up', { method: 'DELETE' });
+  return !r.error;
+}
+
+/** The member's own disputes, newest first. */
+export async function getMyDisputes(): Promise<import('@/lib/clearModel').MemberDispute[] | null> {
+  const r = await apiRequest<{ disputes: import('@/lib/clearModel').MemberDispute[] }>('/api/disputes');
+  return r.error || !r.data ? null : r.data.disputes;
+}
+
+/**
+ * Put a lost (or withdrawn) partner dispute back on a plan: the terms to sign, then the signature.
+ * `TermIssuer.openPlan` opens it only on the member's own signature (audit H-4).
+ */
+export async function prepareDisputeReopen(token: string): Promise<{ typedData?: PlanTermsTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: PlanTermsTypedData }>(`/api/disputes/${encodeURIComponent(token)}/reopen/prepare`, { method: 'POST' });
+  return r.error || !r.data?.typedData ? { error: r.error || 'We could not get this plan ready. Nothing was charged.' } : { typedData: r.data.typedData };
+}
+
+export async function submitDisputeReopen(token: string, signed: { terms: PlanTerms; signature: string }): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ reopened: boolean }>(`/api/disputes/${encodeURIComponent(token)}/reopen`, {
+    method: 'POST',
+    body: JSON.stringify({ terms: signed.terms, signature: signed.signature }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'We could not do that just now. Nothing was charged.' } : { ok: true };
+}
+
+/**
+ * Re-split, Phase 2 (spec item 6). Whether the new split needs the member's signature; when it does,
+ * the `Resplit` typed data, what the new schedule spreads (ledger units) and the installment length.
+ */
+export async function prepareResplit(
+  wallet: string,
+  planId: number,
+  installments: number,
+): Promise<
+  | { needsSignature: false; error?: undefined }
+  | { needsSignature: true; typedData: ResplitTypedData; remaining: string; installmentLength: string; error?: undefined }
+  | { error: string }
+> {
+  const r = await apiRequest<
+    { needsSignature: false } | { needsSignature: true; typedData: ResplitTypedData; remaining: string; installmentLength: string }
+  >(`/api/credit/${wallet.toLowerCase()}/plans/${planId}/split/prepare`, { method: 'POST', body: JSON.stringify({ installments }) });
+  if (r.error || !r.data) return { error: r.error || 'We could not get this change ready. Nothing has changed.' };
+  return r.data;
+}
+
+export async function submitResplit(
+  wallet: string,
+  planId: number,
+  input: { installments: number; rateBps: string; deadline: string; signature: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/plans/${planId}/split`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'That did not go through. The split is unchanged.' } : { ok: true };
+}
+
+/** The kinds a member pledges (Phase 4b, L-I). */
+export type PledgeKindName = 'SAVINGS' | 'POOL_SHARE' | 'BOND';
+
+/**
+ * What the member is asked to sign to pledge what they hold and have not pledged: `Pledge` (an
+ * amount) or `PledgeItem` (a bond), read by the server from the chain.
+ */
+export async function preparePledge(
+  kind: PledgeKindName,
+): Promise<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData; maturityInstruction?: string[] } | { error: string }> {
+  // `maturityInstruction`: for a bond, the lines of the Maturity Instruction whose hash is signed (MB-05 5.6).
+  const r = await apiRequest<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData; maturityInstruction?: string[] }>('/api/savings/pledge/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ kind }),
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not get this pledge ready. Nothing was pledged.' };
+  return r.data;
+}
+
+/** The member's signed pledge, for the server to submit. */
+export async function submitPledge(input: {
+  kind: PledgeKindName;
+  amount?: string;
+  itemId?: string;
+  deadline: number;
+  signature: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>('/api/savings/pledge/submit', { method: 'POST', body: JSON.stringify(input) });
+  return r.error || !r.data ? { ok: false, error: r.error || 'That did not go through. Nothing was pledged.' } : { ok: true };
+}
+
+/**
+ * What the claim link signs to pay a transfer out by card or bank (Phase 2d, L-D):
+ * `PayoutClaim(transferId, payoutTreasury, payoutRefHash)` in the escrow's domain.
+ */
+export async function prepareClaimPayout(
+  claimSessionToken: string,
+  method: 'DEBIT' | 'BANK',
+): Promise<{ typedData: ReturnType<typeof payoutClaimTypedData> } | { error: string }> {
+  const r = await apiRequest<{ typedData: ReturnType<typeof payoutClaimTypedData> }>('/api/send/claim/payout/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionToken, method }),
+  });
+  return r.error || !r.data ? { error: r.error || 'We could not get this payout ready.' } : r.data;
+}
+
+/** Take a dispute back before it is decided. */
+export async function withdrawMyDispute(token: string): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ withdrawn: boolean }>(`/api/disputes/${encodeURIComponent(token)}/withdraw`, { method: 'POST' });
+  return r.error || !r.data ? { ok: false, error: r.error || 'We could not withdraw that just now.' } : { ok: true };
+}
+
+export async function listAssuranceClaims(wallet: string): Promise<AssuranceClaim[]> {
+  const r = await apiRequest<{ claims: AssuranceClaim[] }>(`/api/assurance/${wallet.toLowerCase()}/claims`);
+  return r.error || !r.data ? [] : r.data.claims;
+}
+
+export async function getPayBillers(wallet: string): Promise<PayBiller[]> {
+  const r = await apiRequest<{ billers: PayBiller[] }>(`/api/pay/${wallet.toLowerCase()}/billers`);
+  return r.error || !r.data ? [] : r.data.billers;
+}
+
+export interface PayBillerPayment {
+  id: string;
+  name: string | null;
+  type: string;
+  amount: number;
+  paidAt: string;
+  onTime: boolean;
+  source: string;
+  period: string;
+}
+
+/** A biller's payment history for the bill detail view. */
+export async function getPayBillerPayments(wallet: string, id: string): Promise<PayBillerPayment[]> {
+  const r = await apiRequest<{ payments: PayBillerPayment[] }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}/payments`);
+  return r.error || !r.data ? [] : r.data.payments;
+}
+
+export interface MerchantMeta {
+  portalUrl: string | null;
+  address: string | null;
+}
+
+/** Shared per-merchant portal/address (keyed by merchant name; auto-fills matching bills). */
+export async function getMerchantMeta(wallet: string, name: string): Promise<MerchantMeta | null> {
+  const r = await apiRequest<{ meta: MerchantMeta | null }>(`/api/pay/${wallet.toLowerCase()}/merchant-meta?name=${encodeURIComponent(name)}`);
+  return r.error || !r.data ? null : r.data.meta;
+}
+
+/** Set a merchant's portal and/or address. Only the fields passed are changed. */
+export async function setMerchantMeta(wallet: string, name: string, patch: Partial<MerchantMeta>): Promise<MerchantMeta | null> {
+  const r = await apiRequest<{ meta: MerchantMeta }>(`/api/pay/${wallet.toLowerCase()}/merchant-meta`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, ...patch }),
+  });
+  return r.error || !r.data ? null : r.data.meta;
+}
+
+export interface SpendGroups {
+  /** Normalized merchant name to the group the member moved it to. */
+  groups: Record<string, string>;
+  grouping: boolean;
+}
+
+/**
+ * The member's spend-group rules — what Activity's Change groups sets.
+ *
+ * Kept per member rather than per device: a move is a rule about a merchant, and the figures it
+ * changes are the same on every screen they open.
+ */
+export async function getSpendGroups(wallet: string): Promise<SpendGroups | null> {
+  const r = await apiRequest<SpendGroups>(`/api/pay/${wallet.toLowerCase()}/spend-groups`);
+  return r.error || !r.data ? null : r.data;
+}
+
+/** Move a merchant into a group (an empty group clears the rule), or turn grouping off. */
+export async function setSpendGroups(
+  wallet: string,
+  patch: { name?: string; group?: string | null; grouping?: boolean },
+): Promise<SpendGroups | null> {
+  const r = await apiRequest<SpendGroups>(`/api/pay/${wallet.toLowerCase()}/spend-groups`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  });
+  return r.error || !r.data ? null : r.data;
+}
+
+export async function addPayBiller(
+  wallet: string,
+  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null; portalUrl?: string | null; address?: string | null },
+): Promise<PayBiller | null> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers`, { method: 'POST', body: JSON.stringify(b) });
+  return r.error || !r.data ? null : r.data.biller;
+}
+
+export async function updatePayBiller(
+  wallet: string,
+  id: string,
+  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null; portalUrl?: string | null; address?: string | null },
+): Promise<PayBiller | null> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(b),
+  });
+  return r.error || !r.data ? null : r.data.biller;
+}
+
+/** Toggle reminders for a biller (any source). */
+export async function setPayBillerReminders(wallet: string, id: string, enabled: boolean): Promise<boolean> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}/reminders`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+  return !r.error;
+}
+
+export async function setPayBillerPayout(
+  wallet: string,
+  id: string,
+  p: { accountNumber: string; routingNumber: string; bankName?: string },
+): Promise<PayBiller | null> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}/payout`, {
+    method: 'POST',
+    body: JSON.stringify(p),
+  });
+  return r.error || !r.data ? null : r.data.biller;
+}
+
+export async function payBiller(
+  wallet: string,
+  p: { billerId: string; amount: number; source?: 'usdc' | 'bank'; email?: string },
+): Promise<{ success: boolean; providerReference?: string; status?: string; message?: string }> {
+  // Paying a bill moves money: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { success: false, message: denied };
+  const r = await apiRequest<{ success: boolean; providerReference?: string; status?: string }>(
+    `/api/pay/${wallet.toLowerCase()}/pay`,
+    { method: 'POST', body: JSON.stringify(p), timeout: 120000 },
+  );
+  if (r.error || !r.data) return { success: false, message: r.error || 'Payment failed.' };
+  return r.data;
+}
+
+// --- Autopay (recurring gasless Cash→Savings deposits via a ZeroDev session) ---
+
+export interface AutopayRule {
+  id: string;
+  wallet: string;
+  chainId: number;
+  kind: 'savings_deposit';
+  amountUsdc: number;
+  cadence: 'weekly' | 'monthly';
+  nextRunAt: string;
+  runsLeft: number | null;
+  status: 'active' | 'paused' | 'cancelled' | 'exhausted' | 'expired';
+  lastRunAt: string | null;
+  lastTx: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface AutopaySummary {
+  rules: AutopayRule[];
+  /** What auto-save has deposited since 1 January, in USD. Null from an API that predates it. */
+  savedThisYear: number | null;
+}
+
+/**
+ * The member's autopay rules and what they have saved this year, or null when they could not be read.
+ *
+ * Null rather than an empty list, so a page can tell "no auto-save" from "the read failed" and keep
+ * what it last showed instead of telling a member their auto-save stopped because a request timed out.
+ */
+export async function readAutopay(wallet: string): Promise<AutopaySummary | null> {
+  const r = await apiRequest<{ rules: AutopayRule[]; savedThisYear?: number }>(`/api/autopay/${wallet.toLowerCase()}`);
+  if (r.error || !r.data) return null;
+  return { rules: r.data.rules, savedThisYear: typeof r.data.savedThisYear === 'number' ? r.data.savedThisYear : null };
+}
+
+export interface AutopayMandate {
+  depositor: string;
+  token: string;
+  amountPerRun: string;
+  interval: number;
+  maxRuns: number;
+  startAt: number;
+  expiry: number;
+  nonce: string;
+  signature: string;
+}
+
+export async function createAutopayRule(
+  wallet: string,
+  p: {
+    chainId: number;
+    amountUsdc: number;
+    cadence: 'weekly' | 'monthly';
+    runs?: number;
+    mandate: AutopayMandate;
+    permit?: { value: string; deadline: number; v: number; r: string; s: string };
+  },
+): Promise<AutopayRule> {
+  const r = await apiRequest<{ rule: AutopayRule }>(`/api/autopay/${wallet.toLowerCase()}`, {
+    method: 'POST',
+    body: JSON.stringify(p),
+  });
+  if (r.error || !r.data) throw new Error(r.error || 'Could not set up Auto-save.');
+  return r.data.rule;
+}
+
+export async function cancelAutopayRule(wallet: string, id: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/autopay/${wallet.toLowerCase()}/${id}`, { method: 'DELETE' });
+  return !r.error;
+}
+
+/** Execute one autopay deposit immediately (verification / "run now"). */
+export async function runAutopayRule(
+  wallet: string,
+  id: string,
+): Promise<{ ok: boolean; txHash?: string; message?: string }> {
+  // Running a transfer now: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { ok: false, message: denied };
+  const r = await apiRequest<{ ok: boolean; txHash?: string }>(`/api/autopay/${wallet.toLowerCase()}/${id}/run`, {
+    method: 'POST',
+    timeout: 120000,
+  });
+  if (r.error || !r.data) return { ok: false, message: r.error || 'Run failed.' };
+  return r.data;
+}
+
+/**
+ * Withdraw (cash-out): USDC on Base → a Plaid-linked bank via Bridge off-ramp.
+ * `rail`: 'ach' (1–3 days, free) or 'ach_same_day' (today, carries our 1% developer fee).
+ * The Bridge customer is resolved server-side from the session's verified emails.
+ */
+export async function withdrawToBank(
+  wallet: string,
+  p: { amount: number; plaidAccountId: string; rail?: 'ach' | 'ach_same_day' },
+): Promise<{
+  success: boolean;
+  providerReference?: string;
+  status?: string;
+  message?: string;
+  /** Bridge's deposit address — the caller MUST send USDC here to fund the transfer. */
+  depositAddress?: string;
+  depositAmount?: string;
+}> {
+  // Money leaving to a bank: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { success: false, message: denied };
+  const r = await apiRequest<{
+    success: boolean;
+    providerReference?: string;
+    status?: string;
+    depositAddress?: string;
+    depositAmount?: string;
+  }>(
+    `/api/withdraw/${wallet.toLowerCase()}`,
+    { method: 'POST', body: JSON.stringify(p), timeout: 120000 },
+  );
+  if (r.error || !r.data) return { success: false, message: r.error || 'Withdrawal failed.' };
+  return r.data;
+}
+
+export async function deletePayBiller(wallet: string, id: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}`, { method: 'DELETE' });
+  return !r.error;
+}
+
+export async function syncPlaidBillers(
+  wallet: string,
+  streams: { streamId: string; name: string; amount: number; dueDay: number; type: PayBillerType }[],
+): Promise<PayBiller[]> {
+  const r = await apiRequest<{ billers: PayBiller[] }>(`/api/pay/${wallet.toLowerCase()}/billers/plaid`, {
+    method: 'POST',
+    body: JSON.stringify({ streams }),
+  });
+  return r.error || !r.data ? [] : r.data.billers;
+}
+
+export async function recordPayment(
+  wallet: string,
+  payment: { billerId?: string | null; name: string; type: PayBillerType; amount: number; dueDate?: string | null; period: string; source?: 'manual' | 'detected'; txRef?: string | null },
+): Promise<{ creditAwarded: number; onTime: boolean; duplicate: boolean } | null> {
+  const r = await apiRequest<{ creditAwarded: number; onTime: boolean; duplicate: boolean }>(`/api/pay/${wallet.toLowerCase()}/payments`, {
+    method: 'POST',
+    body: JSON.stringify(payment),
+  });
+  return r.error || !r.data ? null : r.data;
+}
+
+/** Detect on-time recurring-bill payments from Plaid + accrue credits; returns the fresh summary. */
+export async function reconcilePay(wallet: string): Promise<PaySummary | null> {
+  const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/reconcile`, { method: 'POST' });
+  return r.error || !r.data ? null : r.data;
+}
+
+// ---- Contacts + member directory ----
+
+export interface ApiContact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  wallet: string | null;
+}
+
+export async function getContacts(wallet: string): Promise<ApiContact[]> {
+  const r = await apiRequest<{ contacts: ApiContact[] }>(`/api/contacts/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? [] : r.data.contacts;
+}
+
+export async function addContactApi(
+  wallet: string,
+  c: { name: string; email?: string | null; phone?: string | null; wallet?: string | null },
+): Promise<ApiContact | null> {
+  const r = await apiRequest<{ contact: ApiContact }>(`/api/contacts/${wallet.toLowerCase()}`, { method: 'POST', body: JSON.stringify(c) });
+  return r.error || !r.data ? null : r.data.contact;
+}
+
+export async function updateContactApi(
+  wallet: string,
+  id: string,
+  c: { name?: string; email?: string | null; phone?: string | null; wallet?: string | null },
+): Promise<ApiContact | null> {
+  const r = await apiRequest<{ contact: ApiContact }>(`/api/contacts/${wallet.toLowerCase()}/${id}`, { method: 'PATCH', body: JSON.stringify(c) });
+  return r.error || !r.data ? null : r.data.contact;
+}
+
+export async function deleteContactApi(wallet: string, id: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/contacts/${wallet.toLowerCase()}/${id}`, { method: 'DELETE' });
+  return !r.error;
+}
+
+// ---- In-app notifications (persistent, wallet-scoped) ----
+export interface ApiNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  createdAt: string;
+}
+// ── Clear Visa card (Bridge / Stripe Issuing) — P2. All no-op with configured:false until the backend has keys.
+export interface ClearCard {
+  ownerWallet: string;
+  status: string; // 'pending' | 'active' | 'inactive' | 'canceled'
+  last4: string | null;
+  brand: string | null;
+  stripeCardId: string | null;
+}
+export async function getClearCard(): Promise<{ configured: boolean; card: ClearCard | null }> {
+  const r = await apiRequest<{ configured: boolean; card: ClearCard | null }>('/api/cards');
+  return r.error || !r.data ? { configured: false, card: null } : r.data;
+}
+/** The Bridge/Stripe card's own activation. Same contract as the Lithic one, for the same reason. */
+export async function activateClearCard(
+  input: { walletAddress: string; chainId: number },
+): Promise<CardResult<{ status: string; card: ClearCard | null }>> {
+  const r = await apiRequest<{ status: string; card: ClearCard | null }>('/api/cards/activate', { method: 'POST', body: JSON.stringify(input) });
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data ?? null };
+}
+export async function createCardEphemeralKey(input: { nonce: string; apiVersion: string }): Promise<{ secret: string; cardId: string } | null> {
+  // Showing card numbers: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return null;
+  const r = await apiRequest<{ secret: string; cardId: string }>('/api/cards/ephemeral-key', { method: 'POST', body: JSON.stringify(input) });
+  return r.error || !r.data ? null : r.data;
+}
+export async function freezeClearCard(active: boolean): Promise<CardResult<ClearCard>> {
+  // `active` true turns the card back on. Freezing stays one tap; unfreezing asks for Face ID.
+  if (active) {
+    const denied = await stepUpDenied();
+    if (denied) return cardFailure(denied);
+  }
+  const r = await apiRequest<{ card: ClearCard }>('/api/cards/freeze', { method: 'POST', body: JSON.stringify({ active }) });
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
+}
+
+export async function getNotifications(wallet: string): Promise<{ notifications: ApiNotification[]; unreadCount: number }> {
+  const r = await apiRequest<{ notifications: ApiNotification[]; unreadCount: number }>(`/api/notifications/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? { notifications: [], unreadCount: 0 } : r.data;
+}
+export async function markNotificationRead(wallet: string, id: string): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/${id}/read`, { method: 'POST' });
+}
+export async function markAllNotificationsRead(wallet: string): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/read-all`, { method: 'POST' });
+}
+export async function archiveNotificationApi(wallet: string, id: string): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/${id}/archive`, { method: 'POST' });
+}
+export async function savePushSubscription(wallet: string, subscription: unknown): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/subscribe`, { method: 'POST', body: JSON.stringify({ subscription }) });
+}
+
+/** Request money from a Clear member — server resolves them by email/phone and notifies them. */
+export async function createPaymentRequest(input: { recipientEmail?: string; recipientPhone?: string; amount: number; note?: string }): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>('/api/requests', { method: 'POST', body: JSON.stringify(input) });
+  return !r.error;
+}
+/** Send yourself a test notification (verifies the in-app + push pipeline). */
+export async function sendTestNotification(wallet: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/notifications/${wallet.toLowerCase()}/test`, { method: 'POST' });
+  return !r.error;
+}
+
+/** Directory lookup: resolve a wallet from a known email/phone (exact match, opt-out aware). */
+export async function lookupDirectory(
+  wallet: string,
+  q: { email?: string; phone?: string },
+): Promise<{ wallet: string | null; matchedOn?: 'email' | 'phone' }> {
+  const params = new URLSearchParams();
+  if (q.email) params.set('email', q.email);
+  if (q.phone) params.set('phone', q.phone);
+  const r = await apiRequest<{ wallet: string | null; matchedOn?: 'email' | 'phone' }>(
+    `/api/contacts/${wallet.toLowerCase()}/lookup?${params.toString()}`,
+  );
+  return r.error || !r.data ? { wallet: null } : r.data;
+}
+
+/** Directory reverse-lookup: wallet addresses → member display names ({ lowercasedWallet: name }). */
+export async function lookupDirectoryNames(wallet: string, wallets: string[]): Promise<Record<string, string>> {
+  const list = wallets.map((w) => w.trim()).filter(Boolean);
+  if (list.length === 0) return {};
+  const params = new URLSearchParams({ wallets: list.join(',') });
+  const r = await apiRequest<{ names: Record<string, string> }>(
+    `/api/contacts/${wallet.toLowerCase()}/names?${params.toString()}`,
+  );
+  return r.error || !r.data ? {} : r.data.names;
+}
+
+export async function getDirectoryOptout(wallet: string): Promise<boolean> {
+  const r = await apiRequest<{ optedOut: boolean }>(`/api/contacts/${wallet.toLowerCase()}/optout`);
+  return r.error || !r.data ? false : r.data.optedOut;
+}
+
+export async function setDirectoryOptout(wallet: string, optout: boolean): Promise<boolean> {
+  const r = await apiRequest<{ optedOut: boolean }>(`/api/contacts/${wallet.toLowerCase()}/optout`, { method: 'PUT', body: JSON.stringify({ optout }) });
+  return r.error || !r.data ? optout : r.data.optedOut;
+}
+
+// ---- Onramper (fiat → USDC on-ramp) ----
+
+export interface OnramperQuote {
+  ramp: string; // provider id
+  payout: number; // USDC received (≈ USD)
+  paymentMethod?: string;
+  networkFee?: number;
+  transactionFee?: number;
+  rate?: number;
+  [k: string]: unknown;
+}
+
+/** Aggregated buy quotes (card/Apple Pay) for a fiat amount → USDC on Base. */
+export async function getOnramperQuotes(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress?: string;
+  fiat?: string;
+  crypto?: string;
+  country?: string;
+}): Promise<OnramperQuote[]> {
+  const params = new URLSearchParams({ amount: String(p.amount), paymentMethod: p.paymentMethod, country: p.country || 'us' });
+  if (p.walletAddress) params.set('walletAddress', p.walletAddress);
+  if (p.fiat) params.set('fiat', p.fiat);
+  if (p.crypto) params.set('crypto', p.crypto);
+  const r = await apiRequest<unknown>(`/api/onramper/quotes?${params.toString()}`);
+  const d = r.data as { message?: unknown; quotes?: unknown } | unknown[] | null;
+  const arr = Array.isArray(d) ? d : Array.isArray((d as any)?.message) ? (d as any).message : Array.isArray((d as any)?.quotes) ? (d as any).quotes : [];
+  return arr as OnramperQuote[];
+}
+
+/** Create an Onramper checkout intent → returns the provider checkout URL to redirect to. */
+export async function createOnramperCheckout(p: {
+  onramp: string;
+  amount: number;
+  paymentMethod: string;
+  walletAddress: string;
+  fiat?: string;
+  crypto?: string;
+  network?: string;
+  country?: string;
+}): Promise<{ url: string | null }> {
+  const r = await apiRequest<{ url: string | null }>(`/api/onramper/checkout`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null } : r.data;
+}
+
+/** Aggregated SELL (off-ramp) quotes: USDC on Base → fiat, payout to a debit card. */
+export async function getOnramperSellQuotes(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress?: string;
+  fiat?: string;
+  crypto?: string;
+  country?: string;
+}): Promise<OnramperQuote[]> {
+  const params = new URLSearchParams({ amount: String(p.amount), paymentMethod: p.paymentMethod, country: p.country || 'us' });
+  if (p.walletAddress) params.set('walletAddress', p.walletAddress);
+  if (p.fiat) params.set('fiat', p.fiat);
+  if (p.crypto) params.set('crypto', p.crypto);
+  const r = await apiRequest<unknown>(`/api/onramper/sell-quotes?${params.toString()}`);
+  const d = r.data as { message?: unknown; quotes?: unknown } | unknown[] | null;
+  const arr = Array.isArray(d) ? d : Array.isArray((d as any)?.message) ? (d as any).message : Array.isArray((d as any)?.quotes) ? (d as any).quotes : [];
+  return arr as OnramperQuote[];
+}
+
+/** Create an Onramper SELL intent → returns the provider URL to complete the cash-out to a debit card. */
+export async function createOnramperSellCheckout(p: {
+  onramp: string;
+  amount: number;
+  paymentMethod: string;
+  walletAddress: string;
+  fiat?: string;
+  crypto?: string;
+  network?: string;
+  country?: string;
+}): Promise<{ url: string | null }> {
+  // Cashing out: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { url: null };
+  const r = await apiRequest<{ url: string | null }>(`/api/onramper/sell-checkout`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null } : r.data;
+}
+
+// ---- Unified ramp (Coinbase Onramp by default; Onramper as an env-selected fallback) ----
+// The backend picks the provider (RAMP_PROVIDER); the client just calls /api/ramp/* and gets a
+// normalized quote + a hosted checkout URL, so switching providers is a server-side env flip.
+
+export interface RampQuote {
+  provider: string;
+  fiatAmount: number; // total the user pays (buy) incl. fees
+  fiatSubtotal: number;
+  cryptoAmount?: number; // USDC received
+  coinbaseFee?: number;
+  networkFee?: number;
+  quoteId?: string;
+  asset: string;
+  network: string;
+}
+
+/** Normalized buy quote (card / Apple Pay → USDC on Base). */
+export async function getRampBuyQuote(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress?: string;
+  country?: string;
+  subdivision?: string;
+}): Promise<RampQuote | null> {
+  const params = new URLSearchParams({ amount: String(p.amount), paymentMethod: p.paymentMethod, country: p.country || 'us' });
+  if (p.walletAddress) params.set('walletAddress', p.walletAddress);
+  if (p.subdivision) params.set('subdivision', p.subdivision);
+  const r = await apiRequest<{ quote: RampQuote | null }>(`/api/ramp/buy/quote?${params.toString()}`);
+  return r.error || !r.data ? null : r.data.quote;
+}
+
+export interface RampSellStatus {
+  status: string | null; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
+  toAddress?: string | null; // Coinbase address to send USDC to (when STARTED)
+  amount?: string | null; // sell_amount.value
+  currency?: string | null;
+  asset?: string | null;
+  network?: string | null;
+}
+
+/** Start an off-ramp cash-out → { url, partnerUserRef }. Poll getRampSellStatus after the user confirms. */
+export async function createRampSellSession(p: { walletAddress: string; redirectUrl?: string }): Promise<{ url: string | null; partnerUserRef: string | null }> {
+  // Cashing out: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { url: null, partnerUserRef: null };
+  const r = await apiRequest<{ url: string | null; partnerUserRef: string | null }>(`/api/ramp/sell/session`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null, partnerUserRef: null } : r.data;
+}
+
+/** Poll an off-ramp transaction's status. On STARTED it returns the toAddress + amount of USDC to send. */
+export async function getRampSellStatus(partnerUserRef: string): Promise<RampSellStatus> {
+  const r = await apiRequest<RampSellStatus>(`/api/ramp/sell/status?partnerUserRef=${encodeURIComponent(partnerUserRef)}`);
+  return r.error || !r.data ? { status: null } : r.data;
+}
+
+export interface RampBuyStatus {
+  id?: string; // Coinbase transaction id — used as the notification dedupe ref (matches the webhook)
+  status: string | null; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
+  purchaseAmount?: string | null;
+  currency?: string | null;
+  txHash?: string | null;
+}
+
+/** Poll an on-ramp (buy) transaction's status to confirm a deposit landed (both redirect + iframe paths). */
+export async function getRampBuyStatus(partnerUserRef: string): Promise<RampBuyStatus> {
+  const r = await apiRequest<RampBuyStatus>(`/api/ramp/buy/status?partnerUserRef=${encodeURIComponent(partnerUserRef)}`);
+  return r.error || !r.data ? { status: null } : r.data;
+}
+
+/** Which ramp provider is active + whether it's configured (so the UI can explain an empty quote). */
+export async function getRampConfig(): Promise<{ provider: string; configured: boolean }> {
+  const r = await apiRequest<{ provider: string; configured: boolean }>(`/api/ramp/config`);
+  return r.error || !r.data ? { provider: 'coinbase', configured: false } : r.data;
+}
+
+/** Headless buy order (Coinbase Guest Checkout) → an Apple Pay payment-link URL to embed in an iframe. */
+export async function createRampBuyOrder(p: {
+  amount: number;
+  walletAddress: string;
+  email: string;
+  phone: string;
+  paymentMethod?: 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_CARD';
+}): Promise<{ paymentLinkUrl: string | null; orderId?: string; error?: string; code?: string }> {
+  const r = await apiRequest<{ paymentLinkUrl: string | null; orderId?: string }>(`/api/ramp/buy/order`, { method: 'POST', body: JSON.stringify(p) });
+  if (r.error || !r.data) return { paymentLinkUrl: null, error: r.error || 'Order failed' };
+  return { paymentLinkUrl: r.data.paymentLinkUrl, orderId: r.data.orderId };
+}
+
+/**
+ * Per-payment-method buy limits from Coinbase, keyed by their enum (CARD, APPLE_PAY,
+ * ACH_BANK_ACCOUNT). Empty when unavailable — callers should keep a conservative default rather than
+ * assume no limit. Coinbase doesn't publish these, so they must be read at runtime.
+ */
+export async function getRampBuyLimits(): Promise<Record<string, { min: number; max: number }>> {
+  const r = await apiRequest<{ limits: Record<string, { min: number; max: number }> }>('/api/ramp/buy/limits');
+  return r.error || !r.data?.limits ? {} : r.data.limits;
+}
+
+/** Record a ramp order's status + fire a notification (deposit started/complete, cash-out sent, …). */
+export async function rampEvent(p: {
+  type: 'buy' | 'sell';
+  status: 'submitted' | 'completed' | 'failed' | 'canceled';
+  amount: number;
+  walletAddress: string;
+  ref: string;
+}): Promise<void> {
+  await apiRequest(`/api/ramp/event`, { method: 'POST', body: JSON.stringify(p) }).catch(() => {});
+}
+
+/** Create a buy session → hosted checkout URL to redirect the user to. */
+export async function createRampBuySession(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress: string;
+  quoteId?: string;
+  redirectUrl?: string;
+}): Promise<{ url: string | null }> {
+  const r = await apiRequest<{ url: string | null }>(`/api/ramp/buy/session`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null } : r.data;
+}
+
+
+/**
+ * A charge a merchant has raised, as the member is allowed to see it.
+ *
+ * Payout and the merchant's address are absent because they are not the member's business — the
+ * co-op's cut of a repair is between the co-op and the shop.
+ */
+export interface ChargeView {
+  code: string;
+  merchantName: string;
+  amountCents: number;
+  status: 'pending' | 'resolving' | 'approved' | 'declined' | 'expired' | 'cancelled' | 'refunded' | 'disputed';
+  splitInto: number | null;
+  planId: number | null;
+  txHash: string | null;
+  expiresAt: string;
+  createdAt: string;
+  /** Paid from their Clear cash rather than a plan: nothing to clear later. */
+  paidNow?: boolean;
+  /** Held while they pay now: when the hold lapses, and whether a payment is already on its way. */
+  payingNow?: { until: string; sent: boolean } | null;
+  paidAt?: string | null;
+  /** First name of whoever raised it at the counter. */
+  raisedBy?: string | null;
+  /** The sale's lines, when the charge came from one. */
+  items?: { name: string; quantity: number; cents: number }[] | null;
+  taxCents?: number | null;
+  discountCents?: number | null;
+  /** The whole order, when this charge is only part of it. */
+  orderTotalCents?: number | null;
+  /** "Table 12", when it's a table's bill (Clear Terminal). */
+  table?: string | null;
+  /** What the shop pays Clear if it's paid now, in basis points: 125 is 1.25%. */
+  paidNowBps?: number | null;
+  /**
+   * The chain's price for each split offered (TermIssuer `_quote`): monthly bps (0 when free), or
+   * the refusal the chain would give, as a sentence. Null when it could not be read.
+   */
+  splitQuotes?: { installments: number; rateBps: number; free: boolean; refusal: string | null }[] | null;
+  /**
+   * Paid online (a link or a website): false when only paying now is offered. Null at the counter,
+   * whose rules (the $50 minimum) are the app's own.
+   */
+  overTime?: boolean | null;
+  /** Where an online charge came from, and the shop's site to name: "micasatacos.com". Null at the counter. */
+  online?: { channel: 'online' | 'link'; shopHost: string | null } | null;
+}
+
+/** What the member's wallet sends to pay now: USDC token units (6dp), to the shop and Clear's fee. */
+export interface PayNowInstructions {
+  chainId: number;
+  token: string;
+  shop: { to: string; units: string };
+  fee: { to: string; units: string };
+  until: string;
+}
+
+/** Null when there is no such charge, or it is not this member's to see. */
+export async function getCharge(code: string): Promise<ChargeView | null> {
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}`);
+  return r.error || !r.data ? null : r.data;
+}
+
+/**
+ * The approval page's payment (`/approve/:id`): no session, no cookies, nothing cached. It names the
+ * shop and the order; which member pays is the charge's business, behind sign-in.
+ */
+export function getApprovalView(id: string): Promise<ApprovalRead> {
+  return readApproval(id, API_BASE_URL);
+}
+
+/**
+ * The member's session as the member routes take it: the Privy token and the active wallet (the
+ * smart wallet, which the API also falls back to). Empty when nobody is signed in.
+ */
+async function memberSessionHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken().catch(() => null);
+  if (!token) return {};
+  const wallet = getActiveWallet();
+  return {
+    Authorization: `Bearer ${token}`,
+    ...(wallet ? { 'X-Wallet-Address': wallet } : {}),
+    ...(REOWN_PROJECT_ID ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID } : {}),
+  };
+}
+
+/**
+ * The join window's hand-off (`/join/pay?h=`). Read with the member's session when there is one;
+ * signed out it asks without, and a 401 says to sign in first. Its own fetch rather than
+ * `apiRequest`, because what a 404 or a 410 means (the link has ended) is the screen.
+ */
+export async function getJoinWindow(handoff: string): Promise<JoinRead<JoinWindowView>> {
+  return readJoinWindow(handoff, API_BASE_URL, await memberSessionHeaders());
+}
+
+/** `POST /api/checkout/join/:handoff/done`: the window is finished, and the modal moves on. */
+export async function finishJoinWindow(handoff: string): Promise<JoinRead<JoinFinished>> {
+  const r = await postJoinDone(handoff, API_BASE_URL, await memberSessionHeaders());
+  wantFreshReads();
+  return r;
+}
+
+export interface ChargeActionResult {
+  charge?: ChargeView;
+  error?: string;
+}
+
+/**
+ * Approve over time, step one: the plan terms to sign (audit H-4).
+ *
+ * The server builds the terms as EIP-712 typed data from the charge; the member's own wallet signs
+ * them (lib/planSigning) after the phone has checked them against the screen. No Face ID here:
+ * nothing is spent until the signed terms are submitted.
+ */
+export async function prepareChargeApproval(
+  code: string,
+  installments: number,
+): Promise<{ typedData?: PlanTermsTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: PlanTermsTypedData; disclosure: string[] }>(
+    `/api/charges/${encodeURIComponent(code)}/approve/prepare`,
+    { method: 'POST', body: JSON.stringify({ installments }) },
+  );
+  if (r.error || !r.data?.typedData) return { error: r.error || 'We could not get this plan ready. Nothing was charged.' };
+  return { typedData: r.data.typedData };
+}
+
+/**
+ * Approve, with the split chosen here and only here, on the terms the member signed.
+ *
+ * The error is surfaced rather than swallowed: approving opens a real term plan, and the failures
+ * a member can do something about — a lapsed charge, a split the contracts do not offer, a limit
+ * that will not stretch — are all things they need told rather than a spinner that stops.
+ */
+export async function approveCharge(
+  code: string,
+  installments: number,
+  signed: { terms: PlanTerms; signature: string },
+): Promise<ChargeActionResult> {
+  // Approving a charge is spending: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { error: denied };
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ installments, terms: signed.terms, signature: signed.signature }),
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not approve this charge.' };
+  return { charge: r.data };
+}
+
+/**
+ * Pay now, step one: the charge is held for this member and quoted. Face ID first, as for approving:
+ * the server takes a fresh one too. The same hold comes back if they press Pay again.
+ */
+export async function startPayNow(code: string): Promise<ChargeActionResult & { pay?: PayNowInstructions }> {
+  const denied = await stepUpDenied();
+  if (denied) return { error: denied };
+  const r = await apiRequest<ChargeView & { pay?: PayNowInstructions }>(`/api/charges/${encodeURIComponent(code)}/pay-now`, {
+    method: 'POST',
+  });
+  if (r.error || !r.data?.pay) return { error: r.error || 'We could not get this ready. Nothing was charged.' };
+  const { pay, ...charge } = r.data;
+  return { charge, pay };
+}
+
+/**
+ * Pay now, step three: the payment is sent; the server checks it on chain. `pending` when it has
+ * not landed yet — the charge stays held and is marked paid once it does.
+ */
+export async function confirmPayNow(code: string, txHash: string): Promise<ChargeActionResult & { pending?: boolean }> {
+  const r = await apiRequest<ChargeView & { message?: string }>(`/api/charges/${encodeURIComponent(code)}/pay-now/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ txHash }),
+    // Waits for the payment to land on chain (up to 30s on the server).
+    timeout: 45_000,
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not confirm your payment yet.' };
+  const pending = r.data.status === 'resolving';
+  return { charge: r.data, ...(pending ? { pending: true } : {}) };
+}
+
+/** Back from Pay now before paying: the charge is answerable again, over time or otherwise. */
+export async function releasePayNow(code: string): Promise<ChargeActionResult> {
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/pay-now`, { method: 'DELETE' });
+  if (r.error || !r.data) return { error: r.error || 'We could not go back just now.' };
+  return { charge: r.data };
+}
+
+export async function declineCharge(code: string): Promise<ChargeActionResult> {
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/decline`, {
+    method: 'POST',
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not decline this charge.' };
+  return { charge: r.data };
+}
+
+
+/**
+ * Tell the server a pool movement landed, so it can pledge the position as collateral.
+ *
+ * The same shape as `recordGaslessSavings` and for the same reason: depositing mints a position
+ * and pledging it is a separate step. Skipping this is what left savings backing nothing for
+ * weeks, so the pool gets the call from the start rather than as a later fix.
+ */
+export async function recordGaslessPool(p: {
+  action: 'deposit' | 'withdraw';
+  amount: string;
+  txHash: string;
+  chainId: number;
+}): Promise<void> {
+  await apiRequest('/api/savings/pool/record', { method: 'POST', body: JSON.stringify(p) });
+}
+
+
+/**
+ * Tell the server a bond was bought, so it pledges it as collateral.
+ *
+ * No amount is sent. Bonds pledge by identity, and the server reads which ones a member holds
+ * rather than believing a number — so there is nothing here worth lying about.
+ */
+export async function recordGaslessBond(p: { txHash: string; chainId: number }): Promise<void> {
+  await apiRequest('/api/savings/bond/record', { method: 'POST', body: JSON.stringify(p) });
+}
+
+// ---- Rewards: Your shops and shop purchases (rewards spec, section 6; Phase 6) --------------------
+
+/** A shop's look for its row: its logo or monogram, in its colours and heading font. */
+export interface YourShopBrand {
+  logoUrl: string | null;
+  monogram: string;
+  colour: string;
+  onColour: string;
+  headingFont: { kind: 'preset'; preset: string } | { kind: 'uploaded'; fontId: string };
+}
+export type RewardsPointsName = { kind: 'points' } | { kind: 'stars' } | { kind: 'custom'; one: string; many: string };
+
+/** A shop whose rewards the member has joined (`GET /api/rewards/me/shops`, `MyShops` in the contracts). */
+export interface YourShop {
+  slug: string;
+  name: string;
+  brand: YourShopBrand;
+  pointsName: RewardsPointsName;
+  unit: 'dollars' | 'visits';
+  points: number;
+  cardSize: number | null;
+  readyCount: number;
+  next: { name: string; toGo: number } | null;
+}
+
+/**
+ * Your shops: a hub session minted from the member's own sign-in, then their shops. Plain fetches,
+ * not `apiRequest`: a refusal here (rewards not set up on this API) must never sign the member out.
+ * Null when it couldn't be read.
+ */
+export async function getYourShops(): Promise<YourShop[] | null> {
+  try {
+    const privy = await getAccessToken().catch(() => null);
+    if (!privy) return null;
+    const s = await fetch(`${API_BASE_URL}/api/rewards/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${privy}` }, body: '{}' });
+    if (!s.ok) return null;
+    const { token } = (await s.json()) as { token: string };
+    const r = await fetch(`${API_BASE_URL}/api/rewards/me/shops`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return null;
+    return ((await r.json()) as { shops: YourShop[] }).shops;
+  } catch {
+    return null;
+  }
+}
+
+/** A card purchase at a Clear shop (`GET /api/rewards/purchases`, `MemberShopPurchases`). */
+export interface ShopPurchase {
+  orderId: string;
+  shop: { slug: string | null; name: string };
+  at: string;
+  amountCents: number;
+  cardLast4: string | null;
+  points: { earned: number; name: RewardsPointsName } | null;
+}
+
+/**
+ * What the member bought by card at Clear shops, including as a rewards-only customer before they
+ * set up Clear. The API answers only once onboarding is submitted; before that, and on any refusal,
+ * there's nothing to add.
+ */
+export async function getShopPurchases(): Promise<ShopPurchase[]> {
+  try {
+    const privy = await getAccessToken().catch(() => null);
+    if (!privy) return [];
+    const r = await fetch(`${API_BASE_URL}/api/rewards/purchases`, { headers: { Authorization: `Bearer ${privy}` } });
+    if (!r.ok) return [];
+    return ((await r.json()) as { items: ShopPurchase[] }).items;
+  } catch {
+    return [];
+  }
+}
+
+
+/* ---------- Clear Credits and the Housing Allowance (api/src/routes/housing.ts) ---------- */
+
+export type HousingStatusName = 'none' | 'signed' | 'redeemed' | 'moved' | 'ended' | 'lapsed';
+
+/** One home a member has a Housing Allowance record on, in dollars. */
+export interface HousingHomeRecord {
+  homeId: string;
+  status: HousingStatusName;
+  structurePrice: number;
+  creditPortion: number;
+  memberPortion: number;
+  total: number;
+  refundDue: number;
+  signedAt: string | null;
+  endedAt: string | null;
+  live: boolean;
+  redeemable: boolean;
+  payable: boolean;
+}
+
+export interface HousingRead {
+  member: string;
+  homes: HousingHomeRecord[];
+  creditPortionUsed: number;
+  creditPortionCap: number;
+}
+
+/** Every home this wallet has a record on. Null when it couldn't be read. */
+export async function getHousing(wallet: string): Promise<HousingRead | null> {
+  const r = await apiRequest<HousingRead>(`/api/housing/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface CreditsOnChain {
+  balance: number;
+  earned: number;
+  bySource: { saving: number; rent: number; bill: number };
+}
+
+/** A wallet's credits as the chain records them. Null when they couldn't be read. */
+export async function getCreditsOnChain(wallet: string): Promise<CreditsOnChain | null> {
+  const r = await apiRequest<CreditsOnChain>(`/api/pay/${wallet.toLowerCase()}/credits/onchain`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface RedeemTypedData {
+  domain: { name: string; version: string; chainId: number; verifyingContract: string };
+  types: { RedeemCredits: { name: string; type: string }[] };
+  primaryType: 'RedeemCredits';
+  message: { member: string; homeId: string; amount: string; nonce: string; deadline: string };
+}
+
+/** What to sign to redeem `credits` into a home's Housing Allowance, and the dollars it adds. */
+export async function prepareRedeemCredits(homeId: string, wallet: string, credits: number): Promise<{ usd: number; deadline: string; typedData: RedeemTypedData } | { error: string }> {
+  const r = await apiRequest<{ usd: number; deadline: string; typedData: RedeemTypedData }>(`/api/housing/${homeId}/redeem-credits`, {
+    method: 'POST',
+    body: JSON.stringify({ wallet: wallet.toLowerCase(), credits }),
+  });
+  return r.error || !r.data ? { error: r.error || 'Could not prepare the redemption.' } : r.data;
+}
+
+/** Submits a signed redemption. The API checks Face ID; the Points Issuer checks everything else. */
+export async function submitRedeemCredits(homeId: string, args: { wallet: string; credits: number; deadline: string; signature: string }): Promise<{ tx: string; usd: number | null } | { error: string }> {
+  const r = await apiRequest<{ tx: string; usd: number | null }>(`/api/housing/${homeId}/redeem-credits`, {
+    method: 'POST',
+    body: JSON.stringify({ ...args, wallet: args.wallet.toLowerCase() }),
+  });
+  return r.error || !r.data ? { error: r.error || 'The redemption did not go through. Nothing was redeemed.' } : r.data;
+}
+
+export interface PreparedCall {
+  to: string;
+  value: string;
+  data: string;
+  label: string;
+}
+
+/** The two calls the member's wallet sends to pay `usd` toward a home: approve, then contribute. */
+export async function prepareHousingContribute(homeId: string, wallet: string, usd: number): Promise<{ usd: number; calls: PreparedCall[] } | { error: string }> {
+  const r = await apiRequest<{ usd: number; calls: PreparedCall[] }>(`/api/housing/${homeId}/contribute`, {
+    method: 'POST',
+    body: JSON.stringify({ wallet: wallet.toLowerCase(), usd }),
+  });
+  return r.error || !r.data ? { error: r.error || 'Could not prepare the payment.' } : r.data;
+}

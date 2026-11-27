@@ -1,0 +1,210 @@
+import crypto from 'crypto';
+import { getPostgresPool } from '../config/postgres.js';
+import { websocketService } from './websocketService.js';
+import { pushService } from './pushService.js';
+
+// Kinds worth a Web Push (arrive when the app is closed); noisy/low-value ones stay in-app only.
+const PUSH_KINDS = new Set<NotificationKind>(['received', 'credit', 'milestone', 'due', 'kyc', 'request']);
+
+/*
+ * Persistent in-app notifications, scoped by owner wallet (same scoping as contacts / pay_credits, and
+ * matches how producers + the WebSocket already target addresses). Producers call `emit()` with a
+ * stable `dedupeKey` so the same event can't create duplicates; new rows are pushed live over the
+ * WebSocket as `notification:new`. The client fetches, marks read, and archives via /api/notifications.
+ */
+const TABLE = 'notifications';
+let ensured = false;
+
+export type NotificationKind =
+  | 'received' | 'sent' | 'card' | 'pending' | 'credit' | 'milestone' | 'due' | 'kyc' | 'request' | 'system';
+
+export interface NotificationRow {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  createdAt: string;
+}
+
+interface DbRow {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+const normalizeWallet = (w: string) => w.trim().toLowerCase();
+// A user can hold several wallets (smart wallet, EOA, linked). Notifications are scoped by a single
+// owner wallet, but the reader should see them across ALL their verified wallets so a scoping mismatch
+// (e.g. notification on primary_wallet vs the smart wallet the client fetches with) never hides them.
+const normalizeWallets = (w: string | string[]): string[] =>
+  [...new Set((Array.isArray(w) ? w : [w]).filter(Boolean).map(normalizeWallet))];
+
+async function ensureTables(): Promise<void> {
+  const pool = getPostgresPool();
+  if (!pool || ensured) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${TABLE} (
+      id TEXT PRIMARY KEY,
+      owner_wallet TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      data JSONB,
+      dedupe_key TEXT NOT NULL,
+      read_at TIMESTAMPTZ,
+      archived_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedupe_idx ON ${TABLE} (owner_wallet, dedupe_key);
+    CREATE INDEX IF NOT EXISTS notifications_owner_created_idx ON ${TABLE} (owner_wallet, created_at DESC);
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint TEXT PRIMARY KEY,
+      owner_wallet TEXT NOT NULL,
+      subscription JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS push_subs_wallet_idx ON push_subscriptions (owner_wallet);
+  `);
+  ensured = true;
+}
+
+const toRow = (r: DbRow): NotificationRow => ({
+  id: r.id,
+  kind: r.kind,
+  title: r.title,
+  body: r.body,
+  data: r.data,
+  read: r.read_at != null,
+  createdAt: r.created_at,
+});
+
+export interface EmitInput {
+  wallet: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  data?: Record<string, unknown> | null;
+  /** Stable key so the same event never duplicates (e.g. `tx:0xabc`, `credit:2026-06`). */
+  dedupeKey: string;
+  /** Force (or suppress) Web Push regardless of kind. Defaults to whether the kind is push-worthy. */
+  push?: boolean;
+}
+
+export const notificationStore = {
+  isConfigured(): boolean {
+    return !!getPostgresPool();
+  },
+
+  /** Create a notification (idempotent by dedupeKey) and push it live over the WebSocket if new. */
+  async emit(input: EmitInput): Promise<NotificationRow | null> {
+    const pool = getPostgresPool();
+    if (!pool) return null;
+    await ensureTables();
+    const wallet = normalizeWallet(input.wallet);
+    const id = crypto.randomUUID();
+    const result = await pool.query<DbRow>(
+      `INSERT INTO ${TABLE} (id, owner_wallet, kind, title, body, data, dedupe_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (owner_wallet, dedupe_key) DO NOTHING
+       RETURNING id, kind, title, body, data, read_at, created_at`,
+      [id, wallet, input.kind, input.title, input.body, input.data ?? null, input.dedupeKey],
+    );
+    const row = result.rows[0];
+    if (!row) return null; // deduped — already existed
+    const notif = toRow(row);
+    try {
+      /*
+       * Logged with the delivery count, like the collateral announce.
+       * "The notification only appears after a refresh" has two very different causes -- the row was
+       * never written, or it was written and reached nobody -- and they are indistinguishable from
+       * the outside. Zero connections is the normal, correct answer for a phone whose PWA is
+       * backgrounded; it is only a bug when the app is open and still reads zero.
+       */
+      const delivered = await websocketService.broadcastToAddress(wallet, 'notification:new', notif);
+      console.log(`[notify] ${input.kind} → ${delivered} connection(s) for ${wallet.toLowerCase()}`);
+    } catch (error) {
+      // Best-effort, but not silent: the row is saved and the poll will find it, so this is a
+      // delivery failure rather than a lost notification.
+      console.warn('[notify] realtime delivery failed:', error instanceof Error ? error.message : error);
+    }
+    // Web Push for important kinds (or when explicitly forced) so it lands even when the app is closed.
+    // Include the current unread count so the service worker can set the app-icon badge (native feel).
+    if (input.push ?? PUSH_KINDS.has(notif.kind)) {
+      const badge = await this.countUnread(wallet).catch(() => undefined);
+      void pushService.sendToWallet(wallet, { title: notif.title, body: notif.body, data: notif.data, tag: notif.id, badge }).catch(() => {});
+    }
+    return notif;
+  },
+
+  async countUnread(wallet: string): Promise<number> {
+    const pool = getPostgresPool();
+    if (!pool) return 0;
+    await ensureTables();
+    const r = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM ${TABLE} WHERE owner_wallet = $1 AND archived_at IS NULL AND read_at IS NULL`,
+      [normalizeWallet(wallet)],
+    );
+    return Number(r.rows[0]?.c ?? 0);
+  },
+
+  /** Register/refresh a Web Push subscription for a wallet (keyed by endpoint). */
+  async saveSubscription(wallet: string, subscription: { endpoint?: string } & Record<string, unknown>): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool || !subscription?.endpoint) return;
+    await ensureTables();
+    await pool.query(
+      `INSERT INTO push_subscriptions (endpoint, owner_wallet, subscription)
+         VALUES ($1, $2, $3)
+       ON CONFLICT (endpoint) DO UPDATE SET owner_wallet = EXCLUDED.owner_wallet, subscription = EXCLUDED.subscription`,
+      [subscription.endpoint, normalizeWallet(wallet), subscription],
+    );
+  },
+
+  async list(wallet: string | string[], limit = 40): Promise<{ notifications: NotificationRow[]; unreadCount: number }> {
+    const pool = getPostgresPool();
+    if (!pool) return { notifications: [], unreadCount: 0 };
+    await ensureTables();
+    const ws = normalizeWallets(wallet);
+    if (ws.length === 0) return { notifications: [], unreadCount: 0 };
+    const [rows, counts] = await Promise.all([
+      pool.query<DbRow>(
+        `SELECT id, kind, title, body, data, read_at, created_at FROM ${TABLE}
+           WHERE owner_wallet = ANY($1::text[]) AND archived_at IS NULL
+           ORDER BY created_at DESC LIMIT $2`,
+        [ws, Math.min(Math.max(limit, 1), 100)],
+      ),
+      pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM ${TABLE} WHERE owner_wallet = ANY($1::text[]) AND archived_at IS NULL AND read_at IS NULL`,
+        [ws],
+      ),
+    ]);
+    return { notifications: rows.rows.map(toRow), unreadCount: Number(counts.rows[0]?.count ?? 0) };
+  },
+
+  async markRead(wallet: string | string[], id: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(`UPDATE ${TABLE} SET read_at = now() WHERE owner_wallet = ANY($1::text[]) AND id = $2 AND read_at IS NULL`, [normalizeWallets(wallet), id]);
+  },
+
+  async markAllRead(wallet: string | string[]): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(`UPDATE ${TABLE} SET read_at = now() WHERE owner_wallet = ANY($1::text[]) AND read_at IS NULL`, [normalizeWallets(wallet)]);
+  },
+
+  async archive(wallet: string | string[], id: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(`UPDATE ${TABLE} SET archived_at = now() WHERE owner_wallet = ANY($1::text[]) AND id = $2`, [normalizeWallets(wallet), id]);
+  },
+};

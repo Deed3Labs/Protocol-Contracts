@@ -1,0 +1,27 @@
+  TokenRegistry: 0x036CbD53842c5426634e7929541eC2318f3dCF7e registered and whitelisted (the factory makes collections for whitelisted tokens only)
+Creating a USDC bond collection…
++ BurnerBond (USDC) at 0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A
+  bond ids start at 1000
++ BondValuer at 0x7f63e01B1BBd79509138D825B5Ef4b186E9502C8
+
+Wiring:
+  BOND valuer -> BondValuer
+  CollateralRegistry ITEM_ROLLER_ROLE -> collection
+  BondVault BOND_ROLE -> collection
+  BondVault BOND_ROLE revoked from the retired BurnerBondPre2f 0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556
+  BondVault BOND_ROLE revoked from the retired BurnerBondDepositPre2f 0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c
+  BondVault BOND_ROLE revoked from the retired BurnerBondLegacy 0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148
+  BondVault DEFAULT_ADMIN_ROLE -> Earn timelock
+  BondVault -> CollateralAgent and EarnControls (later changes are co-signed)
+  BurnerBond -> BondVault, CollateralRegistry, EarnControls, CollateralAgent
+  EarnControls BOND_ROLE -> 0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A
+  EarnControls reserve status and hook -> BondVault
+  EarnControls bond books += BondVault
+  Ladder 365 days at 4.75%
+  Ladder 730 days at 5%
+  Ladder 1095 days at 5.25%
++ HolderDirections at 0x8ec35b88CCb59576957917a4F4B937b491815Cda
+  ! Propose and co-sign CollateralAgent.setVault/setBondBook(BondVault) and setHolderDirections(HolderDirections)
+  BOND yield -> 60 bps/cycle (tier charges 65)
+
+Bond collection ready. The asset-backed tier now has something behind it.

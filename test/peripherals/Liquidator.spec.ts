@@ -1,0 +1,364 @@
+import { expect } from "chai";
+import { ethers, upgrades } from "hardhat";
+import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { issuerProxyOptions } from "../helpers/issuers";
+import { driveToDefault } from "../helpers/default";
+import { pledgeSigned } from "../helpers/pledge";
+
+const ONE_USDC = 10n ** 6n;
+const CYCLE = 30 * 24 * 60 * 60;
+const ONE_DAY = 24 * 60 * 60;
+const SAVINGS = ethers.encodeBytes32String("SAVINGS");
+const INCOME = ethers.encodeBytes32String("INCOME");
+const SAVINGS_BACKED = 1, UNSECURED = 0;
+
+// The plan's claim is that there is far less lost debt here than in the ledger this forked from,
+// because a default fires liquidation first and the collateral covers the position. These are the
+// tests of that claim.
+describe("Liquidator", function () {
+  let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
+  let clrusd: any, vault: any, registry: any, issuer: any, liquidator: any;
+  let coop: any;
+
+  beforeEach(async function () {
+    ctx = await deployPhase0Network();
+    coop = (await ethers.getSigners())[8];
+
+    const ClearUSD = await ethers.getContractFactory("ClearUSDUpgradeable");
+    clrusd = await upgrades.deployProxy(
+      ClearUSD,
+      ["Clear USD", "CLRUSD", 6, 0, 0, ctx.admin.address, ctx.admin.address],
+      { kind: "uups", unsafeAllow: ["missing-initializer", "missing-initializer-call"] }
+    );
+
+    const ESADepositVault = await ethers.getContractFactory("ESADepositVault");
+    vault = await upgrades.deployProxy(
+      ESADepositVault,
+      [await clrusd.getAddress(), ctx.admin.address],
+      { kind: "uups" }
+    );
+    await clrusd.grantRole(await clrusd.MINTER_ROLE(), await vault.getAddress());
+    await clrusd.grantRole(await clrusd.BURNER_ROLE(), await vault.getAddress());
+    await vault.setAcceptedToken(await ctx.usdc.getAddress(), true);
+
+    const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
+    issuer = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" }
+    );
+    await ctx.networkRegistry.registerIssuer(
+      await issuer.getAddress(),
+      await ctx.stableCredit.getAddress()
+    );
+    await ctx.access.grantOperator(await issuer.getAddress());
+    await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
+    await issuer.connect(ctx.operator).addTier(SAVINGS, 0n, CYCLE);
+    await issuer.connect(ctx.operator).addTier(INCOME, 150n, CYCLE);
+
+    const CollateralRegistry = await ethers.getContractFactory("CollateralRegistry");
+    registry = await upgrades.deployProxy(
+      CollateralRegistry,
+      [ctx.admin.address, await ctx.networkRegistry.getAddress()],
+      { kind: "uups" }
+    );
+    await registry.registerCollateralType(SAVINGS, SAVINGS_BACKED, 10_000n, 10n ** 18n);
+    await registry.registerCollateralType(INCOME, UNSECURED, 0n, 0n);
+    await registry.setClrusdKind(SAVINGS);
+    // A savings pledge is valued against the member's real CLRUSD balance (audit C-2).
+    await registry.setClrusdToken(await clrusd.getAddress());
+    await clrusd.setEncumbranceSource(await registry.getAddress());
+    await issuer.connect(ctx.operator).setExposureSource(await registry.getAddress());
+
+
+    const Liquidator = await ethers.getContractFactory("Liquidator");
+    liquidator = await upgrades.deployProxy(
+      Liquidator,
+      [
+        ctx.admin.address,
+        await ctx.stableCredit.getAddress(),
+        await clrusd.getAddress(),
+        await vault.getAddress(),
+        await ctx.usdc.getAddress(),
+        await registry.getAddress(),
+      ],
+      { kind: "uups" }
+    );
+    await clrusd.grantRole(await clrusd.LIQUIDATOR_ROLE(), await liquidator.getAddress());
+    await registry.grantRole(await registry.OPERATOR_ROLE(), await liquidator.getAddress());
+    await ctx.access.grantOperator(await liquidator.getAddress());
+    // Liquidation is permissionless now, so only issuers the admin trusts can trigger it
+    // (compliance spec 10b).
+    await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
+  });
+
+  /// The member saves USDC, receives CLRUSD, pledges it, and opens a line against it.
+  async function save(amount: bigint) {
+    await ctx.usdc.mint(ctx.member.address, amount);
+    await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), amount);
+    await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), amount, ctx.member.address);
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, amount);
+  }
+
+  async function openLine(savingsCap: bigint, incomeCap: bigint, periodLength: number) {
+    await issuer
+      .connect(ctx.operator)
+      .openLine(ctx.member.address, [savingsCap, incomeCap], 0);
+  }
+
+  async function spend(amount: bigint) {
+    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
+  }
+
+  /**
+   * Section 12.5 as Addendum 2 has it: two missed Rebalance Amounts in a row, a two-person cure
+   * notice, then the grace period. Only unsecured debt can be missed, so every default below carries
+   * $10 on the income-backed tier beside the Savings position.
+   */
+  async function intoDefault(_periodLength: number) {
+    await driveToDefault(issuer, ctx.member.address);
+  }
+  const UNSECURED_DRAW = 10n * ONE_USDC;
+
+  /** The Defaulted Amount of the line's secured positions the issuer recorded (decision 22). */
+  async function securedDue(): Promise<bigint> {
+    const st = await issuer.cycleStateOf(ctx.member.address);
+    return st.pastDueSM < st.securedPastDue ? st.pastDueSM : st.securedPastDue;
+  }
+
+  // Phase 2f, decision 22 (MB-05 §§1.3, 7.2): a default makes only its Defaulted Amount due. CLRUSD
+  // is applied only to the Defaulted Amount of Savings-Backed Drawn the issuer recorded (the
+  // past-due Secured Minimum), never the whole savings tier. The rest stays owed and stays locked,
+  // and the member may still apply their savings to it by their own instruction (MB-05 §7.9).
+  it("applies the member's own savings only to the Defaulted Amount of Savings-Backed Drawn", async function () {
+    const m = ctx.member.address;
+    await save(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(1_000n * ONE_USDC + UNSECURED_DRAW);
+    await registry.refresh(m);
+
+    await intoDefault(CYCLE);
+    expect(await issuer.inDefault(m)).to.equal(true);
+    await issuer.triggerDefault(m); // the unsecured $10 and its carry are written off
+
+    // The default turned on the unpaid unsecured Rebalance Amount; with unsecured principal drawn,
+    // no Secured Minimum on the savings position fell due, so none of it is a Defaulted Amount.
+    const due = await securedDue();
+    const savingsOwed = await issuer.principalOf(m, 0);
+    if (due === 0n) {
+      await expect(liquidator.liquidate(m, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+    } else {
+      await liquidator.liquidate(m, await issuer.getAddress(), 0, SAVINGS);
+      expect(await issuer.principalOf(m, 0)).to.be.gte(savingsOwed - due);
+    }
+    expect(await clrusd.balanceOf(m)).to.be.gte(1_000n * ONE_USDC - due);
+    expect(await issuer.principalOf(m, 0)).to.be.greaterThan(900n * ONE_USDC);
+
+    // The member's own instruction applies the rest (not enforcement): debt and savings fall together.
+    await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 2_000n * ONE_USDC);
+    expect(await issuer.principalOf(m, 0)).to.equal(0n);
+    expect(await ctx.stableCredit.creditBalanceOf(m)).to.equal(0n);
+  });
+
+  it("reports no lost debt for an ordinary repayment", async function () {
+    // Lost debt is claims with no promise behind them. A member who repays leaves the supply
+    // backed by the USDC that just arrived, so nothing was orphaned. With no payout pool on this
+    // ledger the repayment goes to Lending Co.'s operating address (section 13).
+    await save(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+    await spend(1_000n * ONE_USDC);
+
+    await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
+    await ctx.usdc.approve(await ctx.stableCredit.getAddress(), 1_000n * ONE_USDC);
+    await ctx.stableCredit.repayCreditBalance(ctx.member.address, 1_000n * ONE_USDC);
+
+    expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+    expect(await ctx.usdc.balanceOf(ctx.lenderOperating.address)).to.equal(1_000n * ONE_USDC);
+    expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
+  });
+
+  it("creates no lost debt on the collateralized position: only the unsecured part a default turns on is orphaned", async function () {
+    // The adversarial test the plan asks for. A default normally orphans supply: the credits are
+    // in someone else's hands and the obligation is written off. The collateralized position is not.
+    // (Since Addendum 2 a default needs an unpaid unsecured Rebalance Amount, so a little unsecured
+    // debt is always part of it, and that part is the lost debt. Since Phase 2f, decision 22, the
+    // collateralized position stays owed and pledged rather than being taken whole.)
+    await save(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(1_000n * ONE_USDC + UNSECURED_DRAW);
+    await registry.refresh(ctx.member.address);
+
+    await intoDefault(CYCLE);
+    if ((await securedDue()) > 0n) await liquidator.liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
+    await issuer.syncCreditPeriod(ctx.member.address);
+
+    const lost = await ctx.stableCredit.lostDebt();
+    expect(lost).to.be.gte(UNSECURED_DRAW);
+    expect(lost).to.be.lt(UNSECURED_DRAW + ONE_USDC); // $10 and its carry, nothing of the $1,000
+    // The counterparty still holds what they were paid.
+    expect(await ctx.stableCredit.balanceOf(ctx.counterparty.address))
+      .to.equal(1_000n * ONE_USDC + UNSECURED_DRAW);
+  });
+
+  it("orphans only the part collateral never reached", async function () {
+    // Lost debt arises on the unsecured shortfall and nowhere else, which is the whole
+    // justification for RTD counting only what collateral does not cover.
+    await save(600n * ONE_USDC);
+    await openLine(600n * ONE_USDC, 400n * ONE_USDC, CYCLE);
+    await spend(1_000n * ONE_USDC);
+    await registry.refresh(ctx.member.address);
+
+    await intoDefault(CYCLE);
+    if ((await securedDue()) > 0n) await liquidator.liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
+    await issuer.syncCreditPeriod(ctx.member.address);
+
+    // The 400 in the income tier had nothing behind it, plus the carry that accrued on it while the
+    // member was in default. The 600 savings tier is covered by its savings and is not lost: it
+    // stays owed and pledged (decision 22: it is not a Defaulted Amount).
+    const orphaned = await ctx.stableCredit.lostDebt();
+    expect(orphaned).to.be.greaterThanOrEqual(400n * ONE_USDC);
+    expect(orphaned).to.be.lessThan(430n * ONE_USDC);
+    expect(await issuer.principalOf(ctx.member.address, 0)).to.be.greaterThan(0n);
+  });
+
+  it("does not strand the collateral when the write-off runs first", async function () {
+    // The safe order is not a rule anybody follows. A write-off never claims the collateralized
+    // share, so running it first cannot leave the pledge backing nothing.
+    await save(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(1_000n * ONE_USDC + UNSECURED_DRAW);
+    await registry.refresh(ctx.member.address);
+    await intoDefault(CYCLE);
+
+    await issuer.syncCreditPeriod(ctx.member.address);
+    expect(await ctx.stableCredit.lostDebt()).to.be.lt(UNSECURED_DRAW + ONE_USDC); // the unsecured part only
+    expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
+      .to.equal(1_000n * ONE_USDC);
+
+    // The pledge still stands behind it afterwards (decision 22: only the Defaulted Amount is
+    // enforced), and the member's own instruction can still apply it.
+    expect(await clrusd.balanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
+    await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 1_000n * ONE_USDC);
+    expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+  });
+
+  it("takes no more than is owed", async function () {
+    // A default is not a forfeiture of everything a member saved.
+    await save(1_000n * ONE_USDC);
+    await openLine(400n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(400n * ONE_USDC + UNSECURED_DRAW);
+    await registry.refresh(ctx.member.address);
+
+    await intoDefault(CYCLE);
+    await issuer.triggerDefault(ctx.member.address);
+    // Decision 22: never more than the Defaulted Amount, which here is at most the past-due Secured
+    // Minimum; the free $600 is never reachable at all.
+    const due = await securedDue();
+    if (due > 0n) await liquidator.liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
+    expect(await clrusd.balanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC - due);
+    expect(await clrusd.freeBalanceOf(ctx.member.address)).to.be.gte(600n * ONE_USDC);
+  });
+
+  it("refuses to liquidate a member who has not defaulted", async function () {
+    await save(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+    await spend(1_000n * ONE_USDC);
+
+    await expect(liquidator.liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
+      .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
+  });
+
+  it("cannot reach a member's free savings", async function () {
+    // The seizure is bounded by what is encumbered, so it cannot touch what is not pledged
+    // against drawn credit even when the caller holds the role.
+    await save(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 0n, CYCLE);
+    await spend(300n * ONE_USDC);
+
+    await clrusd.grantRole(await clrusd.LIQUIDATOR_ROLE(), ctx.admin.address);
+    await expect(
+      clrusd.seize(ctx.member.address, ctx.admin.address, 1_000n * ONE_USDC)
+    ).to.be.revertedWithCustomError(clrusd, "ClearUSDSeizureExceedsEncumbrance");
+
+    // Only the encumbered 300 is reachable.
+    await clrusd.seize(ctx.member.address, ctx.admin.address, 300n * ONE_USDC);
+    expect(await clrusd.balanceOf(ctx.admin.address)).to.equal(300n * ONE_USDC);
+  });
+
+  it("is operator gated", async function () {
+    await expect(
+      liquidator
+        .connect(ctx.outsider)
+        .liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS)
+    ).to.be.reverted;
+  });
+
+  describe("the member settles savings-backed credit out of their own savings", function () {
+    beforeEach(async function () {
+      await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
+    });
+
+    it("settles the savings tier, shrinks savings by the same amount, and lifts the lock — no default needed", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(400n * ONE_USDC);
+      await registry.refresh(ctx.member.address);
+      expect(await issuer.inDefault(ctx.member.address)).to.equal(false);
+
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC);
+
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+      expect(await issuer.principalOf(ctx.member.address, 0)).to.equal(0n);
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(600n * ONE_USDC);
+      // Nothing is drawn, so nothing is locked: the rest of their savings moves freely.
+      await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 600n * ONE_USDC);
+      expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
+    });
+
+    it("never takes more than the savings tier owes", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(250n * ONE_USDC);
+      await registry.refresh(ctx.member.address);
+
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 900n * ONE_USDC);
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(750n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("refuses an issuer nobody trusted — it would be handed the member's locked savings", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(400n * ONE_USDC);
+      await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), false);
+      await expect(
+        liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC)
+      ).to.be.revertedWithCustomError(liquidator, "LiquidatorUntrustedIssuer");
+    });
+
+    it("refuses any tier but savings — savings may not settle a dearer tier", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 500n * ONE_USDC, 365 * ONE_DAY);
+      await spend(1_200n * ONE_USDC);
+      await expect(
+        liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 1, 200n * ONE_USDC)
+      ).to.be.revertedWithCustomError(liquidator, "LiquidatorNotSavingsTier");
+    });
+
+    it("only the member's own savings: nobody can settle someone else's", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(400n * ONE_USDC);
+      // The outsider has no savings and no debt; there is nothing of theirs to settle.
+      await expect(
+        liquidator.connect(ctx.outsider).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC)
+      ).to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
+    });
+
+    it("only an operator decides which issuers are trusted", async function () {
+      await expect(
+        liquidator.connect(ctx.member).setTrustedSavingsIssuer(await issuer.getAddress(), true)
+      ).to.be.reverted;
+    });
+  });
+});

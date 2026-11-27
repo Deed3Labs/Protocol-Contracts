@@ -1,0 +1,5028 @@
+{
+  "address": "0xBec598bee24cF2973d42eA85e6028621180fE2F0",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "extension_"
+        },
+        {
+          "type": "address",
+          "name": "cycles_"
+        },
+        {
+          "type": "address",
+          "name": "terms_"
+        },
+        {
+          "type": "address",
+          "name": "workouts_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerDailyCapExceeded",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "cap"
+        },
+        {
+          "type": "uint256",
+          "name": "requested"
+        },
+        {
+          "type": "uint256",
+          "name": "remaining"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerMissingRole",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerNoPeriod",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerPeriodMayOnlyExtend",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerAutoClearOff",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerAutoRepayAlreadyUsed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerAutoRepayNotEnabled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerBadCycleDay",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "day"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerBadScope",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "scope"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerBadSignature",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerBoostCap",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "capacity"
+        },
+        {
+          "type": "uint256",
+          "name": "cap"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCapacityBelowDrawn",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId"
+        },
+        {
+          "type": "uint256",
+          "name": "capacity"
+        },
+        {
+          "type": "uint256",
+          "name": "drawn"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardAlreadyAuthorized",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardAlreadyRepaid",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardAlreadySettled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardAmountZero",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardExceedsAuthorization",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "authorized"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardFloatCannotCover",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "held"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardHeadroom",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "headroom"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardMemberDailyCap",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "remaining"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardNotAuthorized",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardNotSettled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardRepaymentExceedsDrawn",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardReversalExceedsSettlement",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "settled"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardTxCap",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "cap"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerClrusdSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCycleDayChangedRecently",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "availableAt"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCycleMismatch",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "expected"
+        },
+        {
+          "type": "uint64",
+          "name": "given"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCyclesComputed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerDefaultCollateralUnapplied",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerDrawUnplaced",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "unplaced"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerExcludedPayer",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "payer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerExtensionMismatch",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerHardshipActive",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "hardshipRef"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerHybridMode",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerMemberNotInGoodStanding",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNoCardSettlementAccount",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNoCarryRecipient",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNoProposal",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNoWorkoutTier",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNotCardSettler",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNotInDefault",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNothingDue",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNothingToClear",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerPauseClockSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerPauseTooLong",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "cycles"
+        },
+        {
+          "type": "uint256",
+          "name": "max"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerPlanNotDefaultable",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerPricingSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerRatesMustAscend",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "previous"
+        },
+        {
+          "type": "uint256",
+          "name": "proposed"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerSecuredDrawPaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerSignatureExpired",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "deadline"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerStateNotEnabled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerTermIssuerSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerTierProductSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerUnknownTier",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerUnsecuredCap",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "capacity"
+        },
+        {
+          "type": "uint256",
+          "name": "cap"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerWorkoutRunning",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerWorkoutTerms",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "state"
+        },
+        {
+          "type": "uint8",
+          "name": "cycles"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerWorkoutTooSoon",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "availableAt"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AutoClearAuthorized",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "level",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "authHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AutoClearSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "on",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "scope",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AutoCleared",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "applied",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "remainder",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AutoRepaid",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AutoRepaySet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "enabled",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardAuthorized",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardCapsUpdated",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "txCap",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "dailyCap",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSettlementAccountUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSettlerUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "settler",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "allowed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSpendRepaid",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSpendReversed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSpendSettled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CarryRecipientUpdated",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "recipient",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CarryTreasuryUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "treasury",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CarryTrimmed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ClrusdTokenSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "token",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CreditLineDefaulted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CreditPeriodCreated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "periodExpiration",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "graceLength",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CreditPeriodExpired",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CreditTermsPaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CreditTermsUnpaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CreditTermsUpdated",
+      "inputs": [
+        {
+          "type": "tuple",
+          "name": "terms",
+          "indexed": false,
+          "components": [
+            {
+              "type": "uint128",
+              "name": "unsecuredLineCap"
+            },
+            {
+              "type": "uint64",
+              "name": "cureWindow"
+            },
+            {
+              "type": "uint8",
+              "name": "boostCleanCycles"
+            },
+            {
+              "type": "uint8",
+              "name": "boostDepositCycles"
+            },
+            {
+              "type": "bool",
+              "name": "autoClearOffGlobal"
+            }
+          ]
+        },
+        {
+          "type": "uint128",
+          "name": "boostBaseCap",
+          "indexed": false
+        },
+        {
+          "type": "uint128",
+          "name": "boostEarnedCap",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CureNotice",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "noticeAt",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "defaultFrom",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CureNoticeCancelled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CureNoticeProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CureNoticeRecorded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "noticeAt",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "defaultFrom",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CycleClosed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "closedAt",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "rebalanceAmount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "securedMinimum",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CycleEndDaySet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "day",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "cycleEnd",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CycleJudged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "clean",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "missedInRow",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "cleanStreak",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "deposited",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CycleStatement",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "cycleEnd",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "recordedAt",
+          "indexed": false
+        },
+        {
+          "type": "uint256[]",
+          "name": "startPrincipal"
+        },
+        {
+          "type": "uint256[]",
+          "name": "startCarry"
+        },
+        {
+          "type": "uint256[]",
+          "name": "endPrincipal"
+        },
+        {
+          "type": "uint256[]",
+          "name": "endCarry"
+        },
+        {
+          "type": "uint256[]",
+          "name": "cycleCarry"
+        },
+        {
+          "type": "uint256[]",
+          "name": "principalSeconds"
+        },
+        {
+          "type": "uint256",
+          "name": "rebalanceAmount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "securedMinimum",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "statementRequired",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "workoutState",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "workoutRef",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DailyCapUpdated",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "cap",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DefaultExcludedPayerAdded",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "payer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DepositSourceUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DueTermsUpdated",
+      "inputs": [
+        {
+          "type": "uint16",
+          "name": "securedMinimumBps",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "raisedFrom",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "floor",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "cardMemberDailyCap",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "incomePauseMaxCycles",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "GraceCycleUsed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "dueAt",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "GraceEligibilityProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "GraceEligibilitySet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "GraceLengthUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "graceLength",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "GraceTermsUpdated",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "cyclesPerWindow",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "window",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HybridModeSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "on",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IncomePauseHardship",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "hardshipRef",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "consecutiveCycles",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IncomePauseProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "cycles",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IncomePauseSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "cycles",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LineClosed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "closedAt",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LineClosingProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OwnershipTransferred",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousOwner",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "newOwner",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PauseClockSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "clock",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Paused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PayerExclusionSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "payer",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "excluded",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PricingUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "rateSchedule",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "ceilingProduct",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SavingsDrawAllowanceSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SavingsDrawn",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "allowanceLeft",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecondWorkoutApproved",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "secondRef",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecondWorkoutProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "secondRef",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecuredMinimumMissed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "pastDue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TermIssuerSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "termIssuer",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierAdded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "ratePerCycle",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierCapacityUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "capacity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierCarryMaterialised",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierDrawn",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierPaymentSplit",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "carry",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "principal",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierProductSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "productId",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierRateUpdated",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "ratePerCycle",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TierRepaid",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Unpaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "UnsecuredLimitHalved",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "newLimit",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "excess",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutBalanceMoved",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "tierId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutEnded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "state",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutNoticeProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutNoticeRecorded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "noticeAt",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "due",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutPlanDefaulted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "writtenOff",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutPlanStarted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "workoutRef",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "principal",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "carry",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "cycles",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "installment",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "state",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "cycles",
+          "indexed": false
+        },
+        {
+          "type": "uint128",
+          "name": "reducedAmount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "workoutRef",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutReaged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "at",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WorkoutStarted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "state",
+          "indexed": false
+        },
+        {
+          "type": "uint8",
+          "name": "cycles",
+          "indexed": false
+        },
+        {
+          "type": "uint128",
+          "name": "reducedAmount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "workoutRef",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "fallback",
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "RATE_SCALE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "__CreditIssuer_init",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_stableCredit"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "absorbRepayment",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "available"
+        },
+        {
+          "type": "uint256",
+          "name": "minRate"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "addDefaultExcludedPayer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "addTier",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "approveCureNotice",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "approveGraceEligibility",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "approveIncomePause",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint8",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "authorizeCardSpend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "autoClearScopeOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "autoRepayEnabled",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "autoRepaymentOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "averageBalanceCarriedOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "boostBaseCap",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint128",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "boostCapOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "boostEarnedCap",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint128",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "capacityOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cardRepaymentOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cardSettlementAccount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cardSettlementOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cardTxCap",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "carryOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "carryRecipientOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "carryTreasury",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ceilingProduct",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "closeCarry",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint64",
+          "name": "at"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "clrusdTokenOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "combinedInputsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "creditPeriods",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "issuedAt"
+        },
+        {
+          "type": "uint256",
+          "name": "expiration"
+        },
+        {
+          "type": "uint256",
+          "name": "graceLength"
+        },
+        {
+          "type": "bool",
+          "name": "paused"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "creditTerms",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint128",
+          "name": "unsecuredLineCap"
+        },
+        {
+          "type": "uint64",
+          "name": "cureWindow"
+        },
+        {
+          "type": "uint8",
+          "name": "boostCleanCycles"
+        },
+        {
+          "type": "uint8",
+          "name": "boostDepositCycles"
+        },
+        {
+          "type": "bool",
+          "name": "autoClearOffGlobal"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cycleLength",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cycleOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": "missedInRow"
+        },
+        {
+          "type": "uint8",
+          "name": "cleanStreak"
+        },
+        {
+          "type": "uint8",
+          "name": "depositBits"
+        },
+        {
+          "type": "uint64",
+          "name": "cureNoticeAt"
+        },
+        {
+          "type": "uint128",
+          "name": "unsecuredCeiling"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cycleStateOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint64",
+              "name": "cycleEnd"
+            },
+            {
+              "type": "uint64",
+              "name": "closedAt"
+            },
+            {
+              "type": "uint64",
+              "name": "dayChangedAt"
+            },
+            {
+              "type": "uint8",
+              "name": "cycleEndDay"
+            },
+            {
+              "type": "uint8",
+              "name": "incomePause"
+            },
+            {
+              "type": "bool",
+              "name": "hybridMode"
+            },
+            {
+              "type": "uint128",
+              "name": "rebalanceAmount"
+            },
+            {
+              "type": "uint128",
+              "name": "securedMinimum"
+            },
+            {
+              "type": "uint128",
+              "name": "paidSinceClose"
+            },
+            {
+              "type": "uint128",
+              "name": "assetCarry"
+            },
+            {
+              "type": "uint128",
+              "name": "securedPastDue"
+            },
+            {
+              "type": "uint128",
+              "name": "pastDueSM"
+            },
+            {
+              "type": "uint128",
+              "name": "cureAmount"
+            },
+            {
+              "type": "uint64",
+              "name": "cureDueAt"
+            },
+            {
+              "type": "address",
+              "name": "noticeProposer"
+            },
+            {
+              "type": "address",
+              "name": "pauseProposer"
+            },
+            {
+              "type": "uint8",
+              "name": "pauseCycles"
+            },
+            {
+              "type": "bytes32",
+              "name": "autoClearAuthHash"
+            },
+            {
+              "type": "uint64",
+              "name": "cardDay"
+            },
+            {
+              "type": "uint128",
+              "name": "cardUsed"
+            },
+            {
+              "type": "bool",
+              "name": "graceEligible"
+            },
+            {
+              "type": "address",
+              "name": "graceProposer"
+            },
+            {
+              "type": "uint256",
+              "name": "graceUses"
+            },
+            {
+              "type": "bytes32",
+              "name": "hardshipRef"
+            },
+            {
+              "type": "bytes32",
+              "name": "pauseRef"
+            },
+            {
+              "type": "uint8",
+              "name": "hardshipRun"
+            },
+            {
+              "type": "uint64",
+              "name": "hardshipLastEnd"
+            },
+            {
+              "type": "uint8",
+              "name": "closedWorkout"
+            },
+            {
+              "type": "uint64",
+              "name": "psAt"
+            },
+            {
+              "type": "uint64",
+              "name": "lastCycleEnd"
+            },
+            {
+              "type": "uint64",
+              "name": "lastRecordedAt"
+            },
+            {
+              "type": "bool",
+              "name": "lastStatementRequired"
+            },
+            {
+              "type": "uint256",
+              "name": "closeClock"
+            },
+            {
+              "type": "uint256",
+              "name": "cureClock"
+            },
+            {
+              "type": "uint64",
+              "name": "heldClosedAt"
+            },
+            {
+              "type": "uint64",
+              "name": "heldDueAt"
+            },
+            {
+              "type": "uint8",
+              "name": "heldWorkout"
+            },
+            {
+              "type": "uint128",
+              "name": "heldRA"
+            },
+            {
+              "type": "uint128",
+              "name": "heldSM"
+            },
+            {
+              "type": "uint128",
+              "name": "heldPaid"
+            },
+            {
+              "type": "uint256",
+              "name": "heldClock"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cycles",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "debtByKind",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32[]",
+          "name": "kinds"
+        },
+        {
+          "type": "uint256[]",
+          "name": "amounts"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "defaultExcludedPayer",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "defaultedAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "delegateView",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "target"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "depositSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "drawnOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "dueTermsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint16",
+              "name": "securedMinimumBps"
+            },
+            {
+              "type": "uint16",
+              "name": "raisedBps"
+            },
+            {
+              "type": "uint64",
+              "name": "raisedFrom"
+            },
+            {
+              "type": "uint64",
+              "name": "securedMinimumFloor"
+            },
+            {
+              "type": "uint64",
+              "name": "cardMemberDailyCap"
+            },
+            {
+              "type": "uint8",
+              "name": "incomePauseMaxCycles"
+            },
+            {
+              "type": "address",
+              "name": "termIssuer"
+            },
+            {
+              "type": "uint8",
+              "name": "graceCyclesPerWindow"
+            },
+            {
+              "type": "uint64",
+              "name": "graceWindow"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "duesOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "endIncomePause",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "exposureSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "extension",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "graceExpirationOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "hasBalanceToMeasure",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "hasDefaulted",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "hasDefaultedOnCurrentLine",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "headroomOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inActivePeriod",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inCompliance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inDefault",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inExpiredPeriod",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inGracePeriod",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inInitializedPeriod",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "incomeOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "creditsReceived"
+        },
+        {
+          "type": "uint256",
+          "name": "depositsReceived"
+        },
+        {
+          "type": "uint256",
+          "name": "debtSeconds"
+        },
+        {
+          "type": "uint64",
+          "name": "lastAccrued"
+        },
+        {
+          "type": "uint64",
+          "name": "windowStart"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_stableCredit"
+        },
+        {
+          "type": "address",
+          "name": "_carryTreasury"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "initializeCreditLine",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "isCardSettler",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isFrozen",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isPayerExcluded",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "itdOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lineOpenedAtOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lockedAllocationOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "allocation"
+        },
+        {
+          "type": "uint256",
+          "name": "drawn"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "materialiseCarry",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "meetsITD",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "minimumItd"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "memberNonces",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "nextRepaymentRate",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "rate"
+        },
+        {
+          "type": "bool",
+          "name": "hasPosition"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "openLine",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256[]",
+          "name": ""
+        },
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "owner",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pausePeriodOf",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "paused",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "periodExpirationOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "principalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "principalOnlyOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proposeCureNotice",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "proposeGraceEligibility",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "proposeIncomePause",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint8",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "rateSchedule",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "renounceOwnership",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repayCardSpend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repayForMember",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "reverseCardSpend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "savingsDrawAllowance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "setAutoClear",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bool",
+          "name": ""
+        },
+        {
+          "type": "uint8",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setAutoClearWithSignature",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bool",
+          "name": ""
+        },
+        {
+          "type": "uint8",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setAutoRepay",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCardCaps",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCardSettlementAccount",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCardSettler",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCarryTreasury",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setClrusdToken",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCreditTerms",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint128",
+              "name": "unsecuredLineCap"
+            },
+            {
+              "type": "uint64",
+              "name": "cureWindow"
+            },
+            {
+              "type": "uint8",
+              "name": "boostCleanCycles"
+            },
+            {
+              "type": "uint8",
+              "name": "boostDepositCycles"
+            },
+            {
+              "type": "bool",
+              "name": "autoClearOffGlobal"
+            }
+          ]
+        },
+        {
+          "type": "uint128",
+          "name": ""
+        },
+        {
+          "type": "uint128",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCycleEndDayWithSignature",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint8",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setDailyCapacityCap",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setDepositSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setDueTerms",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint16",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        },
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setExposureSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setGraceLengthOf",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setGraceTerms",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setHybridMode",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPayerExclusionWithSignature",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "bool",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPeriodExpirationOf",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPricing",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSavingsDrawAllowance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSavingsDrawAllowanceWithSignature",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setTermIssuer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setTierActive",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setTierCapacity",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setTierCarryRecipient",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setTierProduct",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setTierRate",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settleCardSpend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settleFromCollateral",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "stableCredit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "syncCreditPeriod",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "syncCreditPositions",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "sender"
+        },
+        {
+          "type": "address",
+          "name": "recipient"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "terms",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "tierAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "ratePerCycle"
+        },
+        {
+          "type": "bool",
+          "name": "active"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "tierCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "tierProduct",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalCapacityOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "total"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalDrawnOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "total"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalPrincipalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferOwnership",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newOwner"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "triggerDefault",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "underwriteMember",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "unpausePeriodOf",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "unsecuredExcessOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "updateCreditPeriod",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "validateCreditTransaction",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "sender"
+        },
+        {
+          "type": "address",
+          "name": "recipient"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "workouts",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}

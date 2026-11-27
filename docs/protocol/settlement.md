@@ -1,0 +1,431 @@
+# Merchant settlement and the float
+
+How a merchant's positive balance on the ledger becomes USDC, who puts up the cash when members
+have not yet repaid, and how that cash and its carry come back. Deployed addresses are in the
+[contract reference](./contracts/README.md). The ledger, the issuers and carry accrual are in
+[`credit.md`](./credit.md); the BondVault is in [`bonds.md`](./bonds.md) and the AssurancePool, which
+lends nothing, in [`reserve.md`](./reserve.md).
+
+| Contract | Role |
+|---|---|
+| `MerchantRegistry` | Per-merchant terms: payout window, approval cap, discount, active flag |
+| `PayoutPool` | Turns a positive balance into reserve tokens. Queues claims, borrows for due ones, repays lenders, splits carry |
+| `LendingPool` | The Clear Earn Yield Pool (Phase 2f): an ERC-4626 vault of Pool Shares. Lends only to Clear Lending, as recorded Deployments |
+| `IPayoutSink` | The calls the ledger makes on the PayoutPool (`shortfall`, `receiveRepayment`, `held`, `memberFunded`, `refundsOwed`, `payRefund`) |
+| `IPayoutLenders` | `ILendingPool` and `IPayoutLender` (the BondVault's loan calls, now inert): the calls the PayoutPool makes on its old lenders |
+| `StableCredit` | Routes members' repayments (`_routeRepayment`) and burns claims the pool settles (`settleClaim`) |
+
+`MerchantRegistry`, `PayoutPool` and `LendingPool` are UUPS proxies with `AccessControl`; upgrades need `DEFAULT_ADMIN_ROLE`.
+`LendingPool`'s `DEFAULT_ADMIN_ROLE` moves to the separate 7-day Earn timelock (Phase 2f decision 2).
+`PayoutPool` storage is append-only, and its file marks where new variables go.
+
+## The payable
+
+**A merchant's positive ledger balance is what the co-op owes them.** There is no separate payables
+record. `PayoutPool.redeemableOf(merchant)` is `stableCredit.balanceOf(merchant)`, nothing more.
+
+A merchant who also draws credit is paid by drawdown first **when value reaches them by transfer**.
+`MutualCredit._afterTransfer` burns incoming credits against the recipient's `creditBalance`, so
+only the surplus shows in `balanceOf` and only the surplus can be redeemed. No code in the pool
+enforces this.
+
+`originatePurchase` (a partner purchase) first applies a recipient's new sale to any refund it still
+owes (`refundReceivableOf`, audit X-4) and mints only the rest. Other debt the recipient owes is not
+netted, so a merchant who owes on its own line and is then paid for a sale holds both a
+`creditBalance` and a positive `balanceOf`, and `redeem` will take the positive balance.
+`accrueCarry` mints with plain `_accrueCredit` and does not net.
+
+The pool pays `claim.amount` in reserve tokens for `claim.amount` of credits. It does no
+conversion, so credits and the reserve token are treated as the same unit.
+
+## Merchant terms
+
+`MerchantRegistry` stores one `Terms` struct per merchant. `registerMerchant` and `updateTerms` need
+`OPERATOR_ROLE` and revert if `discountBps` exceeds 10,000. A new merchant is registered active.
+
+| Field | Read by |
+|---|---|
+| `payoutWindow` | `PayoutPool.redeem`, through `payoutWindowOf` |
+| `active` | `PayoutPool.redeem`, through `isActive` |
+| `approvalCap` | No contract. The API checks each charge against `approvalCapOf` (`apps/api/src/services/chargeService.ts`) |
+| `discountBps` | `TermIssuer`, through `splitTermsOf(merchant, installments)`: the per-split discount (`discountBpsBySplit`), falling back to this flat figure, sets each plan's fee and payout, capped at $50 / $75. The API also reads `discountBpsOf` for charges |
+| `discountBpsBySplit`, `subsidyBpsBySplit` | `TermIssuer`, through `splitTermsOf`: the discount and the rate the merchant takes off the member's plan, per number of instalments (`setSplitTerms`) |
+| `freeSplitMax` | `TermIssuer`, through `splitTermsOf`: plans up to this many instalments are free to the member at that shop |
+| `noSurcharge` | Recorded for the shop's agreement not to surcharge Clear. No contract enforces it |
+
+`payoutWindowOf` returns `defaultPayoutWindow` when the merchant is unregistered **or** registered
+with a window of zero, so a per-merchant zero means the default. `setDefaultPayoutWindow` itself
+accepts any value, zero included. The deploy script
+(`deploy/22_deploy_BondsAndPool.ts`) initialises the default at thirty days.
+
+There is no priority field. Payout order is deadline first, then claim age (addendum 12.10): the
+unpaid claim due soonest is paid first, and claims due at the same moment oldest first. The pool
+keeps one first-in, first-out queue per payout window and compares only their heads (`_head`); at
+most `MAX_QUEUED_WINDOWS` (16) windows can be queued at once.
+
+## Redemption
+
+**`PayoutPool.redeem(amount)` moves the merchant's credits into the pool and opens a claim.** It
+does not burn them.
+
+1. Only a registered, active merchant, or an address the admin named with `REDEEMER_ROLE` or
+   `FUNDER_ROLE`, may redeem (audit C-1). A registered, inactive merchant reverts
+   `PayoutPoolMerchantInactive`; anyone else reverts `PayoutPoolNotEligible`.
+2. The amount is capped at `redeemableOf`. Zero reverts.
+3. `stableCredit.transferFrom(merchant, pool, amount)`. The merchant must have approved the pool.
+   `inFlight` rises by the amount.
+4. If the caller is a funder carrying positions (`advancedOf`), that figure falls by what they
+   redeem.
+5. A `Claim` is pushed with `dueBy = now + payoutWindowOf(merchant)`; `queuedTotal` rises.
+6. If this claim is now the next due and the pool's cash, less members' money set aside for
+   refunds still owed, covers it, it is paid in the same call.
+   Otherwise `ShortfallReported(shortfall())` is emitted.
+
+```mermaid
+flowchart TD
+  R["redeem(amount)<br/><i>credits → pool, claim opened</i>"] --> Q{"next due<br/>and cash less refund set-aside ≥ amount?"}
+  Q -->|yes| P["_pay: USDC to merchant"]
+  Q -->|no| W["queued, ShortfallReported"]
+  W -->|"cash arrives"| N["payNext / payQueue"]
+  W -->|"block.timestamp ≥ dueBy"| D["drawForDueClaim"]
+  N --> P
+  D --> P
+  P --> PL["_placePosition<br/><i>settle, or hand to funder</i>"]
+```
+
+Claims are paid in deadline order. `payNext()` pays the claim `nextUnpaid()` names and reverts if
+the pool's cash, less the members' money set aside for refunds owed (`min(refundsOwed,
+memberFunded)`), does not cover it; it takes no argument. `payQueue(maxClaims)` calls `payNext` until it
+reaches a claim it cannot cover. Both are permissionless. `canPayNext()` reports whether the next
+claim is covered. `dueWithin(horizon, maxClaims)` says how much falls due within a horizon, for
+funding ahead of deadlines.
+
+`shortfall()` is `queuedTotal + refundsOwed − held()`, floored at zero: refunds owed come first, so
+they are part of what the pool is short. It is a view; nothing acts on it.
+
+## Where the position goes
+
+**When a claim is paid, `_placePosition` decides whose cash paid it.** The amount is capped at
+`inFlight`, so carry the pool holds is never treated as a position. Then, in order:
+
+| Cash that paid | What happens to the credits | State |
+|---|---|---|
+| Members' repayments (`memberFunded`) | Burned through `StableCredit.settleClaim` | `memberFunded` falls |
+| A funder's capital (`capitalOf`) | Transferred to that funder | `advancedOf[funder]` rises |
+| Borrowed cash, up to `borrowed()` less what the pool already holds for it | Kept by the pool | `advancedOf[pool]` rises |
+| Anything left | Transferred to `coopTreasury` | none |
+
+Funders are walked in the order of the `funders` array. Entries are appended on first funding and
+removed by swap-and-pop in `_forgetSpentFunders`, so the order is insertion order until a funder is
+removed.
+
+`settleClaim` is callable only by the ledger's configured `payoutPool`. Only the pool knows which
+cash paid a claim, so only the pool may burn one.
+
+## Drawing for a due claim
+
+**`drawForDueClaim()` finds cash for the next unpaid claim once its window has run out.** It is
+permissionless. It reverts if the claim is not yet due (`PayoutPoolClaimNotDue`), and returns zero
+without drawing if the pool's cash, less `refundsOwed`, already covers it.
+
+The shortfall is drawn from each source in turn, each only for what the one before could not cover:
+
+1. **Lending pool.** `ILendingPool(yieldPool).borrow(take, pool)`, up to the lesser of its
+   `availableCash()` and `borrowableToday(pool)`. Recorded in `borrowedFromYield`. Since Phase 2f
+   the Yield Pool reports `borrowableToday` as zero and `borrow` reverts, so this step takes nothing
+   (decision 17); `setYieldPool(0)` switches it off once `borrowedFromYield` is repaid.
+2. **Bond vault.** `IPayoutLender(bondVault).lendToPayoutPool(short)`, recorded in
+   `borrowedFromVault`. Since Phase 2f the BondVault lends nothing to the pool, so this step takes
+   nothing either.
+3. **Treasury.** `safeTransferFrom(coopTreasury, pool, take)`, up to `treasuryAvailable()` (the
+   lesser of the treasury's allowance to the pool and its balance). This is **capital, not a loan**:
+   it is added to `capitalOf[coopTreasury]` and buys positions like `fund` does.
+
+**All or nothing.** If the sources together cannot pay the claim, the call reverts
+(`PayoutPoolInsufficientFunds`) and nothing is drawn. Otherwise it pays the claim in the same call.
+The AssurancePool is not a source: it lends nothing. Automatic top-ups from Clear Lending keep the
+pool funded before claims fall due ([payout top-ups](../operators/payout-topups.md)).
+
+Each source is set by `DEFAULT_ADMIN_ROLE`: `setYieldPool`, `setBondVault` and `setCoopTreasury`. An
+unset address is skipped.
+
+## Repayment comes back
+
+**A member's repayment repays whoever lent before it settles anything.** The ledger's `_repay`
+calls `_routeRepayment`, which offers the PayoutPool what it is short of its payables
+(`totalSupply() + refundsOwed()`, every positive balance on the ledger and every refund owed, less
+`memberFunded()`, the repayments already there) and sends the rest to `lenderOperating`, Clear
+Lending's operating address. With no payout pool set, all of it goes to `lenderOperating`.
+
+`PayoutPool.receiveRepayment(amount)` accepts calls from the ledger only. It then:
+
+1. **Repays principal** in `_repayPrincipal`: lending pool, then bond vault, each up to what is owed
+   to it, through `repay` or `repayFromPayoutPool`.
+2. **Pays interest** in `_repayLenders` from what is left, up to `carryEarned`. The interest is split
+   by each lender's share of `borrowed()` measured before step 1; the lending pool takes the rounding
+   remainder, and all of it when nothing was owed. The lending pool's share is sent as a plain
+   transfer, not through `repay`, so it raises the share price rather than reducing another
+   borrower's loan; the vault's goes through `repayFromPayoutPool`. Only what
+   actually reaches a lender counts as paid and has its credits burned with `settleClaim` — a
+   lender unset since it lent keeps its share in `carryEarned` until it is named again.
+3. **Settles the pool's own positions.** The principal repaid in step 1 is burned from
+   `advancedOf[pool]`, up to what the pool holds.
+4. **Adds the rest to `memberFunded`.** That cash settles claims when they are paid.
+
+The BondVault credits principal against `lentToPayoutPool` and keeps the rest.
+
+Since Phase 2f `LendingPool.repay` is the same call as `returnFunds`: it pays accrued Pool Interest
+first (the billed month first), then the Deployed Balance, and keeps anything over as Vault Cash.
+That is why the PayoutPool sends its interest share as a plain transfer: it raises Vault Cash
+directly. Nobody borrows from the pool any more, so this path only unwinds what the PayoutPool
+borrowed before decision 17; the card settler does not use the pool
+([Card settlement](#card-settlement)).
+
+## Carry, by who bore the float
+
+**Carry is split by the positions each party holds, against every claim outstanding.** Carry
+reaches the pool as credits when an issuer names the pool as its recipient.
+`scripts/configure-carry-recipients.mjs` points `TermIssuer.carryTreasury` and
+`RevolvingIssuer.carryTreasury` at the pool, after setting `TermIssuer.feeRecipient` (Clear Lending's
+fee address, which can never be the carry treasury), so the fee leg never follows carry to the pool. It leaves per-tier recipients (`tierCarryRecipient`) unchanged.
+
+`distributableCarry()` is the pool's credit balance less `inFlight`, `advancedOf[pool]` and
+`carryEarned`. `distributeCarry()` is permissionless and pays each carrier:
+
+```
+share = distributed × advancedOf[carrier] / (totalSupply − distributed − inFlight)
+```
+
+A carrier that is the pool itself adds its share to `carryEarned`, which is paid to the lenders in
+`receiveRepayment`. Other carriers receive credits. Whatever is left (the float no funder bore,
+and rounding) goes to `coopTreasury`. Shares use positions held at the moment of the call, not
+time-weighted holdings.
+
+## Funders and the co-op's income
+
+| Call | Who | What it does |
+|---|---|---|
+| `fund(amount)` | `FUNDER_ROLE` | Pulls reserve tokens in, adds to `capitalOf[caller]`. That capital buys positions in `_placePosition` |
+| `withdrawCapital(amount, to)` | Any funder | Returns unspent capital, capped by `idleCapitalOf`: the least of own capital, `held() − queuedTotal` and `held() − memberFunded`. Refunds owed do not hold it back, since only members' money pays those |
+| `withdrawCoopIncome(amount)` | `OPERATOR_ROLE` | Pays the co-op from members' cash. Capped by the treasury's credit balance less the positions it bought (`advancedOf[coopTreasury]`, audit X-8), by `unencumbered()`, and by members' money not set aside for refunds. Burns that much of the treasury's credits and sends cash to `coopIncomeRecipient`, or to `coopTreasury` if unset |
+| `setCoopTreasury`, `setCoopIncomeRecipient` | `DEFAULT_ADMIN_ROLE` | Where the co-op's positions are held, and where its income is paid |
+
+`unencumbered()` is `held() − queuedTotal − refundsOwed`, floored at zero. Capital already spent
+on a claim cannot be withdrawn; the funder holds the position instead, which settles as the member
+repays.
+
+## LendingPool
+
+**The Clear Earn Yield Pool.** Since Phase 2f (decision 16) the `LendingPool` proxy is the Yield
+Pool, upgraded in place: same name, address and balances, storage append-only against Base Sepolia.
+Pool Shares are limited-recourse subordinated demand notes (IV-02). The requirements are in
+[`earn-contract-requirements.md`](../audit/specs/earn-contract-requirements.md) §§6–8; the change
+record is [`PHASE-2F-YIELD-POOL.md`](../audit/PHASE-2F-YIELD-POOL.md). Valuation, the holdback
+ledger, Suspension, the rate model and Deployments run in the `YieldPoolValuation` module by
+delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poolModules.ts)).
+
+- **Share Value.** `shareValue()` = Pool Assets ÷ outstanding Pool Shares (WAD, `1e18` = $1.00),
+  where Pool Assets (`totalAssets()`) = Vault Cash + the Deployed Balance + accrued unpaid Pool
+  Interest. Vault Cash (`vaultCash()`) is the pool's USDC less Holdback Amounts, cash still owed to
+  requests queued before 2f, payments waiting to be claimed and any restart leftover not yet
+  recognized. A Pool Loss Allowance never lowers it. USDC sent straight to the pool is Vault Cash
+  and raises the Share Value at once (decision 28). With no Pool Share outstanding the next
+  subscription issues at exactly $1.00, and whatever is left in the pool is set aside and
+  recognized into Vault Cash over 30 days (`leftover()`, decision 29).
+- **Subscriptions.** `subscribe(assets, receiver, attestation)`, or ERC-4626 `deposit`/`mint` with no
+  attestation. At least $250 (FIXED). The shared Earn controls (`earnControls()`, the
+  `IPoolEarnControls` interface) check eligibility and refuse Clear-contract payers, return the
+  `exemptionCode` that `Subscribed` records, and report the Equity Cushion and Reserve Shortfall
+  pauses. Subscriptions also stop during a Suspension, while a loss charge is being applied, and
+  from the Final Maturity Date. The 10% holder cap is the controls' (per household, above
+  `holderCapFloor`). The first subscription records `initialClosing`.
+- **Deployments and Returns (decision 17).** `deploy(amount, ref)`: two `DEPLOYER_ROLE` signers
+  (one proposes, a different one sends), only to `deploymentAccount()`, only with no open queue
+  request, no Suspension and no pending loss charge, before Final Maturity, and only if afterwards
+  Utilization is at most 90% (FIXED) and the Deployed Balance is within the Pool Tier principal two
+  `VALUATION_ROLE` signers last posted (`postPoolTierPrincipal`, IV-02 §4.3; none before it is
+  posted). Each is recorded (`Deployed`, `deploymentCount`, `totalDeployed`).
+- **The settlement lane (decision 54).** `deploySettlement(amount, ref)` is a Deployment by one
+  registered funder, the funding desk's wallet, alone. It goes to `deploymentAccount()` only, under
+  every condition `deploy` has, with two differences: the funder's cap per period applies, and the
+  ceiling is the posted Pool Tier principal plus the Settlement Headroom. `ref` is the hash of the
+  settlement it funds. Two `DEPLOYER_ROLE` signers set the funder, cap and period
+  (`setSettlementFunder`) and the headroom (`setSettlementHeadroom`). One `DEPLOYER_ROLE` or
+  `CCO_ROLE` holder can stop the lane at once (`stopSettlementFunder`), and restarting it takes two
+  signers again. The cash reaches card settlement through the [`SettlementForwarder`](./contracts/SettlementForwarder.md),
+  CL Operating's AllowanceModule delegate, which sends USDC from CL Operating to one off-ramp
+  address. The lane is in the `LendingPool` implementation recorded as
+  [`LendingPoolSettlementLane`](./contracts/LendingPoolSettlementLane.md), which the proxy runs only
+  after an Earn timelock upgrade. How the desk uses it is in
+  [Automatic Settlement Funding](../operators/settlement-funding.md).
+- **Pool Interest (IV-02 §4.6, decision 24).** It accrues per second on the Deployed Balance at the
+  Funding Rate, on a 365-day year. At each Pacific month end the interest accrued and unpaid is
+  billed (`billedInterest()`), due by 23:59:59 Pacific on the 5th weekday after; whatever is still
+  unpaid then is capitalized into the Deployed Balance and earns interest itself. Booking is lazy:
+  it happens at every change, and anyone may call `accrue()`; the views project it to now.
+  `returnFunds(amount)` (anyone; `repay` is the same call, kept for the PayoutPool) pays accrued
+  interest first, the billed month's first, then the Deployed Balance; any excess stays as cash.
+  `borrow` reverts and `borrowableToday` is zero for everyone.
+- **Utilization** (`utilization()`) is the Deployed Balance ÷ (the Deployed Balance + Vault Cash);
+  accrued interest is not in it. `lowUtilizationSince()` is the time since which it has stayed
+  below 50%, or 0; `EarnControls` reads it for the L-01 §2.9(c) pause (IV-02 §2.6).
+- **Funding Rate.** `fundingRate()` and `fundingRateAt(u)`: R₀ + S₁·U/K up to the kink, then
+  R₀ + S₁ + S₂·(U−K)/(1−K), initially 2%, 3%, 80%, 5% (IV-02 Sch. 2), with FIXED bounds.
+  `proposeRateModel` (`DEFAULT_ADMIN_ROLE`) takes effect through `applyRateModel` after 48 hours, or
+  after 30 days for a change that lowers the rate anywhere, at most one per calendar quarter (UTC).
+- **Redemptions.** `redeem`/`withdraw` pay on demand only while no queue request is open, there is
+  no Suspension or pending loss charge, and Vault Cash covers the full gross amount; `maxRedeem` and
+  `maxWithdraw` say so (zero while the queue is open). `redeemOrQueue(shares, receiver)` pays what it
+  can now and queues the rest; `requestWithdrawal` queues all of it.
+- **The queue.** Strict FIFO. Queued shares wait in escrow in the pool, keep earning and bear
+  losses, and are filled by anyone (`fillQueue(maxCount)`), whole or partial, at the Share Value at
+  fill less the Loss Holdback then applying (C4; this replaces audit fix X-7's cap at the value when
+  queued). Owners cancel (`cancelRequest`) at any time. `oldestRequestAge()` feeds the off-chain 30-
+  and 90-day rules. A payment the token refuses is kept in `unpaidOf` for `claimUnpaid`, so it cannot
+  block the queue.
+- **Loss Holdback (§6A).** `postAllowance(value, evidence)` (two `VALUATION_ROLE` signers) sets the
+  Holdback Percentage `holdbackRate()` = allowance ÷ Pool Assets (WAD; `holdbackBps()` rounds it up
+  for display), and nothing else. While it is above zero, every redemption pays G less
+  G × the percentage rounded up, and records the rest to the Holder
+  (`holdbackAt`, `holdbackOf`, `totalHoldback`). A lower posting starts a release pass, and
+  `releaseHoldbacks(maxCount)` (anyone) pays releases and age releases (`holdbackMaxAge`, 540 days;
+  `releasableAt(id)`) only to the Holder. `postLossCharge(value, evidence)` (two signers) is applied
+  first to the open holdbacks ratably (`applyHoldbacks`), and what they absorb moves into Vault
+  Cash. Then the whole charge reduces the Deployed Balance, then accrued interest; only the part
+  above both leaves the vault, to Clear Lending (IV-02 §5.6(d) and Exhibit A, A2 as corrected;
+  decision 33). Pool Assets so fall by the charge less what the holdbacks absorbed.
+  `postRecovery(value, evidence)` (two signers, the same rules) adds unrestored charges back to the
+  Deployed Balance, up to `unrestoredCharges()` (IV-02 §5.4, decision 25). The cap counts each
+  charge in full, including any part a holdback bore (decision 36), which is now exactly what the
+  charge took off the Deployed Balance and interest or paid out.
+- **Suspension (§8).** `suspend(reason, evidence, resolution)` for LOSS_EVENT, LEGAL_ORDER,
+  USDC_OR_NETWORK or VALUATION_PENDING only, by two different authorized individuals
+  (`SUSPENSION_ROLE`, `CCO_ROLE`, `TREASURER_ROLE`), one of them the CCO or treasurer. 72 hours
+  (VALUATION_PENDING 48 and not renewable); `renewSuspension` by a different signer; a Lending Board
+  resolution hash beyond 240 hours; never past 30 days except a LEGAL_ORDER with an order hash.
+  Both limits count the total on the same facts, across suspensions. VALUATION_PENDING is allowed
+  once per Valuation Event, recorded by two `VALUATION_ROLE` signers (`recordValuationEvent`), and
+  the next allowance posting clears the event and ends that Suspension (decision 26).
+  It stops subscriptions, redemptions, fills and Deployments; cancellations go on and interest
+  accrues.
+- **Holds required by law (§7.5, decision 34).** `placeLegalHold(holder, shares, orderHash, expiresAt)`
+  holds `shares` of one holder's Pool Shares, and only those, for a legal order: two authorized
+  individuals under the Suspension's rule (`SUSPENSION_ROLE`, `CCO_ROLE`, `TREASURER_ROLE`, one
+  of them the CCO or treasurer) with the order's hash. While in force those shares cannot be
+  redeemed, queued, transferred or pledged (`CollateralRegistry.pledge` refuses them), and an
+  MB-05 enforcement waits for it; the holder's other shares are untouched (`freeSharesOf` and
+  `maxRedeem` leave out `heldSharesOf`). It ends on `releaseLegalHold(id)` by two signers or when
+  the order's stated expiry passes (`expiresAt`, 0 for none). It moves, burns and pays nothing.
+  Views: `legalHold(id)`, `legalHoldsOf(holder)`, `legalHoldCount()`. A hold reaches only shares
+  in the holder's account, not shares already in the queue; at most 8 are open per holder.
+- **Final Maturity.** `finalMaturity()` is the 20th anniversary of `initialClosing`. From then,
+  subscriptions and Deployments stop, and `requestRunOff(holder)` (anyone) queues a holder's free
+  shares in queue order (decision 15).
+- **Transfers.** Only between two accounts of one Holder, or by the Successor path, as the Earn
+  controls report (`transferAllowed`); every other transfer reverts (FIXED). A plain transfer into
+  the pool reverts: shares enter escrow only through the queue. Redemption proceeds go only to the
+  account that held the shares (IV-02 §6.5), except enforcement and the Successor path.
+- **Successor redemption (§8.3, decision 35).** Where the Holder's account cannot be accessed,
+  two `SUCCESSOR_ROLE` signers register a Successor for the Holder's payments in EarnControls
+  (`registerPaymentSuccessor`, in effect after 7 days; `cancelPaymentSuccessor` from the Holder's
+  own account). Once `payeeOf(holder)` names it, that Successor, and nobody else, may call
+  `successorRedeem(holder, shares)`: the Holder's free shares (not pledged, held or queued) join
+  the ordinary queue as the Holder's request, fill in order at Share Value, and pay only the
+  Successor; any holdback is recorded to, and released to, the Successor. The Holder's account
+  can still cancel the request with `cancelRequest`.
+- **Legend.** `legend()` and `legendHash()` carry IV-02 §8.4's legend. It is written once at setup
+  (`setLegend`, `DEFAULT_ADMIN_ROLE`); a later change waits 7 days (`applyLegend`, decision 27).
+- **Modules.** Pool Interest, Suspension, legal holds, the rate model, recoveries, the legend and the restart
+  leftover run in `YieldPoolLedger`. The functions added in the IV-02 conformance pass are served
+  by the pool's fallback, so clients need the joined ABI (`deploy/poolModules.ts`, `poolAt`).
+- **Shares as collateral.** Pledged shares (`encumberedOf`, from the source set by
+  `setEncumbranceSource`) cannot be transferred, redeemed or queued by the holder
+  (`LendingPoolEncumbered`); if the source can't be read, a holder last seen pledged is treated as
+  fully locked (audit M-3). An MB-05 enforcement redemption, `enforcementRedeem(holder, shares)`
+  (`ENFORCER_ROLE`, held by `PoolShareEnforcer`), queues pledged shares in order and pays only
+  `enforcementDestination()` (the enforcer); any holdback goes to the holder, and
+  `enforcementFilledOf(holder)` records what each holder's fills burned and paid. `previewRedeem(shares)`
+  is the Pool Share Value of MB-05 §1.3, and CollateralRegistry values pledged shares by it. Nothing
+  seizes a share: `seizeShares` and the Liquidator's exemption are gone (Phase 2f stage 2, C5), and
+  `LIQUIDATOR_ROLE` is kept only so scripts can revoke it.
+- **Requests queued before 2f** were fixed in assets with their shares burned. `claimWithdrawal(id)`
+  still pays them to the owner; until then their cash is outside Pool Assets.
+
+**Known limitations**
+
+- **Governance.** On Base Sepolia the pool's only `DEFAULT_ADMIN_ROLE` holder is the
+  [`EarnTimelock`](./contracts/EarnTimelock.md) (7 days, the Clear Lending Safe proposing).
+- **Earn controls.** Without `EarnControls` named by `setEarnControls`, subscriptions and
+  holder-to-holder transfers revert (the pool fails closed). On Base Sepolia it is set.
+- **Contract reference.** The generated [contract page](./contracts/LendingPool.md) reads access
+  from the function declaration, so the module-forwarded functions show as callable by anyone; the
+  module checks the caller.
+
+## Card settlement
+
+`RevolvingIssuer.settleCardSpend(ref, member, amount)` records a cleared card purchase. Only an
+address allowed by `setCardSettler` may call it. It settles only against an earlier
+`authorizeCardSpend(ref, member, amount)` for the same member, recorded when the card issuer approved
+the purchase, and never for more than was authorized (audit M-2). It is bound by the per-transaction
+and daily card caps, refused after a default on the current line, reverts unless the member's
+active tiers have headroom for the whole amount, draws the tiers in tier order (`_draw`), and calls `originatePurchase` with the full amount credited to `cardSettlementAccount` and no
+discount. That account then holds an ordinary positive balance. `reverseCardSpend` undoes it through
+`reversePurchase`. Details are in [`credit.md`](./credit.md).
+
+**The card settler does not borrow from the pool** (decision 17): `borrow` reverts and
+`borrowableToday` is zero. Clear Lending funds card settlement from what it draws as recorded
+Deployments, including the settlement lane's, and its treasury pays them back as Returns (`returnFunds`). The API moves no money
+to or from the pool: it sends the settlement, reversal and netting calls above and nothing else.
+
+## Refunds
+
+**A refund returns what the member already paid, from the PayoutPool.** The issuer calls
+`StableCredit.repayRefund`, which reverts unless the merchant's and co-op's shares sum to what the
+member paid. `_takeBack` burns each share from the merchant's or co-op's balance. Where that
+balance is too small (a merchant who has redeemed), the rest becomes their obligation. Credits they
+later receive by transfer or by a new sale are applied to it first (see
+[The payable](#the-payable)). The ledger
+then calls `PayoutPool.payRefund(member, paid − carryWithheld)`.
+
+`payRefund` accepts calls from the ledger only. It pays only from members' repayments held here
+(`memberFunded`, capped at the cash), never from funders' capital (audit X-12). Anything it cannot
+cover is recorded in `refundOwedTo[member]` and `refundsOwed`. `payRefundsOwed()` is permissionless
+and pays those, up to 100 members a call (`payRefundsOwedUpTo(n)` for another batch size), from
+members' money only.
+
+Every path that pays a claim — `redeem`, `payNext`, `payQueue`, `canPayNext` and
+`drawForDueClaim` — holds back the part of `refundsOwed` that members' money can cover, and
+`unencumbered` holds back all of it. There is no draw for a
+refund shortfall. The arithmetic and worked examples are in
+[Refunds and repayments](./refund-repayment-plan.md).
+
+## Who can call what
+
+| Function | Access |
+|---|---|
+| `redeem` | A registered, active merchant, or a `REDEEMER_ROLE` or `FUNDER_ROLE` holder |
+| `payNext`, `payQueue`, `drawForDueClaim`, `distributeCarry`, `payRefundsOwed`, `withdrawCapital` | Anyone |
+| `receiveRepayment`, `payRefund` | The ledger only |
+| `fund` | `FUNDER_ROLE` |
+| `setYieldPool`, `setBondVault`, `setCoopTreasury`, `setCoopIncomeRecipient` | `DEFAULT_ADMIN_ROLE` |
+| `withdrawCoopIncome` | `OPERATOR_ROLE` |
+| `MerchantRegistry.registerMerchant`, `updateTerms`, `setActive`, `setDefaultPayoutWindow` | `OPERATOR_ROLE` |
+| `LendingPool.subscribe`, `deposit`, `mint` | Eligible accounts, as the Earn controls report |
+| `LendingPool.withdraw`, `redeem`, `redeemOrQueue`, `requestWithdrawal` | The share owner (or an approved spender for `withdraw`/`redeem`). Only free shares |
+| `LendingPool.cancelRequest` | The request's owner; an enforcement request only `ENFORCER_ROLE` |
+| `LendingPool.fillQueue`, `returnFunds`, `repay`, `releaseHoldbacks`, `applyHoldbacks`, `requestRunOff`, `applyRateModel`, `syncEncumbrance`, `accrue`, `applyLegend` | Anyone |
+| `LendingPool.claimWithdrawal` (pre-2f requests), `claimUnpaid` | The request's owner; the payee |
+| `LendingPool.deploy` | Two different `DEPLOYER_ROLE` signers; pays only `deploymentAccount` |
+| `LendingPool.postAllowance`, `postLossCharge`, `postRecovery`, `recordValuationEvent`, `postPoolTierPrincipal` | Two different `VALUATION_ROLE` signers |
+| `LendingPool.suspend`, `placeLegalHold`, `releaseLegalHold` | Two different authorized individuals, one the CCO or treasurer |
+| `LendingPool.renewSuspension`, `liftSuspension` | An authorized individual (renewal: not the last signer) |
+| `LendingPool.enforcementRedeem` | `ENFORCER_ROLE`; pays only `enforcementDestination` |
+| `LendingPool.successorRedeem` | Only the Successor `EarnControls.payeeOf(holder)` names; pays only that Successor |
+| `LendingPool.borrow` | Nobody (reverts) |
+| `LendingPool.initializeYieldPool`, `setEarnControls`, `setDeploymentAccount`, `setEnforcementDestination`, `setEncumbranceSource`, `setHoldbackMaxAge`, `proposeRateModel`, `setLegend`, role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` (the Earn timelock) |
+
+Tests: `test/peripherals/PayoutPool.spec.ts`, `test/peripherals/LendingPool.spec.ts`,
+`test/earn/YieldPool.spec.ts`, `test/earn/YieldPoolConformance.spec.ts`, `test/earn/YieldPoolUpgrade.spec.ts`,
+`test/core/PayoutLifecycle.spec.ts`, `test/core/RepaymentRouting.spec.ts`,
+`test/core/SharedBalance.spec.ts`. To rehearse a redemption against a fork of a live deployment,
+use `scripts/drill_redemption.ts`.

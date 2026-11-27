@@ -4,18 +4,36 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "./IAccessManager.sol";
 import "./ICreditIssuer.sol";
-import "./IAssurancePool.sol";
+import "./INetworkRegistry.sol";
 import "./IMutualCredit.sol";
+import "./IMerchantStatus.sol";
 
 interface IStableCredit is IMutualCredit, IERC20Upgradeable {
-    /// @dev the reserve pool contract which holds and manages reserve tokens
-    function assurancePool() external view returns (IAssurancePool);
+    /// @notice the token repayments are made in (USDC). The ledger's own setting: nothing in
+    /// credit reads it from the co-op's Assurance contracts (section 13).
+    function reserveToken() external view returns (IERC20Upgradeable);
+    /// @notice converts a credit amount into reserve-token units.
+    function convertStableCreditToReserveToken(uint256 amount) external view returns (uint256);
+    /// @notice Lending Co.'s operating address: a repayment's remainder and written-off debt go here.
+    function lenderOperating() external view returns (address);
     /// @dev the access manager contract which manages network role access control
     function access() external view returns (IAccessManager);
     /// @dev the credit issuer contract which manages credit line issuance
-    function creditIssuer() external view returns (ICreditIssuer);
+    function networkRegistry() external view returns (INetworkRegistry);
+    /// @notice an issuer's contribution to a member's ceiling.
+    function issuerCreditLimit(address issuer, address member) external view returns (uint256);
+    /// @notice the merchant registry the ledger reads.
+    function merchantRegistry() external view returns (IMerchantStatus);
+    /// @notice whether an address is a registered, active merchant. False while no registry is set.
+    function isActiveMerchant(address merchant) external view returns (bool);
+    /// @notice whether a member may pay credit to this address.
+    /// @dev Phase 1 has no member-to-member transfers (audit C-1, M-1): credit is spent at an active
+    /// merchant or paid to a system address the admin has named. Issuers ask this before letting a
+    /// member draw, so it fails closed: with no merchant registry set, only named system addresses
+    /// pass.
+    function isEligibleRecipient(address recipient) external view returns (bool);
     /// @notice transfer a given member's debt to the network
-    function writeOffCreditLine(address member) external;
+    function writeOffCreditLine(address member, uint256 amount) external;
     /// @notice called by the underwriting layer to assign credit lines
     /// @dev If the member address is not a current member, then the address is granted membership
     /// @param member address of line holder
@@ -25,10 +43,82 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @notice update existing credit lines
     /// @param creditLimit must be greater than given member's outstanding debt
     function updateCreditLimit(address member, uint256 creditLimit) external;
-    /// @notice Reduces lost debt in exchange for assurance reimbursement.
-    /// @dev Must have sufficient lost debt to service.
-    /// @return reimbursement amount from assurance pool
+    /// @notice always reverts: lost debt is Lending Co.'s charge-off and is not redeemable from
+    /// any reserve (section 13). Kept so the selector answers with a reason.
     function burnLostDebt(address member, uint256 amount) external returns (uint256);
+
+    /// @notice settles a member's obligation, pulling reserve tokens from the caller.
+    /// @dev Public: anyone may pay down anyone's debt, and the issuers are told so each takes its
+    /// share through the ordinary waterfall. A liquidation is not a special kind of money.
+    /// @param member address whose obligation is settled.
+    /// @param amount amount settled.
+    function repayCreditBalance(address member, uint128 amount) external;
+
+    /// @notice settles a member's obligation on an issuer's instruction.
+    /// @param payer address the reserve tokens are pulled from.
+    /// @param member address whose obligation is settled.
+    /// @param amount amount settled.
+    function repayCreditBalanceFor(address payer, address member, uint128 amount) external;
+
+    /// @notice gives a member back money they paid, for a purchase that has been given back.
+    /// @dev The half `reversePurchase` does not do: it cancels what is still owed, this returns
+    /// what was already paid. The legs net, the carry the member incurred is withheld from the
+    /// cash and settled, and the money comes from the payout pool where their repayments landed.
+    function repayRefund(
+        address member,
+        uint256 paid,
+        address merchant,
+        uint256 merchantShare,
+        address coop,
+        uint256 coopShare,
+        uint256 carryWithheld
+    ) external;
+
+    /// @notice burns a claim that has been paid in cash out of a member's own repayment.
+    /// @dev Only the payout pool may call it: only the pool knows whether a claim was paid with a
+    /// member's money (settled, so the claim is burned) or with capital (advanced, so the funder
+    /// keeps the position).
+    function settleClaim(address holder, uint256 amount) external;
+
+    /// @notice unwinds a partner purchase. The inverse of originatePurchase, and capital-free.
+    /// @param member address released of the obligation.
+    /// @param purchase the amount to take off what the member owes.
+    /// @param merchant address whose claim is taken back, and who carries any shortfall.
+    /// @param payout the merchant's share of the original mint.
+    /// @param coop address holding the discount.
+    /// @param discount the co-op's share of the original mint.
+    function reversePurchase(
+        address member,
+        uint256 purchase,
+        address merchant,
+        uint256 payout,
+        address coop,
+        uint256 discount
+    ) external;
+
+    /// @notice originates a partner purchase as a three-party mint.
+    /// @param member address taking on the obligation.
+    /// @param purchase the amount the member is debited.
+    /// @param merchant address receiving the payout.
+    /// @param payout the amount the merchant is credited.
+    /// @param coop address receiving the discount.
+    /// @param discount the amount the co-op is credited.
+    function originatePurchase(
+        address member,
+        uint256 purchase,
+        address merchant,
+        uint256 payout,
+        address coop,
+        uint256 discount
+    ) external;
+
+    /// @notice deepens a member's negative balance by accrued carry.
+    /// @dev Called by the issuer that holds the position. The claim goes to whoever funded the
+    /// draw -- the co-op, or the pool the money came from.
+    /// @param member address whose obligation grows.
+    /// @param recipient address owed the carry.
+    /// @param amount amount accrued.
+    function accrueCarry(address member, address recipient, uint256 amount) external;
     /// @notice Shared account that manages the rectification of lost debt.
     /// @return amount of lost debt shared by network participants.
     function lostDebt() external view returns (uint256);
@@ -40,10 +130,30 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     event CreditBalanceRepaid(address member, uint128 amount);
     event LostDebtBurned(address member, uint256 amount);
     event CreditLineWrittenOff(address member, uint256 amount);
+    event CarryAccrued(address indexed member, address indexed recipient, uint256 amount);
+    event PurchaseOriginated(
+        address indexed member,
+        address indexed merchant,
+        uint256 purchase,
+        uint256 payout,
+        uint256 discount
+    );
+    /// @notice a purchase was unwound. The inverse of PurchaseOriginated, and capital-free.
+    event PurchaseReversed(
+        address indexed member,
+        address indexed merchant,
+        uint256 purchase,
+        uint256 payout,
+        uint256 discount
+    );
+    /// @notice a refund outran what the merchant still held, so they carry the difference. This is
+    /// the on-chain record of a clawback owed -- to come off what they are paid next.
+    event RefundOwedByMerchant(address indexed merchant, uint256 amount);
     event ComplianceUpdated(
         address sender, address recipient, bool senderCompliance, bool recipientCompliance
     );
     event AccessManagerUpdated(address accessManager);
-    event AssurancePoolUpdated(address assurancePool);
-    event CreditIssuerUpdated(address creditIssuer);
+    event ReserveTokenSet(address reserveToken);
+    event LenderOperatingUpdated(address lenderOperating);
+    event NetworkRegistryUpdated(address networkRegistry);
 }

@@ -1,5 +1,5 @@
 {
-  "address": "0x19aBfD8aC2015743238a85F849873870fEDcf207",
+  "address": "0x23aF9715761156C24C2de3666587753168f28DBe",
   "abi": [
     {
       "type": "event",
@@ -165,6 +165,48 @@
     },
     {
       "type": "function",
+      "name": "CREDIT_LIMITS_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "CREDIT_LINES_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "CREDIT_SETTINGS_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "DEFAULT_ADMIN_ROLE",
       "constant": true,
       "stateMutability": "view",
@@ -251,6 +293,29 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "hasCreditRole",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",

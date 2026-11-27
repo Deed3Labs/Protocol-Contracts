@@ -1,0 +1,527 @@
+{
+  "address": "0xee289AF20ddf5654E688ABDEa45D0d741528C8Bc",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "admin"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "SavingsIntentFactoryInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IntentCreated",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "escrow",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "depositor",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "action",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IntentRefunded",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "escrow",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "refundedAmount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IntentSettled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "escrow",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "resultAmount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleAdminChanged",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "previousAdminRole",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "newAdminRole",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleGranted",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleRevoked",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "CREATOR_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_ADMIN_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "SETTLER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "createIntentDeterministic",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "tuple",
+          "name": "config",
+          "components": [
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "address",
+              "name": "receiver"
+            },
+            {
+              "type": "address",
+              "name": "transferToken"
+            },
+            {
+              "type": "address",
+              "name": "vaultToken"
+            },
+            {
+              "type": "address",
+              "name": "vault"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "uint8",
+              "name": "action"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "escrow"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "escrowImplementation",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getRoleAdmin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "grantRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "hasRole",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "predictIntentAddress",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "refundDeterministic",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "tuple",
+          "name": "config",
+          "components": [
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "address",
+              "name": "receiver"
+            },
+            {
+              "type": "address",
+              "name": "transferToken"
+            },
+            {
+              "type": "address",
+              "name": "vaultToken"
+            },
+            {
+              "type": "address",
+              "name": "vault"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "uint8",
+              "name": "action"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "escrow"
+        },
+        {
+          "type": "uint256",
+          "name": "refundedAmount"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "renounceRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "revokeRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settleDeterministic",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "tuple",
+          "name": "config",
+          "components": [
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "address",
+              "name": "receiver"
+            },
+            {
+              "type": "address",
+              "name": "transferToken"
+            },
+            {
+              "type": "address",
+              "name": "vaultToken"
+            },
+            {
+              "type": "address",
+              "name": "vault"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint64",
+              "name": "expiry"
+            },
+            {
+              "type": "uint8",
+              "name": "action"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "escrow"
+        },
+        {
+          "type": "uint256",
+          "name": "resultAmount"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes4",
+          "name": "interfaceId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}

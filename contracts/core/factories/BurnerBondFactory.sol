@@ -5,10 +5,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
+import "../../peripherals/BondTraits.sol";
 import "../interfaces/burner-bond/IBurnerBondFactory.sol";
 import "../interfaces/burner-bond/IBurnerBondDeposit.sol";
-import "../interfaces/stable-credit/IAssurancePool.sol";
-import "../interfaces/stable-credit/IAssuranceOracle.sol";
+import "../interfaces/ITokenRegistry.sol";
 import "../../peripherals/BurnerBond.sol";
 import "../../peripherals/BurnerBondDeposit.sol";
 
@@ -19,17 +20,37 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     
     /* ========== STATE VARIABLES ========== */
     
-    /// @notice AssurancePool contract for token deposits
-    IAssurancePool public assurancePool;
-    
-    /// @notice AssuranceOracle contract for token validation and pricing
-    IAssuranceOracle public assuranceOracle;
+    /// @notice Which tokens a collection may be opened for.
+    /// @dev The TokenRegistry's whitelist. It used to be asked through the AssuranceOracle, which
+    /// section 13 retires; the bond contracts hold no AssurancePool address at all, because bond
+    /// principal never enters it.
+    ITokenRegistry public tokenRegistry;
     
     /// @notice Single unified deposit contract
     IBurnerBondDeposit public burnerBondDeposit;
     
     /// @notice Base URI template for new collections
     string public baseURI;
+
+    /// @notice The collection every clone points at.
+    /// @dev Deployed once and never used directly. The factory used to build each collection with
+    /// `new BurnerBond(...)`, which meant carrying a copy of the whole contract inside its own
+    /// bytecode -- eight kilobytes past what a contract may weigh, so the factory could not be
+    /// deployed at all. A clone carries a pointer instead, which also makes opening a collection
+    /// cost a fraction of what deploying one did.
+    address public immutable bondImplementation;
+    /// @notice The deposit contract every network clones from.
+    address public immutable depositImplementation;
+    /// @notice Where every collection's metadata lives.
+    /// @dev One deployment shared by all of them. The traits are display, they are keyed by the
+    /// collection that wrote them, and a copy per collection would be a copy of the same twelve
+    /// answers.
+    address public immutable bondTraits;
+
+    /// @notice The IV-01 §4.12 legend every collection's metadata carries: its hash, and a URI for
+    /// its text (Earn §1).
+    bytes32 public immutable legendHash;
+    string public legendURI;
     
     /// @notice Mapping from token address to collection information
     mapping(address => CollectionInfo) public collections;
@@ -45,7 +66,10 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     uint256 public minDiscount = 0; // 0% minimum discount
     uint256 public maxMaturity = 30 * 365 * 24 * 60 * 60; // 30 years
     uint256 public minMaturity = 24 * 60 * 60; // 1 day
-    uint256 public minFaceValue = 100 * 10**6; // $100 USDC
+    /// @dev Raised from $100 (audit X-10): the smallest bond is what an attacker pays per entry
+    /// when trying to bloat the vault's books. The maturity buckets remove the unbounded loop
+    /// itself; this keeps the bond count proportionate to the money behind it.
+    uint256 public minFaceValue = 500 * 10**6; // $500 USDC
     uint256 public maxFaceValue = 1000000 * 10**6; // $1M USDC
     
     /// @notice Total collections created
@@ -54,26 +78,45 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     /* ========== CONSTRUCTOR ========== */
     
     /// @notice Initialize the BurnerBondFactory
-    /// @param _assurancePool Address of the AssurancePool contract
-    /// @param _assuranceOracle Address of the AssuranceOracle contract
+    /// @param _tokenRegistry Address of the TokenRegistry whose whitelist gates collections
     /// @param _baseURI Base URI template for new collections
+    /// @param _bondImplementation The BurnerBond implementation every collection is cloned from,
+    /// deployed on its own with its modules (Phase 2f, `deploy/bondModules.ts`), so its creation code
+    /// is not inside this factory's. Its pinned module must be the Phase 2f one.
+    /// @param _legendHash the IV-01 §4.12 legend's hash; `_legendURI` where its text is
     constructor(
-        address _assurancePool,
-        address _assuranceOracle,
-        string memory _baseURI
+        address _tokenRegistry,
+        string memory _baseURI,
+        address _bondImplementation,
+        bytes32 _legendHash,
+        string memory _legendURI
     ) {
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
-        require(_assuranceOracle != address(0), "Invalid AssuranceOracle address");
-        
-        assurancePool = IAssurancePool(_assurancePool);
-        assuranceOracle = IAssuranceOracle(_assuranceOracle);
-        baseURI = _baseURI;
-        
-        // Deploy single unified deposit contract
-        burnerBondDeposit = new BurnerBondDeposit(
-            address(this),  // Factory address
-            address(assurancePool)
+        require(_tokenRegistry != address(0), "Invalid TokenRegistry address");
+        require(
+            IExtensionKind(BurnerBond(_bondImplementation).pledges()).extensionKind() == keccak256("BurnerBondPledges.v2"),
+            "Not a Phase 2f bond implementation"
         );
+        tokenRegistry = ITokenRegistry(_tokenRegistry);
+        baseURI = _baseURI;
+        legendHash = _legendHash;
+        legendURI = _legendURI;
+
+        // The implementations. The bond one is prebuilt; the rest are deployed once here.
+        bondImplementation = _bondImplementation;
+        depositImplementation = address(new BurnerBondDeposit());
+        bondTraits = address(new BondTraits());
+
+        // The single unified deposit contract, as a clone of the implementation above.
+        BurnerBondDeposit deployedDeposit =
+            BurnerBondDeposit(Clones.clone(depositImplementation));
+        deployedDeposit.initialize(address(this));
+        burnerBondDeposit = IBurnerBondDeposit(address(deployedDeposit));
+
+        // Hand it to whoever deployed the factory, as the collections are handed over below.
+        // Deploying it here makes the factory its owner, and the factory has no way to forward a
+        // call, so every admin function on it -- including emergency recovery -- was unreachable
+        // by anybody at all.
+        deployedDeposit.transferOwnership(owner());
     }
     
     /* ========== VIEW FUNCTIONS ========== */
@@ -212,20 +255,21 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     /// @param collectionBaseURI Base URI for the collection metadata
     /// @return collectionAddress Address of the created collection
     /// @return depositContract Address of the created deposit contract
+    /// @dev The owner, or the unified deposit contract creating one on a first purchase (audit
+    /// X-19). Open to anyone, a stranger could create the reserve token's collection first with
+    /// their own name, symbol and description, fixed for good. The deposit contract names a
+    /// collection from the token's own metadata, so it cannot be used to squat one.
     function createCollection(
         address tokenAddress,
         string calldata tokenSymbol,
         string calldata tokenName,
         string calldata collectionBaseURI
     ) external override nonReentrant returns (address collectionAddress, address depositContract) {
+        require(msg.sender == owner() || msg.sender == address(burnerBondDeposit), "Not allowed to create collections");
         require(tokenAddress != address(0), "Invalid token address");
+
         require(collections[tokenAddress].collectionAddress == address(0), "Collection already exists");
-        // Check if token is whitelisted by calling the oracle directly
-        try assuranceOracle.isTokenWhitelisted(tokenAddress) returns (bool isWhitelisted) {
-            require(isWhitelisted, "Token not whitelisted");
-        } catch {
-            revert("Token whitelist check failed");
-        }
+        require(tokenRegistry.getIsWhitelisted(tokenAddress), "Token not whitelisted");
         
         // Create collection-specific URI
         string memory fullBaseURI = string(abi.encodePacked(collectionBaseURI, "/", tokenSymbol, "/"));
@@ -235,16 +279,19 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         string memory collectionSymbol = string(abi.encodePacked(tokenSymbol, "-BB"));
         string memory collectionDescription = string(abi.encodePacked("BurnerBond collection backed by ", tokenName, " tokens"));
         
-        // Deploy BurnerBond collection
-        BurnerBond newCollection = new BurnerBond(
-            address(burnerBondDeposit), // Use unified deposit contract
-            address(this), // Factory address (single source of truth for parameters)
-            address(assurancePool),
-            tokenAddress, // Use the token as the underlying token for this collection
+        // Clone the collection implementation and set it up. Token-agnostic as before: any
+        // whitelisted token gets its own collection, it just costs a fraction of a deployment.
+        BurnerBond newCollection = BurnerBond(Clones.clone(bondImplementation));
+        newCollection.initialize(
+            address(this),
+            tokenAddress,
             fullBaseURI,
             collectionName,
             collectionSymbol,
-            collectionDescription
+            collectionDescription,
+            bondTraits,
+            legendHash,
+            legendURI
         );
         
         // Register this collection with the unified deposit contract
@@ -301,18 +348,11 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         emit CollectionReactivated(tokenAddress, collections[tokenAddress].collectionAddress);
     }
     
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external override onlyOwner {
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
-        assurancePool = IAssurancePool(_assurancePool);
-    }
-    
-    /// @notice Set the AssuranceOracle contract address
-    /// @param _assuranceOracle Address of the AssuranceOracle contract
-    function setAssuranceOracle(address _assuranceOracle) external override onlyOwner {
-        require(_assuranceOracle != address(0), "Invalid AssuranceOracle address");
-        assuranceOracle = IAssuranceOracle(_assuranceOracle);
+    /// @notice Set the TokenRegistry whose whitelist gates new collections
+    /// @param _tokenRegistry Address of the TokenRegistry
+    function setTokenRegistry(address _tokenRegistry) external override onlyOwner {
+        require(_tokenRegistry != address(0), "Invalid TokenRegistry address");
+        tokenRegistry = ITokenRegistry(_tokenRegistry);
     }
     
     /// @notice Set the base URI for new collections

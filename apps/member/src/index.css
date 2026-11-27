@@ -1,0 +1,674 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@clear/member-kit/styles/clear-tokens.css";
+@import "@clear/member-kit/styles/clear-components.css" layer(components);
+/* The shared components (packages/member-kit) use Tailwind classes too. */
+@source "../../../packages/member-kit/src";
+
+@custom-variant dark (&:is(.dark *));
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Fonts */
+@font-face {
+  font-family: 'Coolvetica Compressed';
+  src: url('/fonts/Coolvetica/coolvetica-compressed-hv.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Stripe Onramp Container Styles - full width, no border, no rounded edges */
+.stripe-onramp-container {
+  width: 100%;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  /* Clip any inner rounded corners from Stripe's content */
+  overflow: hidden !important;
+}
+
+/* Remove border and rounded edges from Stripe's wrapper, iframe, and all injected elements */
+.stripe-onramp-container iframe,
+.stripe-onramp-container [data-stripe],
+.stripe-onramp-container > div,
+.stripe-onramp-container > *,
+.stripe-onramp-container * {
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* Let Stripe content fill width */
+.stripe-onramp-container iframe,
+.stripe-onramp-container > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100% !important;
+}
+
+/* AppKit Modal Icon Fixes */
+@layer utilities {
+  /* Ensure AppKit modal icons are visible */
+  w3m-modal {
+    --w3m-accent-color: #3b82f6;
+    --w3m-background-color: #1f2937;
+    --w3m-overlay-background-color: rgba(0, 0, 0, 0.4);
+  }
+
+  /* Fallback for missing icons */
+  w3m-modal img[src*="icon"],
+  w3m-modal svg {
+    min-width: 24px;
+    min-height: 24px;
+    max-width: 32px;
+    max-height: 32px;
+  }
+
+  /* Ensure wallet icons are properly sized */
+  w3m-modal w3m-wallet-button img,
+  w3m-modal w3m-wallet-button svg {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+  }
+
+  /* Social login icons */
+  w3m-modal w3m-social-login img,
+  w3m-modal w3m-social-login svg {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+  }
+
+  /* Action button icons */
+  w3m-modal w3m-action-button img,
+  w3m-modal w3m-action-button svg {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+  }
+
+  /* Fallback for failed icon loads */
+  w3m-modal img[src*="icon"]:not([src*="data:"]):not([src*="blob:"]):before {
+    content: "🔗";
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #6b7280;
+    border-radius: 4px;
+    text-align: center;
+    line-height: 24px;
+    font-size: 12px;
+  }
+}
+
+/* Dark mode support for AppKit modal */
+@media (prefers-color-scheme: dark) {
+  w3m-modal {
+    --w3m-background-color: #111827;
+    --w3m-overlay-background-color: rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light;
+  color: var(--ink);
+  background-color: var(--paper);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Light mode — neutral. Background and foreground are the guide's paper and ink, so the page
+     grounds the same way whether a screen has been converted or not. */
+  --radius: 0.5rem;
+  --background: 223 227 222;
+  --foreground: 22 33 29;
+  --card: 255 255 255;
+  --card-foreground: 10 10 10;
+  --popover: 255 255 255;
+  --popover-foreground: 10 10 10;
+  --primary: 10 10 10;
+  --primary-foreground: 250 250 250;
+  --secondary: 240 240 240;
+  --secondary-foreground: 23 23 23;
+  --muted: 244 244 244;
+  --muted-foreground: 115 115 115;
+  --accent: 240 240 240;
+  --accent-foreground: 23 23 23;
+  --destructive: 220 38 38;
+  --destructive-foreground: 250 250 250;
+  --border: 228 228 228;
+  --input: 228 228 228;
+  --ring: 10 10 10;
+
+  /* Semantic accents — positive (green) / negative (red) / info (blue) */
+  --positive: 22 163 74;
+  --negative: 220 38 38;
+  --info: 37 99 235;
+
+  /* Neutral section tiles (Cash / Savings / External) */
+  --cp-cash: 240 240 240;
+  --cp-cash-fg: 38 38 38;
+  --cp-savings: 240 240 240;
+  --cp-savings-fg: 38 38 38;
+  --cp-external: 240 240 240;
+  --cp-external-fg: 38 38 38;
+
+  /* Chart ramp — neutral (shadcn charts) */
+  --chart-1: #0a0a0a;
+  --chart-2: #404040;
+  --chart-3: #737373;
+  --chart-4: #a3a3a3;
+  --chart-5: #d4d4d4;
+
+  /* Third text level. The spec uses three weights below the surface — value,
+     label, sub-label — where this app had only two (foreground, muted-foreground).
+     This is the middle one: labels like "Clear credit used". */
+  --foreground-secondary: 82 82 82;
+
+
+  /* ---- Product tokens: credit tiers & savings vesting --------------------
+     The tier and vest ramps now come from the brand guide (styles/clear-tokens.css)
+     and are mapped for Tailwind in the @theme inline block below. --tier-cash and
+     the --cat-* scale are not in the guide; they stay until the pages that use
+     them (Card, TransactionAvatar) are converted. */
+  /* Cash is not a credit tier, but it is the first thing the card spends, so it needs a place in
+     the same scale — and the deepest one, because the waterfall runs cheapest to dearest and a
+     member's own money is the cheapest thing there is. Reading the bar left to right is reading the
+     order it spends in, without a word of explanation. */
+  --tier-cash: 10 79 62; /* #0A4F3E — the member's own money */
+
+  /* Merchant categories, for the Card page's month bar and its transaction avatars. A different
+     scale from the tiers on purpose: a tier is what PAID, a category is what it was FOR, and
+     sharing a palette between them would suggest a relationship that does not exist. */
+  --cat-grocery: 63 125 107; /* #3F7D6B */
+  --cat-fuel: 168 118 44; /* #A8762C */
+  --cat-dining: 127 119 221; /* #7F77DD */
+  --cat-bills: 138 135 128; /* #8A8780 */
+  --cat-shopping: 90 110 150; /* #5A6E96 */
+  --cat-transport: 120 90 140; /* #785A8C */
+  --cat-other: 180 178 169; /* #B4B2A9 */
+}
+
+.dark {
+  /* The ground is the guide's paper on ink, not the old near-black — see styles/clear-tokens. */
+  color-scheme: dark;
+  color: var(--ink);
+  background-color: var(--paper);
+
+  /* Dark mode — the guide's paper and ink on ink. */
+  --background: 22 33 29;
+  --foreground: 223 227 222;
+  --card: 23 23 23;
+  --card-foreground: 245 245 245;
+  --popover: 23 23 23;
+  --popover-foreground: 245 245 245;
+  --primary: 245 245 245;
+  --primary-foreground: 14 14 14;
+  --secondary: 38 38 38;
+  --secondary-foreground: 245 245 245;
+  --muted: 38 38 38;
+  --muted-foreground: 163 163 163;
+  --accent: 38 38 38;
+  --accent-foreground: 245 245 245;
+  --destructive: 239 68 68;
+  --destructive-foreground: 14 14 14;
+  --border: 38 38 38;
+  --input: 38 38 38;
+  --ring: 245 245 245;
+
+  /* Semantic accents — tuned brighter for dark */
+  --positive: 74 222 128;
+  --negative: 248 113 113;
+  --info: 96 165 250;
+
+  /* Neutral section tiles (Cash / Savings / External) */
+  --cp-cash: 38 38 38;
+  --cp-cash-fg: 212 212 212;
+  --cp-savings: 38 38 38;
+  --cp-savings-fg: 212 212 212;
+  --cp-external: 38 38 38;
+  --cp-external-fg: 212 212 212;
+
+  /* Chart ramp — neutral (shadcn charts) */
+  --chart-1: #fafafa;
+  --chart-2: #d4d4d4;
+  --chart-3: #a3a3a3;
+  --chart-4: #737373;
+  --chart-5: #404040;
+
+  /* Third text level — brighter than muted on dark */
+  --foreground-secondary: 212 212 212;
+
+  /* Tier text, lifted for legibility on near-black. Fills are inherited
+     from :root unchanged — only the text weights move. */
+  --tier-savings-fg: 79 191 156; /* #4FBF9C */
+  --tier-asset-fg: 88 209 168;
+  --tier-income-fg: 224 163 74; /* #E0A34A */
+  --tier-boost-fg: 167 159 240; /* #A79FF0 */
+}
+
+.dusk {
+  /* Dusk is the guide's tan page — a mid ground between paper and ink. See styles/clear-tokens. */
+  color-scheme: light;
+  color: var(--ink);
+  background-color: var(--paper);
+
+  /* Dusk — the guide's tan ground and its warm ink. */
+  --background: 230 219 198;
+  --foreground: 34 28 20;
+  --card: 247 238 220;
+  --card-foreground: 46 32 18;
+  --popover: 252 245 234;
+  --popover-foreground: 46 32 18;
+  --primary: 46 32 18;
+  --primary-foreground: 252 245 234;
+  --secondary: 234 217 192;
+  --secondary-foreground: 46 32 18;
+  --muted: 234 217 192;
+  --muted-foreground: 122 104 84;
+  --accent: 234 217 192;
+  --accent-foreground: 46 32 18;
+  --destructive: 200 60 45;
+  --destructive-foreground: 252 245 234;
+  --border: 217 199 176;
+  --input: 217 199 176;
+  --ring: 46 32 18;
+
+  /* Semantic accents */
+  --positive: 22 140 72;
+  --negative: 200 60 45;
+  --info: 39 99 168;
+
+  /* Section tiles */
+  --cp-cash: 234 217 192;
+  --cp-cash-fg: 46 32 18;
+  --cp-savings: 234 217 192;
+  --cp-savings-fg: 46 32 18;
+  --cp-external: 234 217 192;
+  --cp-external-fg: 46 32 18;
+
+  /* Chart ramp — warm brown */
+  --chart-1: #2e2012;
+  --chart-2: #6b5a44;
+  --chart-3: #9a836a;
+  --chart-4: #c0a98c;
+  --chart-5: #ddccb0;
+
+  /* Third text level — warm brown between ink and muted */
+  --foreground-secondary: 92 77 58;
+
+  /* Tier text, warmed slightly so it sits on cream without going cold.
+     Fills are inherited from :root unchanged. */
+  --tier-savings-fg: 13 96 75;
+  --tier-asset-fg: 21 116 86;
+  --tier-income-fg: 124 73 10;
+  --tier-boost-fg: 76 67 168;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+  overscroll-behavior-y: none; /* pull-to-refresh guard on the root scroller */
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: 'General Sans', system-ui, -apple-system, sans-serif;
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Thin, subtle scrollbar (keeps the desktop scroll affordance) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--muted-foreground));
+  background-clip: content-box;
+}
+
+/* Thin scrollbars (Firefox) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+
+/* overflow-x is clipped on <html> only, so <body> is NOT a scroll container
+   (a body scroll container + overscroll-behavior trapped wheel/touch over main). */
+
+html.onboarding-scroll-enabled,
+body.onboarding-scroll-enabled {
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y !important;
+}
+
+/* Allow scrolling in containers. These must stay unlayered: the `* { scrollbar-width: thin }`
+   rule above is unlayered too, and would otherwise beat any Tailwind utility trying to
+   hide a scrollbar (unlayered styles win over @layer utilities). */
+.overflow-y-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.overflow-y-auto::-webkit-scrollbar, .overflow-y-scroll::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar, .overflow-x-scroll::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 0.25rem);
+  --radius-md: calc(var(--radius) - 0.125rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.25rem);
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+  --color-popover: rgb(var(--popover));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+  --color-destructive: rgb(var(--destructive));
+  --color-destructive-foreground: rgb(var(--destructive-foreground));
+  --color-positive: rgb(var(--positive));
+  --color-negative: rgb(var(--negative));
+  --color-info: rgb(var(--info));
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  --color-cp-cash: rgb(var(--cp-cash));
+  --color-cp-cash-fg: rgb(var(--cp-cash-fg));
+  --color-cp-savings: rgb(var(--cp-savings));
+  --color-cp-savings-fg: rgb(var(--cp-savings-fg));
+  --color-cp-external: rgb(var(--cp-external));
+  --color-cp-external-fg: rgb(var(--cp-external-fg));
+  --color-foreground-secondary: rgb(var(--foreground-secondary));
+
+  /* ---- Brand guide (styles/clear-tokens.css) ----
+     Colour: bg-paper, text-ink-50, border-seam, bg-tier-boost/10 ... */
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-70: var(--ink-70);
+  --color-ink-50: var(--ink-50);
+  --color-ink-28: var(--ink-28);
+  --color-ink-13: var(--ink-13);
+  --color-seam: var(--seam);
+  --color-live: var(--live);
+  --color-land: var(--land);
+  --color-land-ink: var(--land-ink);
+  --color-settled: var(--settled);
+  --color-underway: var(--underway);
+  --color-absent: var(--absent);
+
+  /* Tiers keep the app's existing utility names. The guide has one text variant
+     (asset-ink, because land is too light to read as text); the other -fg
+     utilities point at the fill, which already reads as text on paper. */
+  --color-tier-savings: var(--tier-savings);
+  --color-tier-savings-fg: var(--tier-savings);
+  --color-tier-asset: var(--tier-asset);
+  --color-tier-asset-fg: var(--tier-asset-ink);
+  --color-tier-asset-ink: var(--tier-asset-ink);
+  --color-tier-income: var(--tier-income);
+  --color-tier-income-fg: var(--tier-income);
+  --color-tier-boost: var(--tier-boost);
+  --color-tier-boost-fg: var(--tier-boost);
+  --color-vest-cash: var(--vest-cash);
+  --color-vest-vested: var(--vest-vested);
+  --color-vest-vesting: var(--vest-vesting);
+
+  /* Spacing: p-s2, gap-s1, mt-s4 ... */
+  --spacing-s1: var(--s1);
+  --spacing-s2: var(--s2);
+  --spacing-s3: var(--s3);
+  --spacing-s4: var(--s4);
+  --spacing-s5: var(--s5);
+  --spacing-s6: var(--s6);
+
+  /* Type sizes: text-hero, text-fig, text-sec, text-label ... */
+  --text-hero: var(--t-hero);
+  --text-hero-m: var(--t-hero-m);
+  --text-fig: var(--t-fig);
+  --text-row: var(--t-row);
+  --text-body: var(--t-body);
+  --text-sec: var(--t-sec);
+  --text-detail: var(--t-detail);
+  --text-label: var(--t-label);
+
+  /* Radius: square is rounded-none, pill is rounded-full. Neither needs a token
+     here, and mapping --radius-pill onto itself would be a cycle.
+     Fonts: font-mono already reads --font-mono, which clear-tokens.css now sets
+     to Plex Mono. font-text is the @utility below. font-display is still the
+     legacy Space Grotesk class (76 uses, all figures) until Phase 1 moves those
+     figures to font-text; only then does it become Bricolage. */
+}
+
+@utility font-text {
+  font-family: var(--font-text);
+}
+
+/* Animation utilities */
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+/* Dual-thumb range slider (components/ui/slider.tsx). The inputs overlap; only the
+   thumbs receive pointer events so each is independently grabbable. */
+.dual-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+.dual-range:focus {
+  outline: none;
+}
+.dual-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  height: 16px;
+  width: 16px;
+  border-radius: 9999px;
+  background: rgb(var(--background));
+  border: 2px solid rgb(var(--primary));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  cursor: pointer;
+}
+.dual-range::-moz-range-thumb {
+  pointer-events: auto;
+  height: 16px;
+  width: 16px;
+  border: 2px solid rgb(var(--primary));
+  border-radius: 9999px;
+  background: rgb(var(--background));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  cursor: pointer;
+}
+.dual-range::-webkit-slider-runnable-track {
+  background: transparent;
+  border: none;
+}
+.dual-range::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+/* Mobile nav offset. The guide draws it 16px off the bottom (.navwrap), and this sits a further
+   24px up: at the guide's own offset the bar was a stretch for a thumb on a tall phone. The
+   safe-area inset wins when it is larger, so the bar never sits under the home indicator.
+
+   Installed (PWA standalone) it lifts 44px clear of the home indicator. At 28px it sat in the band
+   the indicator's swipe owns, and read as crowding the bottom edge.
+
+   One lift and one height, so the bar, the quick-actions fan above it and the page padding that
+   clears it cannot drift apart. */
+:root {
+  --nav-h: 54px;
+  --nav-lift: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3));
+}
+@media (display-mode: standalone) {
+  :root {
+    --nav-lift: calc(env(safe-area-inset-bottom) + 2.75rem);
+  }
+}
+.mobile-tabbar {
+  bottom: var(--nav-lift);
+}
+/* The fan sits a 12px gap above the nav. */
+.mobile-quick-actions {
+  bottom: calc(var(--nav-lift) + var(--nav-h) + 12px);
+}
+/* The page's own bottom padding clears the bar: its lift, its height and a 16px breath, so the last
+   row of a page is never under it. Phone-only, so the desktop padding utility applies from lg up. */
+@media (max-width: 1023px) {
+  .mobile-nav-clear {
+    padding-bottom: calc(var(--nav-lift) + var(--nav-h) + var(--s2));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  /* Focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-gray-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
+  }
+}
+
+@layer components {
+  .container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-4;
+  }
+  
+  /* Font utility classes */
+  .font-coolvetica {
+    font-family: 'Coolvetica Compressed', system-ui, sans-serif;
+  }
+  
+  .font-general {
+    font-family: 'General Sans', system-ui, sans-serif;
+  }
+
+  /* Display face for large balance figures — Space Grotesk, tabular, tight */
+  .font-display {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-feature-settings: 'tnum' 1;
+    letter-spacing: -0.02em;
+  }
+
+  /* Brand wordmark — Bebas Neue, condensed all-caps (matches the marketing site) */
+  .font-wordmark {
+    font-family: 'Bebas Neue', 'Arial Narrow', system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
+}

@@ -1,0 +1,220 @@
+{
+ "merchants.founding_seats": 5,
+ "merchants.newest_partner": {
+  "name": "Uptown Barber",
+  "joined": 1792540800000
+ },
+ "merchants.weekly.transacting": [
+  0,
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  7,
+  8,
+  10,
+  11
+ ],
+ "merchants.weekly.cleared": [
+  0,
+  120,
+  480,
+  1100,
+  2300,
+  3900,
+  6100,
+  8800,
+  11900,
+  14600,
+  17300
+ ],
+ "merchants.weekly.next_run": [
+  0,
+  0,
+  0,
+  0,
+  310,
+  310,
+  310,
+  310,
+  3980,
+  3980,
+  3980
+ ],
+ "merchants.weekly.loss_rate": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1.2,
+  1.4,
+  1.2,
+  1.1
+ ],
+ "merchants.pipeline.owners": [
+  [
+   "Marcus Lee",
+   9
+  ],
+  [
+   "Dana Ruiz",
+   4
+  ],
+  [
+   "Kai",
+   3
+  ]
+ ],
+ "merchants.pipeline.kinds": [
+  [
+   "Auto and tires",
+   8
+  ],
+  [
+   "Furniture and mattresses",
+   2
+  ],
+  [
+   "Veterinary",
+   2
+  ],
+  [
+   "Optical",
+   1
+  ],
+  [
+   "Dental",
+   1
+  ],
+  [
+   "HVAC",
+   1
+  ],
+  [
+   "Appliances",
+   1
+  ]
+ ],
+ "merchants.payouts.schedule": {
+  "underway": {
+   "id": "rosas",
+   "date": 1792627200000
+  },
+  "monthly": 1793577600000,
+  "net14": 1793750400000,
+  "net14Next": {
+   "date": 1794960000000,
+   "estimate": 1140.8
+  },
+  "collectedBy": 1793318400000,
+  "calendarStart": 1792368000000
+ },
+ "merchants.payouts.collected_share": 0.842,
+ "merchants.payouts.collected_series": [
+  0,
+  8,
+  19,
+  31,
+  42,
+  52,
+  61,
+  69,
+  75,
+  80,
+  83,
+  84.2
+ ],
+ "merchants.payouts.owed_series": [
+  0,
+  0,
+  40,
+  90,
+  150,
+  200,
+  250,
+  300,
+  340,
+  380,
+  410
+ ],
+ "merchants.payouts.fees_series": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  8,
+  14,
+  20,
+  28,
+  36,
+  44
+ ],
+ "merchants.hardware.devices_series": [
+  0,
+  0,
+  2,
+  4,
+  6,
+  8,
+  10,
+  13,
+  15,
+  17,
+  19
+ ],
+ "merchants.hardware.online_series": [
+  100,
+  100,
+  100,
+  95,
+  100,
+  100,
+  94,
+  100,
+  95,
+  90,
+  95
+ ],
+ "merchants.hardware.preorders": {
+  "devices": 19,
+  "shops": 7,
+  "series": [
+   0,
+   0,
+   0,
+   0,
+   2,
+   2,
+   5,
+   8,
+   11,
+   14,
+   17,
+   19
+  ]
+ },
+ "merchants.hardware.unit_cost": {
+  "repaired": 61,
+  "fresh": 189,
+  "series": [
+   88,
+   84,
+   80,
+   76,
+   74,
+   71,
+   69,
+   66,
+   64,
+   63,
+   62,
+   61
+  ]
+ }
+}

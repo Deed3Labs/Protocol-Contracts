@@ -1,0 +1,438 @@
+# The API
+
+`@clear/api` — the one backend both apps talk to. Express on **Bun**, with Postgres, Redis and
+socket.io. Deployed as a Docker image on Railway.
+
+It does four things: aggregates chain and bank data behind a cache, holds the off-chain state the
+chain does not (members, charges, contacts, the equity ledger), brokers every money provider
+(Bridge, Lithic, Plaid, Stripe, Onramper, Coinbase), and runs the background jobs that keep all of
+that from going stale.
+
+---
+
+## Setup
+
+`apps/api` is **not** an npm workspace — the root `workspaces` list is `apps/member`,
+`apps/merchant`, `packages/*`. It installs its own dependencies and pulls `@clear/domain` through
+`file:../../packages/domain`, so `npm run dev --workspace @clear/api` will not resolve. Run it from
+its own directory:
+
+```bash
+cd apps/api
+npm install
+cp env.example .env
+npm run dev      # bun --watch src/index.ts → http://localhost:3001
+```
+
+Requires **Bun**. Postgres and Redis are both optional to boot and required in practice: the server
+starts and logs a warning without either, health reports `redis: disconnected`, and routes backed by
+the member store return `503` until `DATABASE_URL` is set.
+
+Local Redis, whichever you prefer:
+
+```bash
+docker run -d -p 6379:6379 redis:7-alpine     # or: brew services start redis
+```
+
+| Script | |
+|---|---|
+| `npm run dev` | `bun --watch src/index.ts` |
+| `npm start` | `bun src/index.ts` — what Railway runs |
+| `npm run build` | `bun build src/index.ts --outdir dist` (not used in the image; see below) |
+| `npm run test` | `bun test-api.ts` — an end-to-end smoke script against a running server |
+| `npm run lint` | ESLint |
+| `npm run lithic:test` | `bun test src/services` — the colocated unit tests |
+
+Unit tests also sit beside the code they cover (`src/routes/*.test.ts`, `src/services/**/*.test.ts`)
+and run under `bun test`.
+
+### Docker and Railway
+
+The build context is the **repository root**, not `apps/api`, because the API imports
+`@clear/domain` — a refund's figures must be the same number on the counter tablet, on the member's
+phone, and in the row this service writes, and one implementation is the only way to guarantee that.
+`.railwayignore` keeps the context narrow (`apps/api` and `packages/domain`).
+
+The image runs the TypeScript entry directly rather than a bundle. Bundling was tried and reverted:
+`@coinbase/cdp-sdk` imports a specifier that does not resolve in a clean install, so `bun build`
+succeeds locally against hoisted `node_modules` and fails in the container.
+
+Details in [`DEPLOY.md`](../../docs/operators/api-deploy.md) (Railway, and what this service costs) and [`DOCKER.md`](../../docs/developers/api/local-redis.md).
+
+---
+
+## Auth
+
+**Privy JWT.** `middleware/auth.ts` verifies the access token locally, resolves the user's linked
+wallets through `getUser` (cached, because that call is rate-limited), and trusts the
+`X-Wallet-Address` header only when the address belongs to the verified user. Needs `PRIVY_APP_ID`
+and `PRIVY_APP_SECRET`.
+
+> `env.example` still documents `REOWN_PROJECT_ID` as *"required for protected routes"*. It is not —
+> nothing in `src/` reads a `REOWN_*` variable. That block is left over from the AppKit era.
+
+`requireMemberCapability(key)` gates on a per-member capability flag from the member store. Only
+`/api/plaid` uses it today (`canUsePlaid`). Bridge routes deliberately do **not**: that capability is
+`verified`, Bridge now owns verification, and gating on it would be circular — a member could never
+reach `/kyc-link` to become verified, because being unverified blocked the call.
+
+**The merchant surface authenticates separately.** `middleware/merchantAuth.ts` issues opaque bearer
+tokens — against a staff PIN, or against a verified Privy token whose staff row has the `owner`
+role — and shares no cookie, no storage and no middleware
+with the member session — different product, different origin, different threat model. An enrolled
+tablet identifies itself with its own `X-Clear-Device` header, on a separate lifetime from the shift
+token: the device token lasts until an owner revokes it, the bearer token expires overnight.
+The four guards are `requireDevice`, `requireMerchant`, `requireManager` and `requireOwner`, and the
+last two are server-side checks rather than nav decisions — a counter tablet is a shared device, and
+a URL somebody typed once is a URL somebody can type again. A Privy token proves who someone is; the
+staff row proves the shop is theirs, and both are required.
+
+Rate limiting is Redis-backed and applied at `/api`, bucketed per IP + method + path by default
+(`RATE_LIMIT_SCOPE=path`). `req.ip` is proxy-aware — `trust proxy` is on for Railway.
+
+---
+
+## Route map
+
+Thirty-five groups, all mounted in [`src/index.ts`](./src/index.ts). **Auth** is what the *mount*
+applies; several groups attach their own per-route checks instead, and those are called out.
+
+### Chain and market data — public
+
+| Mount | |
+|---|---|
+| `/api/prices` | Token prices, cached; `POST /batch` for many at once |
+| `/api/balances` | Native balances |
+| `/api/token-balances` | ERC-20 balances — same service as `/balances`, consolidated |
+| `/api/nfts` | NFT holdings, Alchemy with an OpenSea floor-price fallback |
+| `/api/transactions` | Transaction history |
+
+### The member
+
+| Mount | Auth | |
+|---|---|---|
+| `/api/members` | Privy | Profile, onboarding, capabilities, verification, security, socials, linked wallets, wallet-link challenge/verify, membership checkout, served regions |
+| `/api/avatars` | public | Avatar images |
+| `/api/member-links` | public | Public wallet-link lookup |
+| `/api/contacts` | Privy | Directory, handles, availability, opt-out |
+| `/api/notifications` | Privy | Feed, read/archive, web-push subscribe |
+| `/api/requests` | Privy | Money requests |
+| `/api/portfolio` | Privy | Portfolio history and snapshots |
+
+### Money
+
+| Mount | Auth | |
+|---|---|---|
+| `/api/savings` | Privy | ESA deposits — gasless prepare/submit, savings intents (create/finalize/refund), wallet transfers, pool and bond records |
+| `/api/credit` | Privy | The member's credit line and Earn view. The app reads this rather than the contracts directly because two of the four tiers — income and Boost — are underwritten off-chain and reach the chain as attestations, so a client reading contracts would get a line missing half its tiers with no way to know it |
+| `/api/pay` | Privy | Billers, payments, payouts, reminders, reconcile, merchant metadata — the equity ledger |
+| `/api/autopay` | Privy | Rules, and running one on demand |
+| `/api/withdraw` | Privy | Cash out — USDC on Base to a Plaid-linked bank via the Bridge off-ramp. The Bridge customer is resolved from the session, never the body, so a caller cannot point a payout at someone else's |
+| `/api/sweeps` | Privy | Sweeps and auto-save |
+| `/api/send` | per-route | Link-based send. Sender routes (`/transfers/prepare`, `/confirm-lock`, `/lock-authorization`, `/submit-authorization`) require Privy; the recipient's claim routes (`/claim/start`, `/verify-otp`, `/resend-otp`, `/payout/{debit,bank,wallet}`) are public by necessity — a recipient has no account — and carry their own per-endpoint rate limiters |
+
+### Merchant and charges
+
+| Mount | Auth | |
+|---|---|---|
+| `/api/charges` | per-route | `POST /` is a merchant **device** authenticating by signature, with no member session to check, so the mount cannot require auth. `GET /:code`, `/approve` and `/decline` attach `requireAuth` themselves |
+| `/api/merchant` | per-route | The merchant app's own surface — sessions, roster, charges, refunds, payouts, staff, devices, profile. `POST /session` starts a shift and has no session yet, so the checks (`requireDevice`, `requireMerchant`, `requireManager`, `requireOwner`) are per route |
+| `/api/cards` | Privy | Card list, activation, freeze, ephemeral key |
+
+### Providers
+
+| Mount | Auth | |
+|---|---|---|
+| `/api/bridge` | Privy | Hosted KYC links, onboarding, virtual accounts, funding URLs |
+| `/api/lithic` | Privy | Financial account, KYC documents |
+| `/api/lithic/cards` | Privy | Card issuing |
+| `/api/plaid` | Privy + `canUsePlaid` | Link token, exchange, balances, identity, transactions, recurring, spend, liabilities, investments |
+| `/api/stripe` | Privy | Crypto on-ramp session |
+| `/api/onramper` | Privy | Quotes and checkout, buy and sell |
+| `/api/ramp` | Privy | Coinbase — config, quotes, limits, orders, sessions, status |
+
+**The split:** Bridge does fiat → USDC deposits and hosted KYC. Lithic does card issuing, JIT
+authorization and ACH push/pull. Plaid does bank linking and identity. Stripe and Coinbase are
+card/crypto on-ramps.
+
+### Webhooks — public, signature-verified, mounted outside auth
+
+| Mount | Verified by |
+|---|---|
+| `/api/webhooks/lithic/auth-stream` | standard-webhooks HMAC. **Mounted before the rate limiter on purpose** — throttling this declines a member's card at a till, and it is already authenticated by signature. It refuses to approve anything while `LITHIC_WEBHOOK_SECRET` is unset |
+| `/api/webhooks/lithic` | standard-webhooks HMAC — async events, including inbound ACH |
+| `/api/webhooks/bridge` | `X-Webhook-Signature` (RSA). Deposits into a virtual account are pushed from the member's own bank, so this webhook is the **only** way we learn they happened |
+| `/api/webhooks/onramper` | Signature |
+| `/api/webhooks/coinbase-ramp` | `X-Hook0-Signature` |
+| `/api/stripe/webhooks` | Stripe signature — includes membership billing |
+
+### Health
+
+```text
+GET /health     → { status, timestamp, redis: 'connected' | 'disconnected' }
+```
+
+Mounted before the rate limiter, so it always answers. Unknown `/api/*` paths return a JSON 404; the
+error handler runs every message through `utils/redact.ts` before logging, because a provider SDK
+hangs the failed request off the error and one of these routes carries an SSN.
+
+---
+
+## Realtime and background work
+
+`services/websocketService.ts` runs socket.io on the same HTTP server. Clients `identify` with an
+address and `subscribe` to chains and topics; balances, transactions, NFTs and prices are then
+pushed on their own intervals. `services/eventListenerService.ts` watches chain events.
+
+The jobs below start with the server, each non-blocking and each logging rather than crashing the
+process:
+
+| Job | |
+|---|---|
+| `priceUpdater` | Refreshes popular token prices on a schedule |
+| `portfolioSnapshotter` | Writes portfolio history points |
+| `chargeReconciler` | Repairs charges left mid-flight by a crash or a dropped RPC connection — self-healing, because the failure is invisible until a member says Approve did nothing |
+| `autopayRunner` | Runs due autopay rules |
+| `dueBillNotifier` | Bill reminders |
+| `greetingNotifier` | Scheduled member greetings |
+| `sendExpiryNotifier` | Warns before a send link expires |
+| `pulledFundsReleaser` | Releases funds pulled and held |
+| `sweepRunner` | Executes sweeps and auto-save |
+| `reconciler` | General reconciliation |
+| `memoryMonitor` | Cheap, and the only thing that reports the *shape* of memory use rather than its peak |
+| `enforcementKeeper` | Phase 2b, as Phase 2f left it. Hourly: `noticeShortfall(member)` where the Asset-Backed Drawn is above the Asset-Backed Limit (`shortfallOf`), the same call to clear a notice whose gap closed, and an ops alert once a notice's wait has passed (saying whether the pledge keepers below are on). Never for a member under an active Liquidation Hold; bounded (`ENFORCEMENT_KEEPER_MAX_PER_RUN`, 25). On unless `ENFORCEMENT_KEEPER_ENABLED=0`; `ENFORCEMENT_KEEPER_DRY_RUN=1` sends nothing |
+| `cycleKeeper` | Phase 2b, checked against the day-0 issuer (decision 53). RevolvingIssuer judges a cycle only when someone calls `syncCreditPeriod(member)`. Hourly, it syncs each member whose cycle end has passed (`creditPeriods.expiration`), a frozen line only when its next cycle end passes (`cycleStateOf`), oldest first, at most `CYCLE_KEEPER_MAX_PER_RUN` (50) a run. A computed default (`inDefault`) gets `triggerDefault(member)`, only with `CREDIT_DEFAULT_KEEPER_ENABLED=1`, and is never synced instead. Each call simulated first. On a 2b issuer `creditPeriodRenewer` stands down |
+| `creditOnboarding` | Hourly and at startup, off unless `CREDIT_ONBOARDING_ENABLED=1` (`_DRY_RUN=1` simulates only). For each member with no line: attests the state on their private profile (`NetworkRegistry.attestStateCode`, `STATE_ATTESTER_ROLE`) when their Lithic identity check passed and the state is a US state, then `RevolvingIssuer.openLine`. Never overwrites an attested state (alerts ops instead); a state without the revolving product waits a day. Until the attester holds the role it attests nothing and logs one line a run. At most `CREDIT_ONBOARDING_MAX_PER_RUN` (25) members a run. Signup and a passed identity check run it for their member at once. Replaces `scripts/backfillCreditLines.ts` |
+| `pledgeKeeper` | Decision 53. Hourly, off unless switched on: `PoolShareEnforcer.settle`, `cancelExcess` and `enforce(holder)` (`POOL_ENFORCE_KEEPER_ENABLED=1`) and `BurnerBond.payPledged(bondId)` for the Liquidator's `nextBondOf`/`pledgePaymentDue` (`BOND_PLEDGE_KEEPER_ENABLED=1`), only when the contracts say it is due, never under a Liquidation Hold or a 10c pause; each send alerts ops |
+| `queueFillKeeper` | Decision 53. Every 15 minutes, off unless `QUEUE_FILL_KEEPER_ENABLED=1`: `LendingPool.fillQueue(maxCount)` when shares are queued, Vault Cash is above zero, the pool is not suspended and no Pool Loss Charge is pending, and the simulation fills at least one request |
+| `fundingDesk` | Decision 54. Off unless `SETTLEMENT_FUNDING_ENABLED=1` (`SETTLEMENT_FUNDING_DRY_RUN=1` decides and records, sends nothing). Every 15 minutes and at each cut-off's forced time, funds the Credit Settlement Account for the card credit due at the next cut-off plus a buffer: a Lithic book transfer from the Collection Account, then the Yield Pool's settlement lane (`deploySettlement`, then the SettlementForwarder's `forward` to the off-ramp) from a CDP server wallet, never past the lane's cap; the rest goes to people as Transaction Builder batches or an alert naming the Margin. Returns behind `SETTLEMENT_RETURNS_ENABLED`. Every move recorded first (migration 0079); any revert halts it until `src/scripts/clearSettlementFundingHalt.ts`. [`docs/operators/settlement-funding.md`](../../docs/operators/settlement-funding.md) |
+| `relayerGas` | A signer with no gas fails silently — every figure downstream goes quietly stale. This is the only thing that would say so |
+
+Shutdown is graceful on `SIGTERM`/`SIGINT`: listeners and sockets cleaned up, Redis and the Postgres
+pool closed. An unhandled rejection is logged and the server keeps serving — one bad request must not
+502 every user until Railway restarts.
+
+---
+
+## Source layout
+
+```
+src/
+  index.ts        CORS, health, mounts, jobs, shutdown — the whole wiring, in order
+  routes/         one file per mount
+  services/       the work: chain/, deposits/, lithic/, merchant/, savings/, sweeps/, reconciliation/
+  jobs/           the ones above, and more
+  middleware/     auth (Privy), merchantAuth, memberCapabilities, rateLimiter, asyncRouter
+  config/         postgres, redis, merchantDb, contracts, dataChains, servedRegions
+  utils/          redact, and friends
+  scripts/
+scripts/          operational one-offs — CDP relayer account, Lithic verification steps, backfills
+```
+
+Stores (`*Store.ts`) own Postgres access and table creation; services hold the rules. Anything the
+member app and the merchant app must both agree on is computed in `@clear/domain`, not here.
+
+---
+
+## Environment
+
+Everything is in [`env.example`](./env.example), which is long because the provider surface is.
+The ones without which nothing works:
+
+| Variable | |
+|---|---|
+| `DATABASE_URL` | Postgres. Without it the member store is unconfigured and its routes return 503 |
+| `REDIS_URL` (or `REDIS_HOST`/`PORT`/`PASSWORD`) | Cache and rate limiting |
+| `PRIVY_APP_ID`, `PRIVY_APP_SECRET` | Member auth |
+| `ALCHEMY_API_KEY` | Chain data. **Server-side only** — never a `VITE_` variable; see the member app's README for why |
+| `CORS_ORIGIN` | Comma-separated. Unset falls back to allow-all with a warning; set `STRICT_CORS=true` to fail closed instead |
+
+The chain keepers' switches (each `_ENABLED`, with `_DRY_RUN=1` to simulate and report without
+sending; all pay gas from `CARD_SETTLER_PRIVATE_KEY`). What each sends, when, and how to stop it:
+[`docs/operators/keepers.md`](../../docs/operators/keepers.md).
+
+| Variable | |
+|---|---|
+| `CYCLE_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `syncCreditPeriod`. On unless `0` (it has run since Phase 2b); 50 a run |
+| `CREDIT_DEFAULT_KEEPER_ENABLED`, `_DRY_RUN` | `triggerDefault`, in the cycle keeper's pass. Off unless `1` |
+| `ENFORCEMENT_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `noticeShortfall`. On unless `0`; 25 a run |
+| `POOL_ENFORCE_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `PoolShareEnforcer.enforce`, `settle`, `cancelExcess`. Off unless `1`; 25 a run |
+| `BOND_PLEDGE_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `BurnerBond.payPledged`. Off unless `1`; 25 a run |
+| `QUEUE_FILL_KEEPER_ENABLED`, `_DRY_RUN`, `_MINUTES`, `_MAX_COUNT` | `LendingPool.fillQueue`. Off unless `1`; every 15 minutes; 25 requests a call |
+| `CREDIT_ONBOARDING_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | State attestation, then `openLine`. Off unless `1`; 25 members a run. Signs with `STATE_ATTESTER_PRIVATE_KEY` (else the credit operator) and the credit operator, not the card settler |
+| `NETWORK_REGISTRY_84532` | The NetworkRegistry; defaults to `deployments/base-sepolia/NetworkRegistry.json`. Must be the registry the RevolvingIssuer's ledger names, or the job attests nothing and alerts |
+| `POOL_SHARE_ENFORCER_84532` | The PoolShareEnforcer; defaults to `deployments/base-sepolia/PoolShareEnforcer.json`. Must be the Liquidator's `poolShareEnforcer()` or the pledge keepers do not start |
+
+Then, per provider as you enable it: `PLAID_*`, `BRIDGE_*` (including `BRIDGE_WEBHOOK_PUBLIC_KEY`),
+`LITHIC_*` (`LITHIC_API_KEY`, `LITHIC_WEBHOOK_SECRET`; production needs **both** `LITHIC_ENV=production`
+and `LITHIC_ALLOW_PRODUCTION=true`, because one mistyped variable should not move real money;
+`LITHIC_PARTNER_BANK_NAME` is the partner bank shown on Spendable's account details, since Lithic's
+API does not name it — unset, the bank row reads "Lithic partner bank", as Lithic places accounts
+across several partner banks. The full account number is served only after re-authentication:
+Face ID, or without it a sign-in made in the last ten minutes, never the session alone),
+`STRIPE_*`, `SEND_*` and `SAVINGS_*` for the relayers, and the at-rest encryption keys
+(`PLAID_TOKEN_MASTER_KEY`, `MEMBER_PRIVATE_DATA_MASTER_KEY`, `SEND_CONTACT_ENCRYPTION_KEY`), each
+32 bytes, base64 or hex, with an optional keyring for rotation.
+
+### Card credit fee (decision 55)
+
+A card purchase that draws on a credit tier adds a flat fee on top, drawn through the tiers after the
+purchase ([`docs/audit/specs/card-credit-fee.md`](../../docs/audit/specs/card-credit-fee.md)). On by
+default in the API (30¢), and charged only while the RevolvingIssuer's `maxCardCreditFee` covers it,
+which the card settlement sweeper reads at startup and every pass and caches for the Auth Stream
+(which never calls out). A revert (the contract before the upgrade) reads as 0, so no fee until the
+upgrade sets the cap to 30¢. Note L-02 §2.6C on the plan of business. Never charged to a covered borrower under
+the Military Lending Act (MB-04 §5.10: `lithic_covered_borrowers`, copied onto each card snapshot; the
+check that sets it does not exist yet, so every member reads as not covered). Part or all of a charged
+fee can be credited back with `returnCardCreditFee` (the CFL cap, MB-04 §5.4(f), hooked into the cycle
+keeper, crediting nothing until counsel settles the measure; not a gate on the fee).
+
+| Variable | |
+|---|---|
+| `CARD_CREDIT_FEE_CENTS` | The fee in cents. `30` when unset; an explicit `0` turns it off |
+| `CARD_CREDIT_FEE_TIERS` | Which tiers' use carries it. Default `savings,asset,income,boost`; cash never does |
+| `CARD_CREDIT_FEE_MIN_PURCHASE_CENTS` | A purchase below this carries no fee. Default `0` |
+
+### Settlement Funding (decision 54)
+
+The settlement funding desk (`jobs/fundingDesk.ts`) and its rules (`services/settlementFunding/`).
+Everything is in `env.example` under "Automatic Settlement Funding"; the operator page is
+[`docs/operators/settlement-funding.md`](../../docs/operators/settlement-funding.md). Addresses only,
+never keys: the desk wallet is a CDP server wallet.
+
+| Variable | |
+|---|---|
+| `SETTLEMENT_FUNDING_ENABLED`, `SETTLEMENT_FUNDING_DRY_RUN`, `SETTLEMENT_RETURNS_ENABLED` | Off unless `1`. Turn on with the dry run first |
+| `SETTLEMENT_DESK_WALLET`, `SETTLEMENT_DESK_CDP_ACCOUNT_NAME` | The desk wallet: the lane's registered funder and the forwarder's only caller |
+| `SETTLEMENT_FORWARDER`, `SETTLEMENT_OFFRAMP_ADDRESS` | The SettlementForwarder and the off-ramp deposit address it pays |
+| `SETTLEMENT_OFFRAMP` (`mock`/`bridge`), `SETTLEMENT_BRIDGE_CUSTOMER_ID`, `SETTLEMENT_BRIDGE_LIQUIDATION_ADDRESS_ID`, `SETTLEMENT_OFFRAMP_RAIL`, `SETTLEMENT_OFFRAMP_LATENCY_MINUTES` | The off-ramp. `mock` on Base Sepolia |
+| `SETTLEMENT_BANK` (`lithic`/`mock`), `SETTLEMENT_CSA_FINANCIAL_ACCOUNT_TOKEN`, `SETTLEMENT_COLLECTION_FINANCIAL_ACCOUNT_TOKEN`, `SETTLEMENT_MARGIN_FINANCIAL_ACCOUNT_TOKEN`, `SETTLEMENT_ONRAMP_EXTERNAL_BANK_ACCOUNT_TOKEN`, `SETTLEMENT_BOOK_TRANSFER_*` | The bank accounts, as Lithic financial accounts |
+| `SETTLEMENT_CUTOFF_TIME`, `SETTLEMENT_CUTOFF_TZ`, `SETTLEMENT_BUSINESS_DAYS`, `SETTLEMENT_HOLIDAYS`, `SETTLEMENT_LAG_BUSINESS_DAYS` | The cut-off schedule |
+| `SETTLEMENT_BUFFER_USDC`, `SETTLEMENT_CSA_MINIMUM_USDC`, `SETTLEMENT_FUNDING_CAP_USDC`, `SETTLEMENT_MIN_MOVE_USDC` | Dollars |
+| `POOL_FUNDED_TIER_KINDS` | The Pool Tiers for the Pool Tier principal helper; default `SAVINGS,INCOME,BOOST` |
+
+Two read-only Command routes (Money at See): `GET /api/command/settlement-funding` (the desk's last
+check, moves, halt and daily reconciliation) and `GET /api/command/pool-tier-principal` (what the two
+valuation signers should post: the pool-funded tiers' principal, open term plans and Margin Advances).
+
+### Relayers
+
+Send claim settlement and savings deposits are signed by a relayer. `SEND_RELAYER_MODE` picks how:
+
+- `local_key` — signs with `SEND_RELAYER_PRIVATE_KEY`. Dev only.
+- `managed_webhook` — delegates to `SEND_RELAYER_MANAGED_SIGNER_URL`.
+- `cdp_server_wallet` — Coinbase CDP Server Wallets, and no raw private key in the app env.
+  Recommended. Set `SEND_CDP_*` (or fall back to the default `CDP_*`), then:
+
+  ```bash
+  npm run send:cdp:account    # creates or fetches the managed account, prints the address to fund
+  ```
+
+Savings has its own set (`SAVINGS_RELAYER_MODE`, `SAVINGS_CDP_*`) so the two can be funded and
+rotated independently.
+
+### Keys and the roles they need (audit Phase 1)
+
+Each key the API signs with, what it calls, and the on-chain role that call needs since the Phase 1
+contract changes. Settings (tiers, treasuries, card settlers, caps, borrower destinations) are the
+Safe's, not any key's here. Nothing in this repo grants a role; `scripts/command/ops-roles.map.json`
+is the map the role handover reads.
+
+| Key (env) | Calls | Needs |
+|---|---|---|
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `RevolvingIssuer.openLine`, `updateCreditPeriod` (renewals; may only extend), `TermIssuer.openPlan` (on the member's signed terms), `closePlanForRefund`, `OffersIssuer.grant` | AccessManager `CREDIT_LINES_ROLE` |
+| `STATE_ATTESTER_PRIVATE_KEY`, else `CREDIT_OPERATOR_PRIVATE_KEY` | `NetworkRegistry.attestStateCode(member, stateCode)` (jobs/creditOnboarding, with `CREDIT_ONBOARDING_ENABLED=1`; two-letter code as `encodeBytes32String`, services/chain/stateCode.ts) | NetworkRegistry `STATE_ATTESTER_ROLE` (granted to the credit operator through the CreditTimelock) |
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `TermIssuer.setTermLimit` (`apps/api/scripts/set_term_limit.ts`, termLimitService), tier capacity | AccessManager `CREDIT_LIMITS_ROLE` |
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `CollateralRegistry.pledge`/`pledgeItem` (Phase 4b, L-I: only with the member's EIP-712 `Pledge`/`PledgeItem` signature, which the app asks for after a deposit or bond purchase: `POST /api/savings/pledge/prepare`, then `/submit`) and `release` (no signature: it only gives back), unless the savings relayer signs them; `MembershipRegistry` writes | CollateralRegistry `OPERATOR_ROLE`, MembershipRegistry `REGISTRAR_ROLE` (unchanged) |
+| `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `settleCardSpendWithFee` (decision 55), `reverseCardSpend`, `repayCardSpend`, `repayForMember(ref, member, amount, payer)`; `TermIssuer.declareDefault`, `reinstate` (`collectForMember` is retired, Phase 2d); `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's). No `LendingPool` role: nothing borrows from the Yield Pool (decision 17); Clear Lending funds card settlement from its Deployments |
+| `CARD_SETTLER_PRIVATE_KEY` (auto-clear, Phase 2b) | `RevolvingIssuer.repayForMember` now pulls the reserve token from the **settler** (`msg.sender`): the sweep approves the RevolvingIssuer for exactly what it pays, and the settler must hold that USDC. The member's dollars for it move to the Lithic settlement account (below) | a card settler; USDC for the clearings, and the approval this service sends |
+| `CARD_SETTLER_PRIVATE_KEY` (cycle keeper, Phase 2b) | `RevolvingIssuer.syncCreditPeriod(member)` (jobs/cycleKeeper, hourly), and `setAutoClearWithSignature` / `setSavingsDrawAllowanceWithSignature` with the member's signature | no role, only gas: all three are permissionless (the member's signature decides the last two) |
+| `CARD_SETTLER_PRIVATE_KEY` (default keeper, decision 53) | `RevolvingIssuer.triggerDefault(member)` (jobs/cycleKeeper, only with `CREDIT_DEFAULT_KEEPER_ENABLED=1`) | no role, only gas: it is permissionless and fails closed unless the issuer computes the default |
+| `CARD_SETTLER_PRIVATE_KEY` (enforcement keeper, Phase 2b/2f) | `Liquidator.noticeShortfall(member)` (jobs/enforcementKeeper, hourly; skips a member under an active Liquidation Hold) | no role, only gas: it is permissionless. The Liquidator must have its Earn sources set |
+| `CARD_SETTLER_PRIVATE_KEY` (pledge and queue keepers, decision 53) | `PoolShareEnforcer.enforce`, `settle`, `cancelExcess`; `BurnerBond.payPledged`; `LendingPool.fillQueue` (jobs/pledgeKeeper, jobs/queueFillKeeper; see [`docs/operators/keepers.md`](../../docs/operators/keepers.md)) | no role, only gas: all are permissionless and move only what the contracts compute |
+| none (a person's own wallet) | `Liquidator.proposeHold`, `confirmHold`, `renewHold`, `clearHold`, from Command (Money → Credit). The API only encodes each step (`POST /api/command/liquidation-holds/prepare`); the signer sends it | Liquidator `HOLD_ROLE`, held by at least two people: confirming, renewing and finishing a clear must each come from a different signer than the step before |
+| `SAVINGS_RELAYER_*` | `ESADepositVault.depositWithAuthorization(For)`, `redeemWithSignature`, `executeMandateDeposit`; `SavingsIntentFactory.settle/refundDeterministic` | ESADepositVault `RELAYER_ROLE` (no function accepts `OPERATOR_ROLE` now); SavingsIntentFactory `SETTLER_ROLE` |
+| `SEND_RELAYER_*` | `ClaimEscrow.createTransferWithAuthorizationAndClaimKey`, `claimToPayoutTreasuryWithSignature` (Phase 2d, L-D: with the claim link's or the sender's `PayoutClaim` signature, made in the recipient's browser after `POST /api/send/claim/payout/prepare`), `claimToWalletWithSignature` | ClaimEscrow `SETTLER_ROLE` (the wallet claim needs none: the claim key's signature decides) |
+| `PRIVY_AUTHORIZATION_PRIVATE_KEY` | a shop's own wallet: `PayoutPool.redeem` | the shop registered and active in MerchantRegistry |
+
+The plain AccessManager `OPERATOR` role passes no credit check any more, so a credit operator that
+held only `OPERATOR` is refused (`CreditIssuerMissingRole`).
+
+**Plan terms.** A term plan opens only on the member's EIP-712 signature over `PlanTerms`
+(`@clear/domain` `planTerms`, the one definition). `disclosureHash` is keccak-256 of the disclosure
+lines joined by newlines, built from the signed fields with fixed formatting; the member app rebuilds
+those lines from the terms, shows them, and refuses to sign if their hash differs. A plan reopened
+after a lost dispute needs a fresh member signature, so it is not reopened automatically; ops gets
+an alert instead.
+
+**Claim keys.** A Send's claim link is its claim key: `keccak256("clear-claim-key/v1:" + token)`
+(`@clear/domain` `claimKey`). The lock commits the key's address; a wallet claim is signed in the
+recipient's browser. A link rotated by `send:recover-claim` derives a different key, so a recovered
+link can still be paid out to a bank or card (`claimToPayoutTreasuryWithSignature`, signed with the key the recovered link derives) but not to a wallet.
+
+### Auto-clear moves the dollars, not just the line (Phase 2b, 12.2)
+
+Automatic clearing "sweeps Spendable deposits at the bank". The settler pays the line on chain
+(`repayForMember`), and exactly what the chain applied (`AutoCleared.applied`, never the deposit)
+moves from the member's Lithic cash account to Clear's settlement account in a Lithic book transfer.
+Only a Spendable (Lithic ACH) deposit with auto-clear ON starts one; Bridge deposits, Ready to
+allocate USDC and CLRUSD are never touched. One clearing per deposit, keyed by a ref derived from the
+deposit receipt: the same ref is `repayForMember`'s on-chain idempotency key, and the Lithic hold and
+transfer tokens are derived from it (UUIDv5s, sent as each object's `token` and as the
+`Idempotency-Key` header, which Lithic requires to be a valid UUID). The order:
+
+1. read on chain what the clearing will apply, A = min(what the deposit set aside, what is owed now);
+2. hold exactly A in the member's account (the rest of the deposit is never held);
+3. send `repayForMember` / `payPlan` for A;
+4. book-transfer exactly what was applied with `hold_token`, which settles the hold.
+
+There is no window between releasing the money and moving it. The one exception is the chain
+applying less than A (the member repaid in between): Lithic does not document settling part of a
+hold, so the hold is voided, the applied amount transferred without it, and ops are alerted. Holds
+expire an hour after the release (`AUTO_CLEAR_MAX_HOLD_HOURS` + 1h), so Lithic frees one if nothing
+voids it. The states, retries and compensating steps are documented in
+`src/services/deposits/autoClearRuns.ts` (table `auto_clear_runs`).
+
+Term plans' dues a Spendable deposit pays (only with auto-clear ON: paying them is part of
+auto-clear) go through the same machine, one clearing per plan keyed by the deposit receipt and the
+plan id: held, paid on chain with `payPlan` from the settler's float, and exactly what `PlanPaid`
+says moves to the settlement account. `payPlan` has no on-chain key, so a send whose outcome cannot
+be read is never resent: it goes to `needs_review` with the money still held, and ops are alerted.
+
+Before it runs:
+
+| Setting | What it is |
+|---|---|
+| `LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN` | Clear's own financial account at Lithic that receives the cleared dollars (the program's settlement or operating account, from which the settler's USDC is replenished). **Without it nothing is held, cleared or moved**, and ops get one alert |
+| `LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE` | **Required.** The subtype Lithic's implementation specialist issues for this transfer (e.g. `001`). There is no default: **without it nothing is held, cleared or moved** |
+| `LITHIC_AUTO_CLEAR_TRANSFER_CATEGORY`, `_TYPE` | Defaults `BALANCE_OR_FUNDING` and `COLLECTION` (Lithic: "moving funds from a cash-funded account to a credit account, to collect on a credit statement"). Use whatever Lithic enables for the program |
+| `AUTO_CLEAR_MAX_HOLD_HOURS` | How long a clearing may wait for something to be owed on chain (a card purchase still pending), default 72. Nothing is held while it waits; after it, the clearing is released and the money is the member's |
+
+What the program needs from Lithic: the **Holds** API (`POST /v1/financial_accounts/{token}/holds`,
+`GET /v1/holds/{token}`, `POST /v1/holds/{token}/void`) and the **Book Transfers** API
+(`POST`/`GET /v1/book_transfers`, including `hold_token`) enabled for `LITHIC_API_KEY`, and book
+transfers allowed from members' cash accounts to the settlement account with the classification
+above. Book transfer types and subtypes are set up with Lithic's implementation specialist, and
+Lithic notes they "typically require approval from your sponsor bank": agree the type and subtype
+for automatic clearing with both before turning this on. Earmarks recorded before this change (`auto_repay_due`) had no hold and are released, not paid.
+A declined transfer after the chain has applied means Clear is owed that amount: ops are alerted, it
+is retried with a new token only once the last one is confirmed declined, and after five attempts it
+waits for a person.
+
+---
+
+## Further reading
+
+- Root [`README.md`](../../README.md) — the monorepo, the contracts, the deployed addresses
+- [`DEPLOY.md`](../../docs/operators/api-deploy.md) · [`DOCKER.md`](../../docs/developers/api/local-redis.md) — running it
+- [`TEST_GUIDE.md`](../../docs/developers/api/testing.md) — poking at it
+- [`docs/developers/integrations/lithic.md`](../../docs/developers/integrations/lithic.md)
+  — the card and banking rail, and the two rails it must not blur
+- [`docs/operators/clrusd-esa-bootstrap.md`](../../docs/operators/clrusd-esa-bootstrap.md) — the savings path this API settles against
+- [`apps/member/README.md`](../member/README.md) — the app on the other end
+
+---
+
+## License
+
+Proprietary — all rights reserved. See [`NOTICE.md`](../../NOTICE.md).

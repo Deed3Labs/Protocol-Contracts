@@ -1,81 +1,54 @@
-# The Deed Protocol Documentation
+# Documentation
 
-Welcome to the comprehensive documentation for **The Deed Protocol** - a decentralized platform for Real World Asset (RWA) tokenization and validation.
+Documentation for **Clear** — the app and the co-op — and for **the Clear Protocol**, the on-chain
+layer underneath it, sorted by who it is for. New to Clear? Start with the
+[Overview](./overview/README.md). To run the software, start with [Developers](./developers/README.md).
 
-## 📚 Documentation Sections
+| Section | For |
+|---|---|
+| [Overview](./overview/README.md) | Anyone — what Clear is and how the money works |
+| [Members](./members/README.md) | People using the member app |
+| [Merchants](./merchants/README.md) | Shops taking Clear, and their staff |
+| [Investors](./investors/README.md) | Financial contributors |
+| [Contributors](./contributors/README.md) | People contributing land or property |
+| [Governance](./governance/README.md) | How the co-op decides, and who holds which keys |
+| [Developers](./developers/README.md) | Building on Clear, or running and changing its software |
+| [Protocol](./protocol/README.md) | The contracts, including the Deed track, and a [reference page for every deployed contract](./protocol/contracts/README.md) |
+| [Operators](./operators/README.md) | Deploying, upgrading and running it |
 
-### 🚀 Getting Started
-- **[User Guide](./user-guide/README.md)** - Complete user experience guide
-- **[Quick Start](./quick-start.md)** - Get up and running in minutes
-- **[Installation](./installation.md)** - Setup and deployment instructions
+**Who decides what is set out in [Governance](./governance/README.md).** Every other section links
+there for who decides something or who holds a key.
 
-### 🏗️ Protocol Architecture
-- **[Protocol Overview](./architecture/protocol-overview.md)** - High-level system design
-- **[Smart Contracts](./architecture/smart-contracts.md)** - Contract architecture and relationships
-- **[Validation System](./architecture/validation-system.md)** - How validation works
-- **[Asset Subdivision](./architecture/subdivision.md)** - Asset subdivision functionality and workflows
-- **[Asset Fractionalization](./architecture/fractionalization.md)** - Asset fractionalization functionality and workflows
-- **[Asset Workflows](./architecture/asset-workflows.md)** - Complete asset lifecycle from minting to fractionalization
-
-### 💼 Asset Types & Requirements
-- **[Land Assets](./assets/land-assets.md)** - Land property validation requirements
-- **[Vehicle Assets](./assets/vehicle-assets.md)** - Vehicle validation requirements
-- **[Estate Assets](./assets/estate-assets.md)** - Estate property validation requirements
-- **[Commercial Equipment](./assets/commercial-equipment.md)** - Equipment validation requirements
-
-### 🔧 Technical Documentation
-- **[API Reference](./api/README.md)** - Complete API documentation
-- **[Contract Interfaces](./api/contract-interfaces.md)** - Smart contract interfaces
-- **[Frontend Components](./api/components.md)** - React component documentation
-
-### 🎯 User Experience
-- **[Minting Process](./ux/minting-process.md)** - Step-by-step minting guide
-- **[Validation Workflow](./ux/validation-workflow.md)** - Asset validation process
-- **[Messaging Guide](./ux/messaging.md)** - XMTP messaging instructions
-- **[Admin Operations](./ux/admin-operations.md)** - Administrative functions
-- **[Troubleshooting](./ux/troubleshooting.md)** - Common issues and solutions
-
-### 🔒 Security & Compliance
-- **[Security Model](./security/security-model.md)** - Security architecture
-- **[Compliance Guidelines](./security/compliance.md)** - Regulatory compliance
-- **[Audit Information](./security/audits.md)** - Security audit details
-
-### 🚀 Development
-- **[Developer Guide](./development/README.md)** - For developers and integrators
-- **[Contributing](./development/contributing.md)** - How to contribute
-- **[Testing](./development/testing.md)** - Testing guidelines
-
-## 🎯 Quick Navigation
-
-### For End Users
-Start with the **[User Guide](./user-guide/README.md)** to understand how to use the protocol for minting and managing your assets.
-
-### For Validators
-Check **[Validation System](./architecture/validation-system.md)** and **[Asset Requirements](./assets/)** to understand validation criteria.
-
-### For Developers
-Begin with **[Developer Guide](./development/README.md)** and **[API Reference](./api/README.md)** for integration details.
-
-### For Administrators
-Review **[Admin Operations](./ux/admin-operations.md)** and **[Security Model](./security/security-model.md)** for protocol management.
-
-## 📖 Documentation Status
-
-- ✅ **Complete**: User Guide, Quick Start, Asset Requirements, Smart Contracts, Validation System, Subdivision, Fractionalization, Asset Workflows
-- 🔄 **In Progress**: API Reference, Security Documentation
-- 📋 **Planned**: Advanced Features, Integration Guides
-
-## 🤝 Contributing to Documentation
-
-We welcome contributions to improve our documentation! Please see our **[Contributing Guide](./development/contributing.md)** for details.
-
-## 📞 Support
-
-- **GitHub Issues**: [Report bugs or request features](https://github.com/Deed3Labs/Protocol-Contracts/issues)
-- **Discussions**: [Join community discussions](https://github.com/Deed3Labs/Protocol-Contracts/discussions)
-- **Email**: dev@deed3.io
+Superseded material is in [`archive/`](./archive/README.md).
 
 ---
 
-*Last updated: January 2025*
-*Version: v0.2.0-beta* 
+## Design and build references
+
+Design specifications the apps are built to. They are reference material for contributors to the
+software, not part of the published documentation. **Their paths are fixed:** build scripts, tests and
+applied database migrations cite them, and a migration cannot be edited once it has run.
+
+| | |
+|---|---|
+| [`reference/`](./reference/README.md) | The member app: the design spec, and static reference screens for Home, Savings, Earn, Activity, Send and Card |
+| [`merchant-reference/`](./merchant-reference/) | The merchant app: one file per screen with every state, sheet and width, its decision log, the pilot checklist and the build prompts. `apps/merchant/scripts/reference-css.mjs` reads the HTML |
+| [`pay-reference/`](./pay-reference/) | Pay with Clear: design reference and decision log. `apps/pay/scripts/reference-css.mjs` reads the HTML |
+| [`rewards-reference/`](./rewards-reference/) | The rewards app: design reference, decision log and store builds. Read by the rewards and merchant reference-css scripts |
+| [`command-reference/`](./command-reference/), [`command-center-plan.md`](./command-center-plan.md), [`ui-redesign-plan.md`](./ui-redesign-plan.md), [`ui-redesign/`](./ui-redesign/) | The Command Center: decision log, original plan, the UI redesign plan and its screenshots. The current design source is [`design/command-center-ui/`](../design/command-center-ui/README.md) |
+| [`hardware/`](./hardware/) | Clear Terminal: the Point device API, the cash-drawer protocol and M2 reader timing. Reference for developers too — linked from [Developers](./developers/README.md) — and pinned to the firmware constants by `apps/merchant/src/hardware/docs.test.ts` |
+
+---
+
+## Contributing to the documentation
+
+Open a focused pull request against `dev`, as for code, and update the documentation in the same change
+as the interface or workflow it describes. A new page goes in the section for its reader and gets a
+line in that section's `README.md`.
+
+CI checks that every link resolves (`scripts/check-doc-links.mjs`) and that the
+[contract reference](./protocol/contracts/README.md) matches `deployments/`
+(`scripts/docs/contract-reference.mjs --check`).
+
+- Issues: [Deed3Labs/Protocol-Contracts/issues](https://github.com/Deed3Labs/Protocol-Contracts/issues)
+- Discussions: [Deed3Labs/Protocol-Contracts/discussions](https://github.com/Deed3Labs/Protocol-Contracts/discussions)

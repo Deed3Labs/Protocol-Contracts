@@ -1,0 +1,80 @@
+/* Card settlement (decision 54, the redesign of 18 Nov): the full card, the slim one and the strip tile, as the reference
+   (Money → Overview) has them: reference-extract.js's CSS, verbatim. Its own sheet in Money's chain (pageHost.tsx), so the
+   reference-copied n.css stays a copy. */
+/* ── Card settlement (decision 54): the full card, the slim one, the strip tiles ──
+   One 3-column grid: the bar and timeline span two, the sources one; Due, Covered by and Last 7 days one each; the moves all three.
+   Every divider runs edge to edge of its column; rows carry their own 22px padding. */
+.sf .hd .r{display:flex;align-items:center;gap:12px} .sf-cut{font:500 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-50);white-space:nowrap}
+.sf-gr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.sf-c{display:flex;flex-direction:column;min-width:0;border-top:1px solid var(--hair)} .sf-c > .lbl{display:flex;align-items:center;height:48px;padding:0 22px;line-height:1;margin:0;box-sizing:border-box}
+.sf-gr > .sf-kpi{grid-column:1 / -1;border-top:0} .sf-gr > .sf-main{grid-column:1 / -1} .sf-gr > .sf-c:nth-child(n+8){border-top:1px solid var(--hair)} .sf-gr > .sf-sh,.sf-gr > .sf-mvs{grid-column:1 / -1}
+.sf-gr > .sf-c:nth-child(5),.sf-gr > .sf-c:nth-child(6),.sf-gr > .sf-c:nth-child(9),.sf-gr > .sf-c:nth-child(10){border-left:1px solid var(--hair)}
+.sf-sh{flex-direction:row !important;align-items:center;justify-content:space-between;gap:20px;height:48px;padding-right:22px;box-sizing:border-box} .sf-sh > .lbl{height:auto !important;padding:0 22px !important}
+.sf-sh .sf-note{margin:0;padding:0;border:0;font-size:12px;color:var(--fg-50);text-align:right} .sf-sh .sf-note b{color:var(--fg-70);font-weight:600}
+.sf-main{gap:20px;padding:26px 22px 26px}
+.sf-gr > .sf-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))} .sf-kpi > div{display:flex;flex-direction:column;justify-content:center;gap:8px;min-width:0;padding:22px} .sf-kpi > div + div{border-left:1px solid var(--hair)}
+.sf-kpi b{font-weight:600;font-size:30px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap} .sf-kpi > div > span:last-child{font-size:12.5px;color:var(--fg-50);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:820px){ .sf-gr > .sf-kpi{grid-template-columns:1fr 1fr} .sf-kpi > div{padding:16px} .sf-kpi > div:nth-child(3){border-left:0} .sf-kpi > div:nth-child(n+3){border-top:1px solid var(--hair)} .sf-kpi b{font-size:24px} }
+.sf-hero{display:flex;flex-direction:column;gap:10px} .sf-hero .m-big{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap} .sf-hero .m-big small{font-size:15px;font-weight:500;color:var(--fg-50);letter-spacing:0}
+.sf-line{margin:0;font-size:14px;line-height:1.55;color:var(--fg-70);max-width:66ch} .sf-line.short{color:var(--absent)}
+.sfb{display:flex;flex-direction:column;gap:8px} .sfb-t{position:relative;height:32px;background:var(--hair)} .sfb-i{position:absolute;inset:0} .sfb.sm .sfb-t{height:10px}
+.sfb-i > i{position:absolute;top:0;bottom:0;box-sizing:border-box} .sfb-i > i + i{border-left:2px solid var(--ground)} .sfb-in{background:var(--fg)} .sfb-fl{background:var(--land)}
+.sfb-dk{background:repeating-linear-gradient(45deg,var(--land) 0 1.5px,transparent 1.5px 5px),color-mix(in srgb,var(--land) 16%,transparent)}
+.sfb-gap{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--absent) 75%,transparent) 0 1.5px,transparent 1.5px 5px),color-mix(in srgb,var(--absent) 12%,transparent)}
+.sfb-due{position:absolute;top:-7px;bottom:-7px;width:2px;background:var(--fg);transform:translateX(-1px);z-index:1} .sfb.sm .sfb-due{top:-4px;bottom:-4px}
+.sfb-ax{position:relative;height:14px;font:500 11.5px/14px var(--f-mono);color:var(--fg-50);font-variant-numeric:tabular-nums}
+.sfb-ax b{font-weight:500;color:var(--fg-70);font-family:var(--f-sans,inherit);font-size:12px}
+.sfb-ax .due{position:absolute;top:0;white-space:nowrap;transform:translateX(-50%);color:var(--fg)} .sfb-ax .due.r{transform:translateX(calc(-100% + 1px))} .sfb-ax .due.l{transform:translateX(-1px)}
+.sfb-ax.lo{display:flex;justify-content:space-between}
+.sf-key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--fg-70);margin-top:-6px} .sf-key > span{display:inline-flex;align-items:center;gap:7px}
+.sf-key i{display:inline-block;width:10px;height:10px;flex:none} .sf-key .k-in{background:var(--fg)} .sf-key .k-fl{background:var(--land)}
+.sf-key .k-dk{background:repeating-linear-gradient(45deg,var(--land) 0 1px,transparent 1px 3.5px),color-mix(in srgb,var(--land) 16%,transparent)}
+.sf-key .k-gap{background:repeating-linear-gradient(45deg,var(--absent) 0 1px,transparent 1px 3.5px),color-mix(in srgb,var(--absent) 12%,transparent)}
+.sft{padding:30px 0 22px} .sft-tr{position:relative;height:2px;background:var(--line)}
+.sft-night{position:absolute;top:-4px;height:10px;background:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px 4px)}
+.sft-night em{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-style:normal;font-size:11px;line-height:1;color:var(--fg-50);white-space:nowrap}
+.sft-p{position:absolute;top:1px;width:0} .sft-p > i{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--ground);box-shadow:inset 0 0 0 2px var(--fg)}
+.sft-p b,.sft-p em{position:absolute;left:0;transform:translateX(-50%);white-space:nowrap;line-height:1}
+.sft-p b{bottom:12px;font:500 12px/1 var(--f-mono);font-variant-numeric:tabular-nums} .sft-p em{top:12px;font-style:normal;font-size:11.5px;color:var(--fg-50)}
+.sft-p.first b,.sft-p.first em{transform:none;left:-5px} .sft-p.end b,.sft-p.end em{transform:translateX(-100%);left:5px}
+.sft-p.end > i{background:var(--fg)} .sft-p.key > i{box-shadow:inset 0 0 0 2px var(--underway)} .sft-p.key b{color:var(--underway)}
+.sf-src .sfs{display:flex;flex-direction:column}
+.sfs-t{gap:10px;padding:20px 22px 22px}
+.sfs-h{display:flex;align-items:center;gap:10px;min-width:0} .sfs-h b{font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sfs-n{flex:none;width:22px;height:22px;display:grid;place-items:center;font:500 11px/1 var(--f-mono);color:var(--fg-70);box-shadow:inset 0 0 0 1px var(--line)}
+.sfs-d{font-size:12.5px;line-height:1.4;color:var(--fg-50);min-height:18px}
+.sfs-v{display:flex;align-items:baseline;gap:7px;margin-top:6px} .sfs-v b{font-weight:600;font-size:24px;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums} .sfs-v span{font-size:13px;color:var(--fg-50)}
+.sfs-u{display:flex;flex-direction:column;gap:7px;margin-top:4px} .sfs-mt{position:relative;height:4px;background:var(--hair)} .sfs-mt i{position:absolute;left:0;top:0;bottom:0;background:var(--land)}
+.sfs-m{font-size:12px;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sfs-a{margin-top:auto;padding-top:8px;display:flex} .sfs-a .btn.sm-b{width:100%;height:36px;justify-content:center;font-size:13px}
+.sfs-none{width:100%;height:36px;display:grid;place-items:center;font-size:12.5px;color:var(--fg-50);box-shadow:inset 0 0 0 1px var(--hair);border-radius:999px}
+.sf-note{margin:auto 0 0;padding:16px 22px 18px;border-top:1px solid var(--hair);font-size:12px;line-height:1.5;color:var(--fg-50)} .sf-note b{color:var(--fg-70);font-weight:600}
+.sfl{display:flex;flex-direction:column;flex:1} .sfl > div{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;padding:0 22px;border-top:1px solid var(--hair);font-size:13.5px}
+.sfl > div:first-child{border-top:1px solid var(--hair)} .sfl > div > span{color:var(--fg-70)} .sfl > div > b{font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.sfl > div.t{margin-top:auto} .sfl > div.t > span{color:var(--fg)} .sfl > div.t > b{font-weight:600}
+.sf-q{font:500 11px/1 var(--f-mono);color:var(--fg-50);margin-right:8px}
+.sfm{display:flex;flex-direction:column}
+.sfm-r{display:grid;grid-template-columns:64px minmax(0,1fr) 112px 120px;gap:20px;align-items:center;min-height:60px;padding:10px 22px;box-sizing:border-box;border-top:1px solid var(--hair);font-size:13.5px} .sfm-r:first-child{border-top:1px solid var(--hair)}
+.sfm-t{display:flex;flex-direction:column;gap:4px} .sfm-t b{font:500 13px/1 var(--f-mono);font-variant-numeric:tabular-nums} .sfm-t span{font:500 10.5px/1 var(--f-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--fg-50)}
+.sfm-k{display:flex;flex-direction:column;gap:4px;min-width:0} .sfm-k b{font-weight:500;line-height:1.25} .sfm-k > span{font-size:12px;line-height:1.3;color:var(--fg-50);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sfm-tx{font:500 11.5px/1 var(--f-mono);color:var(--fg-70);border-bottom:1px solid color-mix(in srgb,var(--fg) 35%,transparent);cursor:pointer}
+.sfm-s{display:flex;justify-content:flex-end}
+.sfm-v{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.sf > .bk-ft{display:flex;align-items:center;gap:22px} .sf > .bk-ft > .btn{text-decoration:none;margin-left:auto} .sf-ft b{font-weight:600;color:var(--fg)}
+.sf-ft{display:flex;align-items:center;gap:8px;min-width:0;flex:1;white-space:nowrap;overflow:hidden} .sf-ft > span{overflow:hidden;text-overflow:ellipsis}
+.sf-dot{display:inline-block;margin-right:9px;width:7px;height:7px;border-radius:50%;background:var(--settled);flex:none} .sf-dot.off{background:var(--absent)}
+.sf-pvbar{grid-column:1 / -1;display:flex;align-items:center;justify-content:flex-end;gap:12px;margin:12px 0 32px;font:500 10px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-50)}
+.sf-pv{display:inline-flex;align-items:center;gap:4px;flex:none}
+.sf-pvbar .sf-pv button{height:24px;padding:0 9px;font:500 11px/1 var(--f-mono);color:var(--fg-50);text-decoration:none;box-shadow:inset 0 0 0 1px var(--line);background:none} .sf-pvbar .sf-pv button[aria-pressed="true"]{color:var(--ground);background:var(--fg);box-shadow:none}
+.sf.sm .sf-slim{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:32px;align-items:center;padding:22px} .sf.sm .sf-slim .m-big{font-size:26px;white-space:nowrap} .sf.sm .sf-slim .m-big small{font-size:13px;font-weight:500;color:var(--fg-50);margin-left:6px}
+.sf.sm .sfb-ax{display:none} .sf.sm .sfb-t{height:16px} .sf-sl-n{display:flex;flex-direction:column;gap:4px;text-align:right} .sf-sl-n b{font-weight:600;font-variant-numeric:tabular-nums} .sf-sl-n span{font-size:12px;color:var(--fg-50)}
+.sf.sm > .bk-ft > span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1180px){ .sfs-d{min-height:calc(2 * 1.4em)} .sf-pv{display:none} .sfm-r{grid-template-columns:64px minmax(0,1fr) 104px 110px} .sf-sh .sf-note{display:none} }
+@media (max-width:820px){ .sfs-d{min-height:0} .sf-sh{height:44px;padding-right:16px} .sf-sh > .lbl{padding:0 16px !important} .sf-gr{grid-template-columns:1fr} .sf-gr > .sf-c{grid-column:1 / -1 !important;border-left:0 !important} .sf-main{padding:20px 16px 22px} .sf-c > .lbl{padding:0 16px;height:44px}
+  .sfs-t{padding:16px} .sfs-t + .sfs-t{border-top:1px solid var(--hair)} .sfl > div,.sfm-r{padding-left:16px;padding-right:16px} .sfm-r{grid-template-columns:52px minmax(0,1fr) 92px;gap:12px} .sfm-s{display:none}
+  .sf .hd .r .sf-cut{display:none} .sf.sm .sf-slim{grid-template-columns:1fr;gap:14px;padding:18px 16px} .sf-sl-n{text-align:left} .sft-night em{display:none} .sft-p em{font-size:10.5px} .sft-p:not(.first):not(.end):not(.key){display:none}
+  .sf > .bk-ft{flex-wrap:wrap;height:auto;padding:12px 16px;gap:10px} .sf-ft{flex-basis:100%} }
+.strip.s5{grid-template-columns:repeat(5,minmax(0,1fr))} .sc-sf{font:inherit;color:inherit;text-align:left;background:none;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line)} .sc-sf:hover{background:var(--raised)}
+/* the 5-tile strip keeps the reference's narrow layouts: two-up where the 4-tile strip is, the fifth across the row */
+.hdr.side .strip.s5{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:1024px){ .strip.s5{grid-template-columns:repeat(2,minmax(0,1fr))} .strip.s5 > .sc-sf{grid-column:span 2} }

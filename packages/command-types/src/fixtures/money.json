@@ -1,0 +1,609 @@
+{
+ "accounts": [
+  {
+   "id": "sav",
+   "name": "Member savings",
+   "why": "CLRUSD, backed 1:1 by USDC at Bridge",
+   "group": "members",
+   "source": "bridge",
+   "weeks": [
+    0,
+    2100,
+    6400,
+    13900,
+    22800,
+    31200,
+    38940.2
+   ],
+   "swatch": "var(--fg)"
+  },
+  {
+   "id": "yld",
+   "name": "Yield pool",
+   "why": "Members’ deposits · cash not lent out yet",
+   "group": "members",
+   "source": "protocol",
+   "weeks": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    2180,
+    3427.6000000000004
+   ],
+   "swatch": "color-mix(in srgb,var(--live) 60%,transparent)"
+  },
+  {
+   "id": "pay",
+   "name": "Payout pool",
+   "why": "Pays shops for financed sales, oldest first",
+   "group": "set",
+   "source": "protocol",
+   "weeks": [
+    0,
+    1200,
+    3900,
+    5200,
+    7800,
+    9600,
+    10240
+   ],
+   "swatch": "var(--fg-50)"
+  },
+  {
+   "id": "ap",
+   "name": "AssurancePool",
+   "why": "Covers unsecured losses after the yield pool",
+   "group": "set",
+   "source": "protocol",
+   "weeks": [
+    0,
+    400,
+    520,
+    690,
+    860,
+    1110,
+    1420
+   ],
+   "swatch": "var(--underway)"
+  },
+  {
+   "id": "ops",
+   "name": "Operating cash",
+   "why": "Business checking · the co-op’s own money",
+   "group": "coop",
+   "source": "plaid",
+   "weeks": [
+    16800,
+    17900,
+    18600,
+    19800,
+    20400,
+    21100,
+    21480.75
+   ],
+   "swatch": "var(--land)"
+  },
+  {
+   "id": "coop",
+   "name": "Co-op balance",
+   "why": "Discounts on member purchases, held for a vote",
+   "group": "coop",
+   "source": "protocol",
+   "weeks": [
+    0,
+    22.4,
+    61.8,
+    140.2,
+    249.4,
+    376.2,
+    476.2
+   ],
+   "swatch": "color-mix(in srgb,var(--land) 45%,transparent)"
+  }
+ ],
+ "weeks": [
+  1788825600000,
+  1789430400000,
+  1790035200000,
+  1790640000000,
+  1791244800000,
+  1791849600000,
+  1792454400000
+ ],
+ "entries": {
+  "ops": [
+   {
+    "at": 1792454400000,
+    "what": "Card sales · shop",
+    "detail": "Stripe payout",
+    "amount": 1218.4
+   },
+   {
+    "at": 1792368000000,
+    "what": "Poster printing",
+    "detail": "Card",
+    "amount": -212
+   },
+   {
+    "at": 1792022400000,
+    "what": "BB-0006 issued",
+    "detail": "From a member",
+    "amount": 5000
+   },
+   {
+    "at": 1791936000000,
+    "what": "Railway",
+    "detail": "Card",
+    "amount": -67.04
+   }
+  ],
+  "sav": [
+   {
+    "at": 1792540800000,
+    "what": "Deposits",
+    "detail": "38 members",
+    "amount": 1904.2
+   },
+   {
+    "at": 1792454400000,
+    "what": "Withdrawals",
+    "detail": "6 members",
+    "amount": -412
+   },
+   {
+    "at": 1792368000000,
+    "what": "Deposits",
+    "detail": "29 members",
+    "amount": 1322.1
+   }
+  ],
+  "yld": [
+   {
+    "at": 1792540800000,
+    "what": "Interest from credit",
+    "detail": "Unsecured tiers · cycle carry",
+    "amount": 31.2
+   },
+   {
+    "at": 1792454400000,
+    "what": "Deposits",
+    "detail": "4 members",
+    "amount": 1150
+   },
+   {
+    "at": 1792281600000,
+    "what": "Withdrawal",
+    "detail": "1 member · paid at once",
+    "amount": -250
+   },
+   {
+    "at": 1792281600000,
+    "what": "Interest from credit",
+    "detail": "Unsecured tiers",
+    "amount": 6.7
+   },
+   {
+    "at": 1792022400000,
+    "what": "Opened",
+    "detail": "Founding deposits · 14 members",
+    "amount": 8062.1
+   }
+  ],
+  "ap": [
+   {
+    "at": 1792454400000,
+    "what": "Fee share in",
+    "detail": "From credit fees",
+    "amount": 62.4
+   },
+   {
+    "at": 1791936000000,
+    "what": "Loss absorbed",
+    "detail": "Cajon Phone Repair",
+    "amount": -204
+   },
+   {
+    "at": 1791849600000,
+    "what": "Fee share in",
+    "detail": "From credit fees",
+    "amount": 58.1
+   }
+  ],
+  "coop": [
+   {
+    "at": 1792454400000,
+    "what": "Discounts held",
+    "detail": "14 purchases",
+    "amount": 100
+   },
+   {
+    "at": 1791849600000,
+    "what": "Discounts held",
+    "detail": "19 purchases",
+    "amount": 126.8
+   }
+  ]
+ },
+ "bonds": [
+  [
+   "BB-0001",
+   2500,
+   "14 Aug",
+   "14 Dec",
+   4,
+   6,
+   "Member"
+  ],
+  [
+   "BB-0002",
+   5000,
+   "21 Aug",
+   "21 Jan",
+   5,
+   6.5,
+   "Founding lender"
+  ],
+  [
+   "BB-0003",
+   2500,
+   "2 Sep",
+   "2 Mar",
+   6,
+   7,
+   "Member"
+  ],
+  [
+   "BB-0004",
+   2500,
+   "9 Sep",
+   "9 Mar",
+   6,
+   7,
+   "Member"
+  ],
+  [
+   "BB-0005",
+   7500,
+   "1 Oct",
+   "1 Jun",
+   8,
+   7.5,
+   "Founding lender"
+  ],
+  [
+   "BB-0006",
+   5000,
+   "15 Oct",
+   "15 Sep",
+   11,
+   8,
+   "Member"
+  ]
+ ],
+ "depositors": [
+  [
+   "4f",
+   1500,
+   "15 Oct",
+   600
+  ],
+  [
+   "a2",
+   1000,
+   "15 Oct",
+   400
+  ],
+  [
+   "c9",
+   1000,
+   "15 Oct",
+   0
+  ],
+  [
+   "17",
+   750,
+   "15 Oct",
+   0
+  ],
+  [
+   "e0",
+   600,
+   "15 Oct",
+   200
+  ],
+  [
+   "5b",
+   500,
+   "15 Oct",
+   0
+  ],
+  [
+   "9d",
+   500,
+   "15 Oct",
+   0
+  ],
+  [
+   "b3",
+   500,
+   "20 Oct",
+   0
+  ],
+  [
+   "61",
+   400,
+   "15 Oct",
+   0
+  ],
+  [
+   "2e",
+   350,
+   "15 Oct",
+   0
+  ],
+  [
+   "d8",
+   300,
+   "15 Oct",
+   0
+  ],
+  [
+   "7a",
+   300,
+   "15 Oct",
+   0
+  ],
+  [
+   "f4",
+   250,
+   "15 Oct",
+   0
+  ],
+  [
+   "0c",
+   250,
+   "20 Oct",
+   0
+  ],
+  [
+   "8b",
+   200,
+   "15 Oct",
+   0
+  ],
+  [
+   "3f",
+   200,
+   "15 Oct",
+   0
+  ],
+  [
+   "c1",
+   200,
+   "20 Oct",
+   0
+  ],
+  [
+   "6e",
+   200,
+   "20 Oct",
+   0
+  ]
+ ],
+ "check": {
+  "M": {
+   "savings": 38940.2,
+   "cash": 21480.75,
+   "payout": 10240,
+   "assurance": 1420,
+   "coop": 476.2,
+   "credit": 14212.4,
+   "savingsBacked": 8640,
+   "unsecured": 5572.4,
+   "limits": 41600,
+   "lost": 612,
+   "owed14": 12839.25,
+   "dueMembers": 1482.36,
+   "bonds": 25000,
+   "floor": 0.2,
+   "rtd": 0.2548273634340679,
+   "room": 1527.6000000000004,
+   "short": 1116.89
+  },
+  "Y": {
+   "assets": 9000,
+   "principal": 8962.1,
+   "lent": 5572.4,
+   "depositors": 18,
+   "pledged": 1200,
+   "queued": 0,
+   "opened": "15 Oct",
+   "cycleDays": 30,
+   "curve": {
+    "base": 25,
+    "s1": 75,
+    "s2": 900,
+    "kink": 0.8
+   },
+   "cash": 3427.6000000000004,
+   "util": 0.6191555555555556,
+   "earned": 37.899999999999636,
+   "price": 1.0042289195612635,
+   "borrowBps": 83.04583333333333,
+   "supplyBps": 51.418289074074075,
+   "apy": 0.06438656078582472,
+   "apr": 0.10103909722222222,
+   "toPayout": 1116.89,
+   "utilAfter": 0.7432544444444444,
+   "apyAfter": 0.0890640936008249
+  },
+  "ACCTS": [
+   [
+    "sav",
+    "Member savings",
+    "CLRUSD, backed 1:1 by USDC at Bridge",
+    "members",
+    "bridge",
+    38940.2,
+    [
+     0,
+     2100,
+     6400,
+     13900,
+     22800,
+     31200,
+     38940.2
+    ],
+    "var(--fg)"
+   ],
+   [
+    "yld",
+    "Yield pool",
+    "Members’ deposits · cash not lent out yet",
+    "members",
+    "protocol",
+    3427.6000000000004,
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     2180,
+     3427.6000000000004
+    ],
+    "color-mix(in srgb,var(--live) 60%,transparent)"
+   ],
+   [
+    "pay",
+    "Payout pool",
+    "Pays shops for financed sales, oldest first",
+    "set",
+    "protocol",
+    10240,
+    [
+     0,
+     1200,
+     3900,
+     5200,
+     7800,
+     9600,
+     10240
+    ],
+    "var(--fg-50)"
+   ],
+   [
+    "ap",
+    "AssurancePool",
+    "Covers unsecured losses after the yield pool",
+    "set",
+    "protocol",
+    1420,
+    [
+     0,
+     400,
+     520,
+     690,
+     860,
+     1110,
+     1420
+    ],
+    "var(--underway)"
+   ],
+   [
+    "ops",
+    "Operating cash",
+    "Business checking · the co-op’s own money",
+    "coop",
+    "plaid",
+    21480.75,
+    [
+     16800,
+     17900,
+     18600,
+     19800,
+     20400,
+     21100,
+     21480.75
+    ],
+    "var(--land)"
+   ],
+   [
+    "coop",
+    "Co-op balance",
+    "Discounts on member purchases, held for a vote",
+    "coop",
+    "protocol",
+    476.2,
+    [
+     0,
+     22.4,
+     61.8,
+     140.2,
+     249.4,
+     376.2,
+     476.2
+    ],
+    "color-mix(in srgb,var(--land) 45%,transparent)"
+   ]
+  ],
+  "AP_BAL": [
+   0,
+   400,
+   520,
+   690,
+   860,
+   1110,
+   1420
+  ],
+  "UNSEC": [
+   0,
+   900,
+   2050,
+   3450,
+   4400,
+   5100,
+   5572.4
+  ],
+  "AP_REQ": [
+   0,
+   180,
+   410,
+   690,
+   880,
+   1020,
+   1114.48
+  ],
+  "RTD_W": [
+   null,
+   0.4444444444444444,
+   0.25365853658536586,
+   0.2,
+   0.19545454545454546,
+   0.21764705882352942,
+   0.2548273634340679
+  ],
+  "Y_ASSETS": [
+   8062.1,
+   8062.1,
+   8062.1,
+   7818.8,
+   7818.8,
+   8968.8,
+   9000,
+   9000
+  ],
+  "Y_LENT": [
+   5210,
+   5262.4,
+   5301.1,
+   5355.8,
+   5410.2,
+   5488,
+   5540.6,
+   5572.4
+  ]
+ }
+}

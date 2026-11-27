@@ -1,0 +1,148 @@
+import { z } from 'zod';
+import { BusinessDate, Cents, Id, IdempotencyKey, NonNegativeCents, ShopId, Timestamp } from './common';
+
+/**
+ * Card processing: the connector, whether cards are available, readers, and card deposits.
+ *
+ * Providers come through a card-connector interface; Stripe is the first (card-processing prompt,
+ * Phase 9). Nothing here says Stripe except the provider name.
+ */
+
+/** Square is recorded but not offered: its connector is a stub until it's built (apps/api cards/SQUARE.md). */
+export const CardProvider = z.enum(['stripe', 'square']);
+
+export const CardConnector = z.object({
+  id: Id,
+  shop: ShopId,
+  provider: CardProvider,
+  externalAccountId: z.string(),
+  chargesEnabled: z.boolean(),
+  detailsSubmitted: z.boolean(),
+  /** Set when the merchant disconnects; history stays. */
+  disconnectedAt: Timestamp.nullable(),
+});
+export type CardConnector = z.infer<typeof CardConnector>;
+
+/**
+ * The one flag the app reads: can this shop take a card right now. Settings, Checkout and the
+ * Home + sheet show Card as locked or open from it. The reason is for the Settings copy.
+ */
+export const CardAvailability = z.discriminatedUnion('available', [
+  z.object({ available: z.literal(true) }),
+  z.object({
+    available: z.literal(false),
+    reason: z.enum(['not_connected', 'details_pending', 'charges_disabled', 'disconnected']),
+  }),
+]);
+export type CardAvailability = z.infer<typeof CardAvailability>;
+
+export const ReaderType = z.enum(['m2', 'smart', 'tap_to_pay']);
+export type ReaderType = z.infer<typeof ReaderType>;
+
+export const Reader = z.object({
+  id: Id,
+  shop: ShopId,
+  provider: CardProvider,
+  type: ReaderType,
+  externalReaderId: z.string(),
+  label: z.string(),
+  locationId: z.string().nullable(),
+  lastSeenAt: Timestamp.nullable(),
+});
+export type Reader = z.infer<typeof Reader>;
+
+/**
+ * For the native Terminal SDK, made on the shop's connected account and scoped to its location.
+ * `locationId` is the shop's reader location, which the SDK needs to connect an M2 or Tap to Pay.
+ */
+export const ConnectionToken = z.object({ secret: z.string(), locationId: z.string() });
+export type ConnectionToken = z.infer<typeof ConnectionToken>;
+
+/** A smart reader registered with the code it shows on screen. */
+export const RegisterSmartReader = z.object({ registrationCode: z.string().min(1), label: z.string().min(1) });
+/** An M2 or Tap to Pay reader the installed app has connected. */
+export const RecordReader = z.object({
+  type: z.enum(['m2', 'tap_to_pay']),
+  externalReaderId: z.string().min(1),
+  label: z.string().min(1),
+});
+
+/**
+ * What the app needs to collect a card tender on the reader. The server creates the payment
+ * (manual capture, Clear's fee as the application fee); the app collects it with the SDK.
+ */
+export const CardTenderStart = z.object({
+  tenderId: Id,
+  clientSecret: z.string(),
+  /** Store-and-forward allowed for this one, and up to what. Null when not. */
+  offlineLimitCents: NonNegativeCents.nullable(),
+});
+export type CardTenderStart = z.infer<typeof CardTenderStart>;
+
+export const CreateCardTender = z.object({
+  amountCents: Cents.min(1),
+  tipCents: NonNegativeCents,
+  readerId: Id,
+  idempotencyKey: IdempotencyKey,
+});
+
+/**
+ * A card deposit from the processor, and its "card processing" figure. The split between the
+ * processor's fee and Clear's fee comes from the processor's fee data, never from our fee rule.
+ */
+export const CardDeposit = z.object({
+  id: Id,
+  shop: ShopId,
+  externalPayoutId: z.string(),
+  arrivalDate: BusinessDate,
+  grossCents: Cents,
+  processorFeeCents: NonNegativeCents,
+  clearFeeCents: NonNegativeCents,
+  /** gross − processor fee − Clear fee, as the processor paid it. */
+  netCents: Cents,
+  chargeCount: z.number().int().min(0),
+  status: z.enum(['pending', 'in_transit', 'paid', 'failed']),
+});
+export type CardDeposit = z.infer<typeof CardDeposit>;
+
+/**
+ * Clear's fee for a month, billed when the shop's processor couldn't take it off each sale
+ * (card-processing prompt, Phase 9), and collected from the shop's cash account. A shop on Stripe
+ * never has one: Stripe takes the fee per sale.
+ *
+ *   due         raised, waiting to be collected
+ *   collecting  sent; not yet seen to land
+ *   short       the cash account didn't hold enough; tried again daily
+ *   collected   taken, with its transaction
+ */
+export const ClearFeeBill = z.object({
+  id: Id,
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  amountCents: NonNegativeCents,
+  status: z.enum(['due', 'collecting', 'short', 'collected']),
+  txHash: z.string().nullable(),
+  collectedAt: z.string().nullable(),
+});
+export type ClearFeeBill = z.infer<typeof ClearFeeBill>;
+
+/**
+ * Where the shop's books and the card processor's disagree, found by the nightly reconciliation
+ * (card-processing prompt, Phase 8). Open until a later run no longer finds it, or an owner or
+ * manager explains it; an explained flag stays closed while its figures hold.
+ */
+export const ReconciliationFlag = z.object({
+  id: Id,
+  kind: z.string(),
+  /** What it's about: a tender, a processor charge, a payout, a fee bill. */
+  ref: z.string(),
+  expectedCents: Cents.nullable(),
+  actualCents: Cents.nullable(),
+  detail: z.string(),
+  foundAt: z.string(),
+  explained: z.object({ by: z.string(), note: z.string(), at: z.string() }).nullable(),
+});
+export type ReconciliationFlag = z.infer<typeof ReconciliationFlag>;
+export const Reconciliation = z.object({ open: z.array(ReconciliationFlag), explained: z.array(ReconciliationFlag) });
+export type Reconciliation = z.infer<typeof Reconciliation>;
+export const ExplainFlag = z.object({ note: z.string().trim().min(3, 'Say what happened, in a few words').max(500) });
+

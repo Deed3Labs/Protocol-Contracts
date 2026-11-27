@@ -1,0 +1,22 @@
+# Overview
+
+What Clear is, for anyone — before they are a member, a merchant, a contributor or a developer.
+
+**CLEAR is a money app and a financial co-op, built to help renters become owners.** Members save in
+CLRUSD, which is backed one for one by USDC and can be redeemed at any time. Saving and paying rent on
+time earn equity credits, which can only ever go toward a home, ending in a Clear Deed: the title to the
+house, free of debt.
+Underneath the app is the Clear Protocol, the contracts on Base that hold the savings and keep the
+records.
+
+| Page | What it covers |
+|---|---|
+| [What Clear is](./what-clear-is.md) | Who it is for, the app and the co-op, the Clear Protocol underneath, and each product: savings, equity credits, the Clear Deed, assurance, credit lines and split plans, the card, Earn, send, Pay with Clear, rewards, membership |
+| [How the money works](./how-the-money-works.md) | Savings, the credit ledger, paying shops, the card, carry, the reserve and its two compartments, and what happens when someone cannot repay — the plain version of [the contract build plan](../protocol/clear-contracts-build-plan.md) |
+| [Deeds and real-world assets](./deeds-and-real-world-assets.md) | The Clear Deed and the T-Deed behind it, the four asset types, what validators do, and what subdividing and fractionalizing mean |
+| [Glossary](./glossary.md) | The words Clear uses, in plain terms |
+| [Status, security and licensing](./status-and-security.md) | What is live, on which network, what is unaudited, and which license applies where — see [`NOTICE.md`](../../NOTICE.md) |
+
+Who decides things, and who holds which keys, is in [Governance](../governance/README.md). The
+technical account of the contracts is in [Protocol](../protocol/README.md), and the source code is
+introduced in the root [`README.md`](../../README.md).

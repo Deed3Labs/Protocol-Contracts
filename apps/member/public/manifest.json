@@ -1,0 +1,76 @@
+{
+  "id": "/",
+  "name": "Clear",
+  "short_name": "Clear",
+  "description": "Pay over time, save alongside it, and see where every dollar sits.",
+  "start_url": "/",
+  "scope": "/",
+  "display_override": ["standalone", "fullscreen"],
+  "display": "standalone",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "background_color": "#16211D",
+  "theme_color": "#16211D",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Scan to pay",
+      "short_name": "Scan",
+      "description": "Open the camera and scan a Clear code",
+      "url": "/scan"
+    },
+    {
+      "name": "Send",
+      "short_name": "Send",
+      "description": "Send money to someone",
+      "url": "/send"
+    },
+    {
+      "name": "Activity",
+      "short_name": "Activity",
+      "description": "Everything that has moved",
+      "url": "/activity"
+    },
+    {
+      "name": "Card",
+      "short_name": "Card",
+      "description": "Your Clear Visa card",
+      "url": "/card"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "categories": ["finance"],
+  "lang": "en",
+  "dir": "ltr",
+  "prefer_related_applications": false
+}

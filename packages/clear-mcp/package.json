@@ -1,0 +1,49 @@
+{
+  "name": "@useclear/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "An MCP server for Pay with Clear: lets a shop's AI agent make payment links, look up payments, ask for refunds an owner approves, and check webhook deliveries.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Deed3Labs/Protocol-Contracts.git",
+    "directory": "packages/clear-mcp"
+  },
+  "homepage": "https://app.useclear.org/docs/mcp.md",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/types/clear-mcp/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/clear-mcp/src/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": {
+    "useclear-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit",
+    "build": "node ../../scripts/sdk/build-js.mjs && node ../../scripts/sdk/build-types.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@clear/public-api-contracts": "file:../public-api-contracts",
+    "@types/node": "^22.15.3",
+    "@useclear/node": "file:../clear-node",
+    "typescript": "~5.8.3"
+  }
+}

@@ -6,6 +6,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IAccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/IAccessControlUpgradeable.sol";
 
 // Interfaces
 import "./interfaces/IValidatorRegistry.sol";
@@ -113,8 +114,20 @@ contract ValidatorRegistry is
 
     // ============ Upgrade Gap ============
 
-    /// @dev Storage gap for future upgrades
-    uint256[50] private __gap;
+    // ============ Licensed trustees (trust agreement v5, Addendum 2) ============
+
+    /// @notice Licensed trust companies and nonprofit trustees that may serve as a deed's trustee or standby
+    ///         without being a validator. Granted and withdrawn only by the owner, the same key that registers
+    ///         and activates validators. Being listed gives no power over any token.
+    mapping(address => bool) public isLicensedTrustee;
+
+    event LicensedTrusteeUpdated(address indexed account, bool licensed, bytes32 licenseRef);
+
+    /// @dev A validator contract receives royalties and fees, so it can never be a trustee (Addendum 2).
+    error ValidatorCannotBeTrustee(address account);
+
+    /// @dev Storage gap for future upgrades (one slot taken by isLicensedTrustee)
+    uint256[49] private __gap;
 
     // ============ Constructor ============
 
@@ -171,19 +184,20 @@ contract ValidatorRegistry is
      * @dev Updates VALIDATOR_ROLE assignments in DeedNFT based on registry status.
      *      Grants role to active validators and revokes from inactive ones.
      */
-    function _updateDeedNFTRoles() internal {
+    /**
+     * @dev Syncs DeedNFT VALIDATOR_ROLE for the one validator whose status changed, instead of looping
+     *      over every registered validator on each update (audit D-23).
+     */
+    function _updateDeedNFTRoles(address validator) internal {
         if (deedNFT == address(0)) return;
 
-        for (uint256 i = 0; i < validatorAddresses.length; i++) {
-            address validator = validatorAddresses[i];
-            bool isActive = validators[validator].isActive;
-            bool hasRole = IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator);
+        bool isActive = validators[validator].isActive && bytes(validators[validator].name).length > 0;
+        bool hasRole = IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator);
 
-            if (isActive && !hasRole) {
-                IDeedNFT(deedNFT).addValidator(validator);
-            } else if (!isActive && hasRole) {
-                IDeedNFT(deedNFT).removeValidator(validator);
-            }
+        if (isActive && !hasRole) {
+            IDeedNFT(deedNFT).addValidator(validator);
+        } else if (!isActive && hasRole) {
+            IDeedNFT(deedNFT).removeValidator(validator);
         }
     }
 
@@ -249,6 +263,19 @@ contract ValidatorRegistry is
             }
         }
 
+        // Prune the per-asset-type lists too (audit D-23)
+        uint256[] memory types = validators[validator].supportedAssetTypes;
+        for (uint256 t = 0; t < types.length; t++) {
+            address[] storage list = assetTypeValidators[types[t]];
+            for (uint256 i = 0; i < list.length; i++) {
+                if (list[i] == validator) {
+                    list[i] = list[list.length - 1];
+                    list.pop();
+                    break;
+                }
+            }
+        }
+
         // Revoke VALIDATOR_ROLE in DeedNFT if present
         if (deedNFT != address(0) && IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator)) {
             IDeedNFT(deedNFT).removeValidator(validator);
@@ -257,7 +284,6 @@ contract ValidatorRegistry is
         delete validators[validator];
         emit ValidatorRegistered(validator, "", new uint256[](0));
         _updateFundManagerRoles();
-        _updateDeedNFTRoles();
     }
 
     /**
@@ -314,6 +340,54 @@ contract ValidatorRegistry is
      */
     function isValidatorActive(address validator) public view returns (bool) {
         return bytes(validators[validator].name).length > 0 && validators[validator].isActive;
+    }
+
+    /**
+     * @notice Whether `account` may act for `validator`: the validator is active, and `account` is the
+     *         validator contract itself or holds VALIDATOR_ROLE inside it (one of its signers). DeedNFT
+     *         and MetadataRenderer use this to scope validator powers to a deed's own validator
+     *         (audit D-2, D-7, D-11).
+     */
+    function isValidatorSigner(address validator, address account) external view returns (bool) {
+        if (!isValidatorActive(validator)) return false;
+        if (account == validator) return true;
+        return _holdsSignerRole(validator, account);
+    }
+
+    function _holdsSignerRole(address validator, address account) internal view returns (bool) {
+        try IAccessControlUpgradeable(validator).hasRole(keccak256("VALIDATOR_ROLE"), account) returns (bool ok) {
+            return ok;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * @notice Lists or delists a licensed trustee (a trust company or nonprofit trustee that is not a
+     *         validator). Owner only: no wider than registering a validator.
+     * @param licenseRef hash of the license or charter document, for the record.
+     */
+    function setLicensedTrustee(address account, bool licensed, bytes32 licenseRef) external onlyOwner {
+        if (account == address(0) || bytes(validators[account].name).length > 0) revert ValidatorCannotBeTrustee(account);
+        isLicensedTrustee[account] = licensed;
+        emit LicensedTrusteeUpdated(account, licensed, licenseRef);
+    }
+
+    /**
+     * @notice Whether `account` may be a trust deed's trustee or standby (Addendum 1 and 2): a signer
+     *         (VALIDATOR_ROLE holder) of an active validator, or a licensed trustee. Never a validator
+     *         contract itself, since royalties and fees are paid to validator contracts and no contract may
+     *         route funds to a trustee.
+     * @dev Loops over registered validators; the list is short and curated by the owner.
+     */
+    function isEligibleTrustee(address account) external view returns (bool) {
+        if (account == address(0) || bytes(validators[account].name).length > 0) return false;
+        if (isLicensedTrustee[account]) return true;
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            address v = validatorAddresses[i];
+            if (validators[v].isActive && _holdsSignerRole(v, account)) return true;
+        }
+        return false;
     }
 
     /**
@@ -376,7 +450,7 @@ contract ValidatorRegistry is
         validators[validator].isActive = isActive;
         emit ValidatorStatusUpdated(validator, isActive);
         _updateFundManagerRoles();
-        _updateDeedNFTRoles();
+        _updateDeedNFTRoles(validator);
     }
 
     /**

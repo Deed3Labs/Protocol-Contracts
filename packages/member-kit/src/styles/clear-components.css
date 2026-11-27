@@ -1,0 +1,848 @@
+/* Clear brand guide — component rules, transcribed from clear-app-tokens.css.
+
+   Every rule here is a copy of the guide's, with its class names prefixed `c-` so none of them can
+   collide with a Tailwind utility (the guide's bare `.ring`, `.line`, `.row` would). Values are not
+   re-derived: when a number looks odd, it is the guide's number. React primitives in
+   components/clear/brand apply these classes; pages should reach for the primitives, not the
+   classes.
+
+   Order matters and follows the guide's: several rules exist only to beat an earlier one at equal
+   specificity (the header line-height, the ruled list's last row). Keep additions in source order
+   with the section they belong to.
+
+   Imported inside @layer components, so a Tailwind utility on the same element still wins. */
+
+/* ---------- COMPONENT ANATOMY ----------
+   Every component is header / main / footer. Padding lives on the
+   sections, not the container, so every divider runs edge to edge.
+   Main takes the slack, which pins the footer to the bottom. */
+.c-cell,.c-panel{display:flex;flex-direction:column;min-width:0}
+.c-cell{background:var(--paper)}
+.c-panel{border:1px solid var(--seam);background:var(--paper)}
+.c-chead,.c-cmain,.c-cfoot,.c-cbar{padding:var(--s2)}
+.c-cmain{flex:1 1 auto}
+.c-cmain,.c-cfoot,.c-cbar{border-top:1px solid var(--ink-13)}
+.c-cmain:first-child,.c-cfoot:first-child,.c-cbar:first-child{border-top:0}
+.c-chead + .c-cfoot{border-top:1px solid var(--ink-13)}
+.c-chead .c-sechead{border-bottom:0;padding-bottom:0;margin-bottom:0}
+.c-panel.c-act{background:var(--paper-2)}
+.c-panel.c-act.c-short{border-color:var(--live)}
+.c-panel.c-act.c-clear{border-color:var(--settled)}
+.c-cyc-num{color:var(--ink)}
+.c-panel.c-act.c-short .c-cyc-num{color:var(--live)}
+.c-panel.c-act.c-clear .c-cyc-num{color:var(--settled)}
+
+.c-slab{display:grid;gap:1px;background:var(--seam);border:1px solid var(--seam);
+      grid-template-columns:minmax(0,1.08fr) minmax(0,1fr)}
+.c-slab.c-one{grid-template-columns:minmax(0,1fr)}
+.c-cell.c-full{grid-column:1/-1}
+/* Earn: the ladder needs more width than the pool does */
+.c-slab.c-earn{grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr)}
+/* Inbox: the thread is the reading, the list is the index, so the thread takes the room.
+   (Not .c-msg — that is the message block itself.) */
+.c-slab.c-inbox{grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr)}
+.c-col{display:grid;gap:1px;background:var(--seam);grid-template-rows:auto 1fr;min-width:0}
+.c-home{display:flex;flex-direction:column;gap:var(--s3)}
+
+.c-label{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-50);margin:0}
+.c-sechead{display:flex;flex-wrap:nowrap;justify-content:space-between;align-items:baseline;gap:var(--s2);height:24px}
+.c-sechead > *{white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+.c-fig{font-family:var(--font-text);font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:0}
+.c-fig-hero{font-size:var(--t-hero);line-height:1.05}
+.c-fig-sec{font-size:var(--t-fig);line-height:1.2}
+.c-fig-row{font-size:var(--t-row);font-weight:500}
+.c-of{font-weight:400;font-size:var(--t-sec);color:var(--ink-50)}
+.c-sub{font-size:var(--t-sec);color:var(--ink-70);margin:0}
+.c-det{font-size:var(--t-detail);color:var(--ink-50);margin:0;line-height:1.5}
+/* A header is a fixed 24px line, whatever it holds. These selectors sit after .det and .fig-sec
+   deliberately: at equal specificity the later rule wins. */
+.c-sechead .c-label,.c-sechead .c-det,.c-sechead .c-fig,.c-sechead > span{line-height:24px}
+
+.c-rows > *{padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.c-rows > :first-child{padding-top:0}
+.c-rows > :last-child{border-bottom:0;padding-bottom:0}
+/* a ruled list closes itself, so the space below reads as slack not content */
+.c-rows.c-ruled > :last-child{border-bottom:1px solid var(--ink-13);padding-bottom:var(--s2)}
+/* a swiped row keeps its padding on the body, so the ruled list adds only the rule */
+.c-rows.c-ruled > div.c-swiped:last-child{padding-bottom:0}
+.c-line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+.c-line > :first-child{min-width:0}
+.c-pair{display:flex;gap:var(--s1)}
+/* stacked buttons: never .c-pair, whose flex basis collapses on the cross axis */
+.c-stack{display:flex;flex-direction:column;gap:var(--s1)}
+.c-stack .c-btn{width:100%;height:44px;flex:none}
+/* a footer pair is one line: the left side truncates, the right side never shrinks */
+.c-cfoot > .c-line > *{white-space:nowrap}
+.c-cfoot > .c-line > :first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.c-cfoot > .c-line > :last-child{flex-shrink:0}
+.c-pair .c-btn{flex:1;height:44px}
+.c-btn.c-btn-danger{border-color:var(--absent);color:var(--absent)}
+.c-btn.c-btn-danger:hover{border-color:var(--absent);background:transparent}
+
+.c-btn{font-family:var(--font-text);font-size:var(--t-sec);font-weight:500;height:36px;padding:0 var(--s2);
+     border:1px solid var(--ink-28);background:transparent;color:var(--ink);border-radius:var(--radius-pill);
+     cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);white-space:nowrap}
+.c-btn:hover{border-color:var(--ink)}
+.c-btn:disabled{opacity:.45;cursor:default}
+.c-btn:disabled:hover{border-color:var(--ink-28)}
+.c-btn-primary{height:44px;background:var(--ink);color:var(--paper);border-color:var(--ink);padding:0 var(--s3)}
+.c-btn-primary:disabled:hover{border-color:var(--ink)}
+.c-btn-lg{height:44px;width:100%}
+.c-btn.c-linkish{border-color:transparent;color:var(--ink-50);padding:0 12px;flex-shrink:0}
+.c-btn.c-linkish:hover{border-color:var(--ink-28);color:var(--ink)}
+/* a chooser mark is square, like every other drawn control */
+.c-pick{width:20px;height:20px;border:1px solid var(--ink-28);background:var(--paper);
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.c-pick.c-on{background:var(--ink);border-color:var(--ink)}
+
+.c-chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--radius-pill);
+      font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+      border:1px solid currentColor;white-space:nowrap}
+/* A chip of figures is not a word: the tracking that opens up a label pulls "2 of 4" apart, so a
+   counting chip keeps its numerals together and tabular. */
+.c-chip.c-figs{letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.c-chip .c-core{width:6px;height:6px;border-radius:50%;background:currentColor;
+            box-shadow:0 0 4px 1px color-mix(in srgb, currentColor 45%, transparent);flex-shrink:0}
+.c-chip.c-settled{color:var(--settled)} .c-chip.c-underway{color:var(--underway)} .c-chip.c-neutral{color:var(--ink-50)} .c-chip.c-live{color:var(--live)}
+.c-ping{position:relative}
+.c-ping::after{content:'';position:absolute;inset:0;border-radius:inherit;background:currentColor;
+             animation:c-live-ping 2s cubic-bezier(0,0,.2,1) infinite}
+@keyframes c-live-ping{0%{transform:scale(1);opacity:.6}75%,100%{transform:scale(3.4);opacity:0}}
+@media (prefers-reduced-motion:reduce){.c-ping::after{animation:none;opacity:0}}
+
+.c-bar{display:flex;height:8px;background:var(--ink-13);overflow:hidden}
+.c-bar > div{height:100%}
+.c-track{height:8px;background:var(--ink-13)}
+.c-t-sav{color:var(--tier-savings)} .c-t-ast{color:var(--tier-asset-ink)}
+.c-t-inc{color:var(--tier-income)} .c-muted{color:var(--ink-50)} .c-pos{color:var(--settled)}
+/* Boost's text colour. The guide uses .t-bst in the Repay modal without defining it; this follows
+   the ramp (boost → absent), the same way the other three tiers map. */
+.c-t-bst{color:var(--tier-boost)}
+/* Waiting on the member: a charge to answer, in the colour of what is underway. */
+.c-t-und{color:var(--underway)}
+.c-legend > div{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-detail);line-height:2}
+.c-legend > div span:last-child{flex-shrink:0;white-space:nowrap;color:var(--ink-70)}
+.c-legend > div span.c-muted:last-child{color:var(--ink-50)}
+
+/* hero key — one line, name then its figure, colour on the name.
+   Nothing tries to sit under its own segment of the bar. */
+.c-keyline{font-size:var(--t-sec);color:var(--ink-70);margin:var(--s1) 0 0;line-height:1.7}
+.c-keyline strong{font-weight:500;color:var(--ink)}
+.c-keyline .c-sep,.c-sub .c-sep{color:var(--ink-50);margin:0 4px}
+
+/* ================= MILESTONE RAIL ================= */
+.c-rail{position:relative}
+.c-mstone{position:relative;padding-left:26px;padding-bottom:var(--s2)}
+.c-mstone.c-last{padding-bottom:0}
+.c-mstone::before{content:'';position:absolute;left:6px;top:14px;bottom:0;width:1px;background:var(--ink-28)}
+.c-mstone.c-last::before{display:none}
+.c-mdot{position:absolute;left:0;top:3px;width:13px;height:13px;border-radius:50%;
+      border:1.5px solid var(--ink-28);background:var(--paper);display:block}
+.c-mstone.c-done .c-mdot{background:var(--settled);border-color:var(--settled)}
+.c-mstone.c-now .c-mdot{border-color:var(--live);background:var(--paper);
+                  box-shadow:0 0 6px 1px color-mix(in srgb, var(--live) 45%, transparent)}
+.c-mstone.c-later{opacity:.6}
+.c-mstone .c-det{white-space:nowrap}
+.c-mstone .c-line > span:first-child{min-width:0}
+
+/* ================= EARN ================= */
+/* A ring is a data mark, not a container, so the square/pill rule does not reach it — but its caps
+   are squared, because a round cap is the one rounded gesture the guide otherwise never makes. */
+.c-ring{position:relative;flex-shrink:0}
+.c-ring svg{transform:rotate(-90deg);display:block}
+.c-ring .c-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+           font-family:var(--font-text);font-weight:600;font-size:var(--t-sec);font-variant-numeric:tabular-nums}
+.c-rate{display:flex;align-items:center;gap:var(--s2)}
+.c-rate .c-apy{font-family:var(--font-text);font-weight:600;font-size:26px;letter-spacing:-.02em;margin:0;line-height:1.1}
+.c-rate .c-apy small{font-size:var(--t-detail);font-weight:400;color:var(--ink-70)}
+
+.c-ladder{font-size:var(--t-sec);font-variant-numeric:tabular-nums}
+.c-ladder .c-lrow{display:grid;gap:10px;align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.c-ladder .c-lrow:first-child{padding-top:0}
+.c-ladder .c-lrow:last-child{border-bottom:0;padding-bottom:0}
+.c-ladder .c-lhead{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;
+               text-transform:uppercase;color:var(--ink-50);padding-top:0}
+.c-ladder .c-lrow > :not(:first-child){text-align:right}
+.c-ladder.c-sm{font-size:11px}
+/* At phone width the money columns start together instead of ending together: right-aligned, a
+   short "+$61.00" sat under the wide "$1,000.00" beside it and every header read as off its column. */
+.c-ladder.c-sm .c-lrow > :not(:first-child):not(:last-child){text-align:left}
+.c-ladder.c-sm .c-lrow{gap:6px}
+/* stat tile — label above figure. Side by side it clipped at phone width. */
+.c-stat .c-label{margin-bottom:6px}
+.c-stat .c-fig{white-space:nowrap}
+
+.c-listctl{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);flex-wrap:wrap}
+.c-listctl .c-btn{height:34px;padding:0 12px;gap:6px;font-size:var(--t-sec);flex-shrink:0}
+.c-listctl .c-btn svg{flex-shrink:0}
+.c-bondrow{padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.c-bondrow:first-child{padding-top:0}
+.c-bondrow:last-child{border-bottom:0;padding-bottom:0}
+
+/* ================= PANES ================= */
+.c-panetitle{font-family:var(--font-text);font-weight:600;font-size:17px;letter-spacing:-.02em;margin:0}
+.c-paneback{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+
+.c-wm{font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:-.035em}
+.c-lockup{display:inline-flex;align-items:center;color:var(--ink)}
+.c-lockup .c-mk{display:block;flex-shrink:0;width:20px;height:20px}
+.c-lockup .c-wm{font-size:19px;margin-left:10px;line-height:1}
+.c-lockup.c-sm .c-mk{width:18px;height:18px}
+.c-lockup.c-sm .c-wm{font-size:17px;margin-left:9px}
+.c-tbnav{display:flex;gap:var(--s3);font-size:var(--t-sec);color:var(--ink-50)}
+.c-tbnav .c-on{color:var(--ink);font-weight:500}
+.c-tbright{display:flex;align-items:center;gap:var(--s3)}
+/* the corner is its own group, so anything added later sits with the bell and the avatar */
+.c-tbicons{display:flex;align-items:center;gap:var(--s1)}
+.c-iconbtn{position:relative;width:34px;height:34px;border:0;background:transparent;color:var(--ink-50);
+         display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:var(--radius-pill)}
+.c-iconbtn:hover{color:var(--ink)}
+/* unread is the guide's dot: core plus glow, no ping — mail is not an event */
+.c-unread{position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--live);
+        box-shadow:0 0 0 2px var(--paper), 0 0 6px 1px color-mix(in srgb, var(--live) 55%, transparent)}
+/* an avatar is an image, and images are square */
+.c-avatarbtn{width:32px;height:32px;border:1px solid var(--ink-28);background:var(--paper-2);color:var(--ink);
+           font-family:var(--font-text);font-weight:600;font-size:var(--t-detail);display:flex;
+           align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;overflow:hidden}
+.c-avatarbtn.c-sm{width:28px;height:28px;font-size:11px}
+.c-menurow{display:flex;align-items:center;gap:12px;height:38px;font-size:var(--t-sec);cursor:pointer;width:100%;text-align:left}
+.c-menurow span.c-ic{color:var(--ink-50);display:flex;flex-shrink:0}
+
+/* the split footer keeps its centred hairline, inside .cfoot */
+.c-foot2{display:grid;grid-template-columns:1fr 1fr}
+.c-foot2 > *{min-width:0;display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer;text-align:left}
+.c-foot2 > :first-child{padding-right:var(--fp,14px)}
+.c-foot2 > :last-child{padding-left:var(--fp,14px);border-left:1px solid var(--ink-13)}
+.c-foot2 p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* The phone's bottom bar, from the Savings reference: the destinations in one bordered, rounded pill
+   at the left edge and the action as its own rounded square at the right, the space between them
+   left open. The pill takes the width its five keys need and no more; stretched across a large phone
+   the glyphs sat a thumb's width apart and the bar read as mostly empty. Both are controls, so both
+   are rounded — 18px outside, 13px on the key inside, so the curves stay concentric across the 5px
+   padding. Height is --nav-h (index.css), shared with the offsets that clear it. At 54 tall with
+   48 x 42 keys the bar and button still fit side by side at 360 wide. */
+.c-navwrap{display:flex;gap:var(--s1);align-items:center;justify-content:space-between}
+.c-navbar{flex:none;height:var(--nav-h);display:flex;align-items:center;gap:2px;padding:5px;border-radius:18px;
+        background:var(--paper-2);border:1px solid var(--ink-13)}
+/* Each destination is a 48 x 42 key. The selected one is a light key with the glyph in the ground
+   colour (the tokens swap in light and dusk, so it is ink on paper there). */
+.c-navbar a{color:var(--ink-70);display:flex;align-items:center;justify-content:center;
+          flex:none;width:48px;height:42px;border-radius:13px}
+.c-navbar a svg{width:21px;height:21px}
+.c-navbar a.c-on{background:var(--ink);color:var(--paper)}
+.c-navfab{height:var(--nav-h);width:var(--nav-h);border-radius:18px;background:var(--ink);color:var(--paper);
+        border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.c-navfab svg{width:22px;height:22px;transition:transform .15s ease}
+.c-qa{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1)}
+.c-qa .c-btn{width:100%}
+
+/* ================= MODAL — a component like any other ================= */
+.c-sheet{background:var(--paper);border:1px solid var(--ink-28);border-radius:26px;overflow:hidden;color:var(--ink)}
+.c-modal{display:flex;flex-direction:column;min-width:0}
+/* The guide's body text. Pages inherit it from the shell; modals and menus render in a portal outside
+   the shell, so they carry it themselves. */
+.c-text{font-family:var(--font-text);font-size:var(--t-body);line-height:1.6;color:var(--ink);font-variant-numeric:tabular-nums}
+/* Keyboard focus. The guide draws none; this keeps it visible in the guide's own terms — a square
+   1px ink outline — instead of the app's grey ring with a white offset. The amount field shows its
+   caret, which is focus enough. NOT FROM THE GUIDE: flagged for review. */
+.c-text :focus-visible{box-shadow:none;outline:1px solid var(--ink);outline-offset:2px}
+.c-text .c-bigamt:focus-visible{outline:none}
+/* A modal or menu surface takes focus when it opens (see Modal). The app's base ring sets Tailwind's
+   ring variables, and any shadow utility on the surface rebuilds box-shadow from them — so clearing
+   box-shadow alone loses to the utility layer. Zero the variables instead. */
+[role=dialog]:focus-visible,[data-radix-popper-content-wrapper] > :focus-visible{
+  --tw-ring-shadow:0 0 #0000;--tw-ring-offset-shadow:0 0 #0000;box-shadow:none;outline:none}
+.c-mtitle{font-size:var(--t-body);font-weight:600}
+.c-mclose{color:var(--ink-50);cursor:pointer;display:flex}
+
+.c-bigamt{font-family:var(--font-text);font-weight:600;font-size:var(--t-hero);letter-spacing:-.03em;
+        line-height:1.05;margin:4px 0 0;font-variant-numeric:tabular-nums}
+.c-bigamt .c-dec{color:var(--ink-50)}
+
+.c-qc{display:flex;gap:var(--s1);margin-top:var(--s2)}
+.c-chip-q{flex:1;padding:0;height:34px;font-size:var(--t-detail)}
+.c-chip-q.c-on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.c-qc.c-split{margin-top:var(--s2)}
+.c-qc.c-split .c-chip-q{height:36px;font-size:var(--t-sec)}
+
+/* consequences — the five lines, no longer a box inside a box */
+.c-conseq > div{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-sec);line-height:1.95}
+.c-conseq > div span:first-child{color:var(--ink-70)}
+.c-conseq > div span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.c-conseq .c-earn span{color:var(--live)}
+.c-conseq .c-earn span:last-child{font-weight:600}
+.c-conseq .c-limit{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
+.c-conseq .c-limit span:last-child{color:var(--settled);font-weight:600}
+.c-conseq .c-limit.c-down span:last-child{color:var(--ink)}
+/* Absent red, once and for the right thing: a limit that would fall below the balance is a broken
+   constraint, not a discouraged decision. */
+.c-conseq .c-short span{color:var(--absent)}
+.c-conseq .c-short span:last-child{font-weight:600}
+.c-errline{color:var(--absent)}
+.c-mcols{display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:var(--s3);align-items:start}
+.c-mhero{text-align:center;padding:var(--s3) 0}
+.c-paytoday{font-size:var(--t-sec);color:var(--live);margin:6px 0 0}
+
+/* route — two legs on a shared seam, the control sitting on it. nth-child, not last-child: the swap
+   is appended after both legs, so :last-child would match the swap and leave the To leg unpadded. */
+.c-route{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1px;background:var(--seam);
+       border:1px solid var(--seam);position:relative;margin-top:var(--s2)}
+.c-route .c-leg{background:var(--paper-2);padding:var(--s2);min-width:0}
+.c-route > .c-leg:nth-child(1){padding-right:25px}
+.c-route > .c-leg:nth-child(2){padding-left:25px}
+.c-route .c-nm{font-size:var(--t-sec);margin:6px 0 0;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-route .c-bal{font-size:var(--t-detail);color:var(--ink-50);margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-swap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;
+      border-radius:var(--radius-pill);background:var(--paper-2);border:1px solid var(--seam);
+      box-shadow:0 0 0 3px var(--paper-2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+
+/* keypad — the slab idea at small scale */
+.c-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--seam);
+        border:1px solid var(--seam);margin-top:var(--s2)}
+.c-keypad > *{background:var(--paper-2);padding:13px 0;text-align:center;font-family:var(--font-text);
+            font-size:19px;font-weight:500;cursor:pointer;user-select:none;display:flex;
+            align-items:center;justify-content:center;font-variant-numeric:tabular-nums;color:var(--ink);border:0}
+.c-keypad .c-fn{color:var(--ink-50)}
+.c-keypad > :disabled{cursor:default;opacity:.45}
+
+/* named steps */
+.c-steps{margin-top:var(--s3)}
+.c-steps > div{display:flex;align-items:center;gap:10px;font-size:var(--t-sec);line-height:2.1;color:var(--ink-50)}
+.c-steps > div.c-ok{color:var(--ink-70)}
+.c-steps > div.c-on{color:var(--ink);font-weight:500}
+.c-marker{width:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.c-marker .c-core{width:7px;height:7px;border-radius:50%;background:currentColor;
+              box-shadow:0 0 6px 1px color-mix(in srgb, currentColor 55%, transparent)}
+.c-pend{width:6px;height:6px;border-radius:50%;background:var(--ink-28);display:block}
+
+/* ================= SPLIT PAY ================= */
+/* segment bars — one block per payment. A count made visible, not a ratio. */
+.c-segs{display:flex;gap:4px;height:9px;margin-top:var(--s2)}
+.c-segs > div{flex:1;background:var(--ink);min-width:0}
+.c-segcap{font-size:var(--t-sec);color:var(--ink-70);margin:var(--s1) 0 0}
+.c-balrow{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+.c-balrow .c-nm{font-size:var(--t-sec);color:var(--ink-70);margin:0}
+.c-conseq .c-total{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
+.c-conseq .c-total span{color:var(--live)}
+.c-conseq .c-total span:last-child{font-weight:600}
+.c-footnote{border-top:1px solid var(--ink-13);margin-top:var(--s2);padding-top:var(--s2)}
+.c-footnote p{margin:0;font-size:var(--t-detail);color:var(--ink-50);line-height:1.6}
+
+.c-kv{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);font-size:var(--t-sec)}
+.c-kv .c-v{display:flex;align-items:center;gap:8px;color:var(--ink-50);font-size:var(--t-detail);
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-grouplabel{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;
+            text-transform:uppercase;color:var(--ink-50);margin:0 0 var(--s2)}
+/* stacked sections share the anatomy's rule, so a group break is never a floating label */
+.c-cmain + .c-cmain{border-top:1px solid var(--ink-13)}
+.c-mono{font-family:var(--font-mono);font-size:var(--t-detail)}
+/* The rail is a selector drawn with rules, not filled chips. */
+.c-pane{display:grid;grid-template-columns:190px minmax(0,1fr);gap:var(--s3);align-items:start}
+.c-railnav{font-size:var(--t-sec)}
+.c-railnav > a,.c-railnav > button,.c-railnav .c-sep > a{display:block;width:100%;text-align:left;padding:var(--s1) 0 var(--s1) 12px;color:var(--ink-50);
+           text-decoration:none;border-left:2px solid transparent}
+.c-railnav > a:hover,.c-railnav > button:hover,.c-railnav .c-sep > a:hover{color:var(--ink)}
+.c-railnav .c-on{color:var(--ink);font-weight:600;border-left-color:var(--ink)}
+.c-railnav .c-sep{border-top:1px solid var(--ink-13);margin:var(--s1) 0;padding-top:var(--s1)}
+.c-avatar{width:52px;height:52px;background:var(--paper-2);border:1px solid var(--ink-28);
+        display:flex;align-items:center;justify-content:center;font-weight:600;font-size:17px;flex-shrink:0;overflow:hidden}
+
+/* ================= SEND ================= */
+.c-searchrow{display:flex;gap:var(--s1);align-items:center}
+.c-btn.c-iconsq{width:44px;height:44px;padding:0;flex-shrink:0}
+/* the glyph button that keeps a control bar on one line */
+.c-btn.c-icon36{width:36px;height:36px;padding:0;flex-shrink:0}
+.c-searchrow .c-btn{height:44px}
+.c-cbarline{padding-bottom:var(--s2);border-bottom:1px solid var(--ink-13);margin-bottom:var(--s3)}
+/* viewfinder — corners only, drawn with the same hairlines as everything else */
+.c-viewfinder{position:relative;aspect-ratio:1;background:var(--ink);border:1px solid var(--ink-28);overflow:hidden}
+.c-vf{position:absolute;width:34px;height:34px;border:2px solid var(--paper);z-index:1}
+.c-vf.c-tl{top:16px;left:16px;border-right:0;border-bottom:0}
+.c-vf.c-tr{top:16px;right:16px;border-left:0;border-bottom:0}
+.c-vf.c-bl{bottom:16px;left:16px;border-right:0;border-top:0}
+.c-vf.c-br{bottom:16px;right:16px;border-left:0;border-top:0}
+.c-field{flex:1;min-width:0;height:44px;padding:0 var(--s2);border:1px solid var(--ink-28);
+       background:var(--paper-2);color:var(--ink);font-family:var(--font-text);
+       font-size:var(--t-sec);border-radius:var(--radius-none)}
+.c-field::placeholder{color:var(--ink-50)}
+
+/* ================= CARD ================= */
+/* Hardware is rounded, software is square. The card face is a picture of a
+   physical object, so it takes the object's radius, like the phone bezel. */
+.c-cardface{background:var(--ink);color:var(--paper);aspect-ratio:1.586;border-radius:12px;
+          padding:var(--s2);display:flex;flex-direction:column;justify-content:space-between}
+.c-cardface .c-wm{color:var(--paper)}
+/* The Clear lockup on the card: the header's phone proportions, in the card's ink. */
+.c-cbrand{display:inline-flex;align-items:center}
+.c-cbrand .c-cmk{display:block;flex-shrink:0;width:18px;height:18px;color:var(--paper)}
+.c-cbrand .c-wm{font-size:17px;line-height:1;margin-left:9px}
+.c-cardface.c-virtual{background:linear-gradient(160deg,#1E2C27 0%,#16211D 70%)}
+.c-cardface.c-frozen{background:var(--ink-70)}
+/* Five things are objects rather than page surfaces, so they stay dark on a dark ground: the card
+   face and its three states, the number and the wordmark on it, the chip, and the scan viewfinder.
+   The test is simple — if it would still be dark in the real world, it does not flip.
+   Dark only: dusk is a light ground, and a light ground already leaves them alone. */
+.dark .c-cardface{background:#0E1714}
+.dark .c-cardface.c-virtual{background:linear-gradient(160deg,#1B2A24 0%,#0E1714 70%)}
+.dark .c-cardface.c-frozen{background:#2C3A35}
+.dark .c-pan,.dark .c-cardface .c-wm,.dark .c-cstate,.dark .c-cnet,.dark .c-cbrand .c-cmk{color:#DFE3DE}
+.dark .c-cchip{background:#5A635F}
+.dark .c-viewfinder{background:#0E1714}
+.dark .c-vf{border-color:#DFE3DE}
+
+.c-cchip{width:36px;height:27px;border-radius:4px;background:var(--ink-28);display:block;position:relative}
+.c-cchip::after{content:'';position:absolute;inset:6px 4px;border-left:1px solid var(--ink-70);
+              border-right:1px solid var(--ink-70)}
+.c-pan{font-family:var(--font-mono);font-size:15px;letter-spacing:.06em;color:var(--paper);margin:0}
+.c-cmeta{font-size:11px;color:var(--ink-28);font-family:var(--font-text)}
+/* The network mark: the card's own ink, sized to sit on the meta line's baseline. */
+.c-cnet{height:13px;width:auto;flex-shrink:0;color:var(--paper);opacity:.95}
+.c-cstate{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+        color:var(--paper);border:1px solid var(--ink-28);padding:2px 8px;border-radius:var(--radius-pill)}
+
+/* a switch is neither a button nor a status chip, so it is square like everything drawn */
+.c-sw{width:38px;height:22px;background:var(--ink-28);border:1px solid var(--ink-28);
+    display:inline-flex;align-items:center;padding:2px;flex-shrink:0;cursor:pointer}
+.c-sw .c-knob{width:16px;height:16px;background:var(--paper);display:block;margin-left:0}
+.c-sw.c-on{background:var(--settled);border-color:var(--settled)}
+.c-sw.c-on .c-knob{margin-left:auto}
+
+.c-ord{display:inline-block;width:26px;font-family:var(--font-mono);font-size:var(--t-label);color:var(--ink-50)}
+
+/* four digits, not a text field — one box per digit, caret on the live one */
+.c-pinbox{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s1)}
+.c-pinbox > span{height:56px;background:var(--paper-2);border:1px solid var(--ink-28);
+             display:flex;align-items:center;justify-content:center;
+             font-family:var(--font-text);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums}
+.c-pinbox > span.c-live{border-color:var(--ink)}
+.c-pinbox > span.c-live::after{content:'';width:1px;height:24px;background:var(--ink);animation:c-caret 1.1s step-end infinite}
+@keyframes c-caret{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.c-pinbox > span.c-live::after{animation:none}}
+
+.c-cardsel{display:flex;align-items:center;gap:var(--s1)}
+.c-cardsel .c-qc{flex:1;min-width:0;margin-top:0}
+
+/* The page shows a wallet, not a card: the selected one in front, the rest behind it and a little
+   below, faded back. A covered card only has to say that it exists — and which card it is, which
+   is what the last four in the top strip is for. */
+.c-ctag{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--ink-28)}
+/* The guide puts the position classes on the face itself; here each face sits in the element that
+   follows the finger, so the same rules are keyed to the stack's own children. */
+/* pan-y, so a finger heading down the page still scrolls it: sideways is the stack's, and every
+   other direction belongs to the page.
+   On the faces as well as the stack, because the finger lands on a face — Safari reads this from
+   the element under it, and a swiped row works precisely because that is where its rule sits. */
+.c-cardstack,.c-cardstack > *,.c-cardstack .c-cardface{touch-action:pan-y;
+  /* A drag across a card is a drag, not a selection. iOS starts selecting text or offers its
+     callout on a sideways drag over text, and both take the pointer away mid-gesture. */
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none}
+.c-cardstack{position:relative;padding-bottom:9px}
+.c-cardstack > *{position:absolute;top:0;left:0;right:0}
+.c-cardstack > .c-sel{position:relative;z-index:3}
+/* One card behind, whatever the wallet holds. The guide draws two, but the marker under the stack
+   is what says how many there are — a third layer costs height and says nothing the dots have not.
+   The guide offsets by 9 from the top, which with the face's own aspect ratio leaves it a couple of
+   pixels SHORT of the card in front; the bottom is pinned instead, so the 9 shows below. */
+.c-cardstack > .c-b1{top:9px;left:9px;right:9px;bottom:0;opacity:.5;z-index:2}
+.c-cardstack > .c-b1 > *{height:100%}
+/* the marker stretches to the card you are on rather than just filling in */
+.c-stackdots{display:flex;gap:5px;justify-content:center;margin-top:10px}
+.c-stackdots > *{width:5px;height:5px;background:var(--ink-28);display:block;padding:0;border:0;
+                transition:width .28s ease,background .28s ease}
+.c-stackdots > .c-on{width:17px;background:var(--ink);animation:c-dotgrow .28s ease}
+@keyframes c-dotgrow{from{width:5px}to{width:17px}}
+@media (prefers-reduced-motion:reduce){
+  .c-stackdots > *{transition:none}
+  .c-stackdots > .c-on{animation:none}
+}
+
+/* the waterfall runs left to right on desktop: order is the fact, so it reads
+   as an order rather than a stack of rows in a wide column */
+.c-wf{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.c-wf > div{padding:0 var(--s2);border-left:1px solid var(--ink-13);min-width:0}
+.c-wf > div:first-child{padding-left:0;border-left:0}
+.c-wf > div:last-child{padding-right:0}
+.c-wf .c-ord{display:block;width:auto;margin-bottom:6px}
+
+/* ================= ACTIVITY ================= */
+/* the field is the height of the buttons beside it: 34 against 36 read as a mistake */
+.c-searchfield{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:var(--s1);height:36px;
+             padding:0 12px;border:1px solid var(--ink-28);background:var(--paper-2)}
+.c-searchfield .c-ic{color:var(--ink-50);display:flex;flex-shrink:0}
+.c-field.c-bare{border:0;background:transparent;height:auto;padding:0;flex:1;min-width:0;color:var(--ink)}
+.c-field.c-bare:focus-visible{outline:0}
+.c-searchfield:focus-within{border-color:var(--ink)}
+.c-ctlstack{display:flex;flex-direction:column;gap:var(--s1)}
+.c-ctlstack .c-searchfield{flex:none;width:100%;height:44px}
+/* the controls under it: what narrows the list on the left, what leaves it on the right */
+.c-ctlgroup{display:flex;align-items:center;gap:var(--s1);min-width:0}
+.c-listctl.c-nowrap{flex-wrap:nowrap}
+.c-listctl.c-nowrap .c-btn{min-width:0}
+
+/* ================= PARTNERS ================= */
+.c-cell.c-tall{grid-row:span 2}
+.c-mapbox{aspect-ratio:16/10;background:var(--paper-2);border:1px solid var(--ink-28);
+        display:flex;align-items:center;justify-content:center;
+        font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;color:var(--ink-50);text-transform:uppercase}
+
+/* ================= NOTIFICATIONS ================= */
+/* two header actions, separated by a rule rather than running together */
+.c-headacts{display:flex;align-items:center;gap:var(--s2)}
+.c-headacts button{cursor:pointer;white-space:nowrap}
+.c-headacts button + button{border-left:1px solid var(--ink-13);padding-left:var(--s2)}
+
+/* A swiped row carries its own padding, so it slides its own ground: nothing shows through at the
+   edges, the actions reach the panel's edge, and the unread dot's glow is not clipped by a gap that
+   belongs to the section rather than the row. */
+.c-cmain.c-flush{padding:0}
+.c-rows > div.c-swiped{padding:0;position:relative;overflow:hidden}
+.c-rows > div.c-swiped .c-sbody{padding:var(--s2);background:var(--paper);position:relative;z-index:1;
+      transition:transform .18s ease;touch-action:pan-y}
+/* the content moves with the swipe and the actions follow it in, at full row height */
+.c-sacts{position:absolute;top:0;right:0;bottom:0;display:flex;transform:translateX(100%);
+      transition:transform .18s ease}
+.c-rows > div.c-swiped.c-open .c-sbody{transform:translateX(calc(-1 * var(--reveal, 156px)))}
+.c-rows > div.c-swiped.c-open .c-sacts{transform:none}
+@media (hover:hover){
+  .c-rows > div.c-swiped:hover .c-sbody{transform:translateX(calc(-1 * var(--reveal, 156px)))}
+  .c-rows > div.c-swiped:hover .c-sacts{transform:none}
+}
+.c-sact{width:78px;flex-shrink:0;border:0;cursor:pointer;font-family:var(--font-mono);font-size:10.5px;
+      letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center;
+      padding:0 6px;text-align:center;line-height:1.2}
+/* the leading action is what you would do, and it takes the ink; dismiss stays quiet; red marks
+   irreversible, not disapproved */
+.c-sact.c-lead{background:var(--ink);color:var(--paper)}
+.c-sact.c-dismiss{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
+.c-sact.c-danger{background:var(--absent);color:var(--paper)}
+/* three fit because they sit over the row rather than inside it */
+.c-sacts.c-three .c-sact{width:62px}
+
+/* ================= MESSAGES ================= */
+/* No bubbles. A message is a square block: theirs on paper-2, yours in ink. */
+.c-msgrow{margin-bottom:14px}
+.c-msgrow:last-child{margin-bottom:0}
+.c-msg{background:var(--paper-2);border:1px solid var(--ink-28);padding:11px var(--s2);
+     font-size:var(--t-sec);line-height:1.55;max-width:82%;display:inline-block}
+.c-msg.c-me{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.c-msgrow.c-me{text-align:right}
+.c-msgrow.c-me .c-msg{text-align:left}
+.c-msgtime{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;color:var(--ink-50);margin:4px 0 0}
+.c-sysmsg{display:flex;align-items:flex-start;gap:9px;font-size:var(--t-detail);color:var(--ink-50);
+        line-height:1.55;border-top:1px solid var(--ink-13);border-bottom:1px solid var(--ink-13);
+        padding:var(--s2) 0;margin-bottom:var(--s2)}
+.c-sysmsg .c-ic{color:var(--settled);display:flex;flex-shrink:0;margin-top:1px}
+.c-composer{display:flex;gap:var(--s1);align-items:center}
+.c-composer .c-field{flex:1;min-width:0}
+/* a selected row is marked with a rule, like the settings rail — not a fill that ignores where the
+   dividers sit. The mark is centred on the row and flush to the cell's edge, rather than a border
+   inheriting the row's own padding. */
+.c-rows > .c-on{position:relative}
+.c-rows > .c-on::before{content:'';position:absolute;left:calc(var(--s2) * -1);top:50%;
+                       transform:translateY(-50%);height:calc(100% - var(--s2));width:2px;background:var(--ink)}
+/* a row that carries its own padding is already flush, so the mark sits on its edge */
+.c-cmain.c-flush .c-rows > .c-on::before{left:0}
+.c-rows > .c-on .c-det{color:var(--ink-70)}
+/* the kind is one signal, not two: a badge beside the name, avatars all equal.
+   A fixed square centres predictably against a text line; a bare glyph does not. */
+.c-kindbadge{width:18px;height:18px;border:1px solid var(--ink-28);color:var(--ink-50);
+           display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px}
+.c-kindbadge svg{width:11px;height:11px;display:block}
+.c-kindbadge.c-support{border-color:var(--settled);color:var(--settled)}
+
+/* A thread is a screen, not a box that grows to fit what is in it. The header, the context bar and
+   the composer hold their places and the messages scroll between them, so two messages and two
+   hundred are the same screen. 170px is the phone's chrome: the header (66), the page's top padding
+   (8) and the room kept for the nav (96). */
+/* height only: the slab is still the grid, and its cell stretches to fill it */
+.c-fillscreen{height:calc(100dvh - 170px);min-height:320px}
+.c-fillscreen > .c-cell{min-height:0}
+.c-fillscreen .c-cmain{overflow-y:auto;min-height:0}
+.c-fillscreen .c-cmain::-webkit-scrollbar{width:0}
+/* A window is a screen too: 137px is the desktop chrome — the top bar (73) and the page's own
+   padding above (24) and below (40). */
+@media (min-width:1024px){
+  .c-fillscreen{height:calc(100dvh - 137px);min-height:520px}
+}
+
+/* Nothing selected is a state, not a gap: the pane keeps its width and says what the inbox is for. */
+.c-panehint{display:flex;flex-direction:column;align-items:center;justify-content:center;
+          height:100%;text-align:center;padding:var(--s4) var(--s3)}
+
+/* ================= AUTH AND ONBOARDING ================= */
+/* A sign-in screen is a screen: one height for every step, with the content
+   spaced inside it rather than the frame shrinking to whatever the step holds. */
+.c-authshell{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:1px;background:var(--seam);
+           border:1px solid var(--seam);max-width:880px;height:600px;overflow:hidden}
+.c-authshell > .c-cell{min-height:0;overflow:hidden}
+.c-authshell .c-cmain{flex:1 1 auto;overflow-y:auto;min-height:0}
+.c-authshell .c-cmain::-webkit-scrollbar{width:0}
+.c-brandpanel{background:var(--paper-2);padding:var(--s5) var(--s4);display:flex;flex-direction:column;justify-content:space-between}
+.c-brandpanel .c-statement{font-family:var(--font-display);font-weight:800;font-size:32px;letter-spacing:-.035em;
+                       line-height:1.05;margin:var(--s5) 0 var(--s2);max-width:16ch}
+.c-authshell .c-cell{background:var(--paper)}
+/* The counter path has no brand column at any width: it is read standing at a till, and the
+   argument was made by the shop's code, not by a panel. */
+.c-authshell.c-solo{grid-template-columns:minmax(0,1fr);max-width:380px}
+.c-ordiv{display:flex;align-items:center;gap:var(--s2);margin:var(--s2) 0;color:var(--ink-50);font-size:var(--t-detail)}
+.c-ordiv::before,.c-ordiv::after{content:'';flex:1;height:1px;background:var(--ink-13)}
+.c-pinbox.c-six{grid-template-columns:repeat(6,1fr)}
+.c-pinbox.c-six > span{height:48px;font-size:19px}
+.c-pinbox > span.c-done{border-color:var(--ink)}
+.c-pinbox.c-err > span{border-color:var(--absent)}
+.c-errline{color:var(--absent)}
+.c-pending{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);
+         padding:var(--s1) var(--s2);border:1px solid var(--ink-28);background:var(--paper-2);
+         margin-bottom:var(--s2);font-size:var(--t-sec)}
+.c-scanbox{border:1px dashed var(--ink-28);padding:var(--s4) var(--s2);text-align:center}
+/* A phone has no room for the brand column, and the statement is on the site it came from. The
+   panel is still a screen: it takes the height it is given, so the action lands on the floor of
+   the phone at every step rather than wherever that step's fields ended. */
+@media (max-width:1023px){
+  .c-authshell,.c-authshell.c-solo{grid-template-columns:minmax(0,1fr);height:auto;max-width:none;
+                                   flex:1 1 auto;min-height:0}
+  .c-brandpanel{display:none}
+}
+
+/* ================= QUICK ACTIONS FAN ================= */
+.c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}
+.c-qaitem{height:40px;padding:0 var(--s2);display:flex;align-items:center;background:var(--paper-2);
+        border:1px solid var(--ink-28);font-size:var(--t-sec);font-weight:500;white-space:nowrap;
+        border-radius:var(--radius-pill);color:var(--ink);cursor:pointer}
+.c-navfab.c-open svg{transform:rotate(45deg)}
+
+/* The guide's mobile .home gap, keyed to the app's breakpoint instead of the .phone frame. */
+@media (max-width:1023px){
+  .c-home{gap:var(--s2)}
+}
+
+/* ================= SPLASH ================= */
+/* One flat ground, the mark, the wordmark, and a hairline that fills. Everything the old gradient
+   was doing, the ground already does.
+   Ink always, never the theme: the OS paints its own splash from the manifest's background_color
+   first, and that value is static. If this one followed the theme, a light member would see ink,
+   then paper, then the app — two colour changes on a cold open, the first of which looks like a
+   fault. Both are #16211D, and the single change is the app arriving. */
+.c-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;background:#16211D;color:#DFE3DE;overflow:hidden;
+        opacity:1;transition:opacity .18s ease}
+.c-splash.c-out{opacity:0}
+.c-splash .c-lock{display:flex;flex-direction:column;align-items:center;color:#DFE3DE}
+.c-splash .c-mk{width:96px;height:96px;display:block;animation:c-splash-in .28s ease-out both}
+.c-splash .c-swm{font-family:var(--font-display);font-weight:800;font-size:34px;letter-spacing:-.035em;
+             line-height:1;margin-top:18px;animation:c-splash-in .28s ease-out .08s both}
+/* known progress: the one thing that is current, which is what cobalt is for */
+.c-splash .c-load{position:absolute;left:0;right:0;bottom:0;height:1px;background:#3A4440}
+.c-splash .c-load i{display:block;height:100%;background:#7C8CC5;transition:width .2s linear}
+/* Above the "Opening" line, not on it: both used to sit at the same bottom offset, so the note drew
+   over the word the moment it appeared. The Opening line is --s5 up; this clears it by --s4, room for the note wrapping to two lines. */
+.c-splash .c-slow{position:absolute;bottom:calc(var(--s5) + var(--s4));left:0;right:0;text-align:center;padding:0 var(--s3)}
+.c-splash .c-slow p{color:#939995}
+/* unknown progress: the guide's dot, beside a word that says the same thing. The ping is the only
+   motion the brand defines, so an unknown wait reuses it rather than inventing a travelling bar. */
+.c-splash .c-waiting{position:absolute;bottom:var(--s5);display:flex;align-items:center;gap:10px;
+                 font-size:var(--t-sec);color:#939995}
+.c-splashdot{position:relative;display:inline-block;width:7px;height:7px;border-radius:50%;
+           background:#6FCB9F;box-shadow:0 0 6px 1px rgb(111 203 159 / .55);flex-shrink:0}
+.c-splashdot::after{content:'';position:absolute;inset:0;border-radius:inherit;background:inherit;
+                  animation:c-live-ping 2s cubic-bezier(0,0,.2,1) infinite}
+@keyframes c-splash-in{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .c-splash .c-mk,.c-splash .c-swm{animation:none}
+  .c-splashdot::after{animation:none;opacity:0}
+}
+
+/* A field we do not own: the issuer's SDK renders inside it. The frame is ours, the field is
+   theirs, and the label says so — pretending to style something we do not control would be the
+   worse choice. */
+.c-hosted{border:1px solid var(--ink-28);background:var(--paper-2);padding:var(--s3) var(--s2) var(--s2)}
+.c-hosted .c-pinbox{max-width:232px;margin:0 auto}
+.c-hosted .c-note-hosted{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;
+                     text-transform:uppercase;color:var(--ink-50);text-align:center;
+                     margin:var(--s2) 0 0}
+
+/* ---- Placeholders while a page has nothing yet (components/clear/PendingFigures) -----------------
+ * Figures keep their own text as a sizer, made invisible, so a placeholder is exactly the width of
+ * the number it stands for and nothing shifts when the number lands. One soft sweep, no spinner;
+ * still, not swept, for members who asked for less motion. */
+@keyframes c-skel-sweep{0%{background-position:100% 0}100%{background-position:-100% 0}}
+[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{
+  color:transparent!important;border-radius:6px;
+  background:linear-gradient(90deg,var(--ink-13) 0%,var(--ink-28) 50%,var(--ink-13) 100%);
+  background-size:200% 100%;animation:c-skel-sweep 1.4s ease-in-out infinite;
+}
+[data-pending] .c-fig,[data-pending] .c-apy{width:fit-content;opacity:.55}
+[data-pending] .c-fig *,[data-pending] .c-apy *{color:transparent!important;background:none!important}
+/* Secondary lines carry figures too ("$0.00 cash · …", "Carrying $700.00"): placeholders as well.
+   Section labels and buttons stay, so the page keeps its shape and is still usable. */
+[data-pending] .c-det,[data-pending] .c-sub{
+  color:transparent!important;width:fit-content;border-radius:6px;opacity:.45;
+  background:linear-gradient(90deg,var(--ink-13) 0%,var(--ink-28) 50%,var(--ink-13) 100%);
+  background-size:200% 100%;animation:c-skel-sweep 1.4s ease-in-out infinite;
+}
+[data-pending] .c-det *,[data-pending] .c-sub *{color:transparent!important;background:none!important;border-color:transparent!important}
+.c-skel-page{display:flex;flex-direction:column;gap:var(--s3);padding-top:var(--s2)}
+.c-skel-page .c-cardface{max-width:420px;width:100%;opacity:.55}
+.c-skel-rows{display:flex;flex-direction:column;gap:var(--s2)}
+.c-skel-line{display:block;height:14px;opacity:.55}
+.c-skel-short{width:60%}
+@media (prefers-reduced-motion:reduce){[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{animation:none}[data-pending] .c-det,[data-pending] .c-sub{animation:none}}
+
+/* ================= Paying a shop: now, or over time (Merchant App References/clear-app-pay-choice) ================= */
+.c-pc-shop{display:flex;align-items:center;gap:12px}
+.c-pc-shop .c-pc-t{font-size:var(--t-sec);font-weight:600;margin:0}
+.c-pc-mk{width:36px;height:36px;border:1px solid var(--ink-28);display:flex;align-items:center;justify-content:center;color:var(--ink-70);flex-shrink:0}
+.c-pc-amt{margin-top:var(--s2);font-size:var(--t-hero-m);line-height:1.05}
+.c-pc-inc{margin-top:4px}
+.c-pc-link{color:var(--ink);text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--ink-28);cursor:pointer;background:none;border:0;padding:0;font:inherit}
+.c-pc-items{margin-top:var(--s1);border-top:1px solid var(--ink-13)}
+.c-pc-items > div{display:flex;justify-content:space-between;gap:var(--s2);padding:6px 0;font-size:var(--t-detail);color:var(--ink-70);border-bottom:1px solid var(--ink-13)}
+.c-pc-items > div span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.c-pc-q{margin:var(--s3) 0 var(--s1)}
+/* the two ways to pay: boxes, because they are the thing to tap */
+.c-pc-opt{display:flex;align-items:center;gap:12px;width:100%;padding:14px;border:1px solid var(--ink-28);background:var(--paper-2);margin-bottom:var(--s1);cursor:pointer;text-align:left;color:var(--ink);font:inherit}
+.c-pc-opt:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+.c-pc-opt .c-pc-ic{width:40px;height:40px;border:1px solid var(--ink-13);background:var(--paper);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--ink)}
+.c-pc-opt > div{flex:1;min-width:0}
+.c-pc-opt .c-pc-t{font-size:var(--t-body);font-weight:600;margin:0}
+.c-pc-opt .c-det{margin-top:2px}
+.c-pc-opt .c-pc-r{display:flex;align-items:center;color:var(--ink-50)}
+.c-pc-opt .c-pc-r b{color:var(--ink);font-size:var(--t-body);font-variant-numeric:tabular-nums}
+.c-pc-opt.c-off{opacity:.5;cursor:default;background:transparent}
+.c-pc-foot{margin-top:var(--s2);text-align:center}
+/* where it comes from */
+.c-pc-src{display:flex;align-items:center;gap:12px;width:100%;padding:12px 0;border:0;border-bottom:1px solid var(--ink-13);background:none;text-align:left;color:var(--ink);font:inherit}
+.c-pc-src:first-of-type{border-top:1px solid var(--ink-13)}
+.c-pc-src > div{flex:1;min-width:0}
+.c-pc-src .c-pc-t{font-size:var(--t-sec);font-weight:500;margin:0}
+.c-pc-src .c-det{margin-top:2px}
+.c-pc-src .c-pc-bal{font-size:var(--t-sec);font-weight:600;font-variant-numeric:tabular-nums}
+.c-pc-src.c-off .c-pc-t,.c-pc-src.c-off .c-pc-bal{color:var(--ink-50)}
+.c-pc-short{color:var(--underway)}
+.c-pc-radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--ink-50);flex-shrink:0;position:relative}
+.c-pc-radio.c-on{border-color:var(--ink)}
+.c-pc-radio.c-on::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--ink)}
+.c-pc-sum{margin-top:var(--s2);border:1px solid var(--ink-13);padding:4px 12px}
+.c-pc-sum .c-kv{padding:9px 0;border-bottom:1px solid var(--ink-13)}
+.c-pc-sum .c-kv:last-child{border-bottom:0}
+.c-pc-sum .c-kv > span:first-child{color:var(--ink-70)}
+.c-pc-sum .c-kv > span:last-child{font-variant-numeric:tabular-nums;color:var(--ink)}
+.c-pc-alt{margin-top:12px;text-align:center}
+.c-pc-note{margin-top:var(--s2);padding:12px 0;border-top:1px solid var(--ink-13)}
+.c-pc-note .c-pc-t{font-size:var(--t-sec);font-weight:600;margin:0}
+.c-pc-note .c-det{margin-top:4px}
+.c-pc-pair{display:flex;gap:var(--s1);margin-top:var(--s2)}
+.c-pc-pair .c-btn{flex:1}
+/* paid */
+.c-pc-done{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--s2) 0}
+.c-pc-done .c-pc-t{margin-top:6px;font-size:var(--t-body);font-weight:600}
+.c-pc-done .c-det{margin-top:4px}
+.c-pc-live{color:var(--settled);position:relative;width:14px;height:14px;border-radius:50%;background:var(--settled);margin-top:var(--s1);box-shadow:0 0 10px 3px color-mix(in srgb, var(--settled) 55%, transparent)}
+/* over time: "Next cycle" is the longest label, so its chip is a little wider */
+.c-qc.c-split .c-chip-q:first-child{flex:1.35}
+/* the appearance chooser: three equal choices, whatever their labels (after the rule above, which it overrides) */
+.c-qc.c-split.c-even .c-chip-q{flex:1 1 0;min-width:0}
+
+/* ================= SAVINGS =================
+   From docs/reference/savings-reference.html. The balance header, then one slab of two blocks
+   (Your home path, What you hold) that stack on a phone, then Protections. Every block is the 56px
+   header / main / footer anatomy, with one line colour for the outer border, the seam and every
+   internal rule, so the rules run wall to wall and the headers line up across the seam.
+
+   The reference is drawn on the dark ground; these are the same roles in the app's tokens, so light
+   and dusk follow. The empty track is the one value that differs by ground: the raised colour on
+   dark, as drawn, and ink-13 on the light grounds, where paper-2 sits too close to the page. */
+.c-sv{--sv-line:var(--ink-13);--sv-track:var(--ink-13);display:grid;gap:var(--s2)}
+.dark .c-sv{--sv-track:var(--paper-2)}
+.c-sv-top{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--s3)}
+.c-sv-top > div:first-child{min-width:0}
+.c-sv-acts{display:none;gap:10px;flex-shrink:0}
+.c-sv-cap{font-size:var(--t-sec);color:var(--ink-50);margin:0}
+.c-sv-cap.c-warn{color:var(--underway)}
+.c-sv-cap.c-ok{color:var(--settled)}
+/* The balance is the app's hero (32 on a phone, 40 on desktop), like every page's. The credit count
+   sits below it in weight: 26 until the hero grows at 1024, then the phone hero's 32. */
+.c-sv-count{display:flex;align-items:baseline;gap:var(--s1)}
+.c-sv-count .c-fig{font-size:26px;line-height:1;letter-spacing:-.03em}
+/* pills at the reference's sizes: 32px in a footer, 30px in the next-unlock bar, 38px in the header */
+.c-sv .c-btn{height:32px;padding:0 14px}
+.c-sv .c-btn-primary{height:32px;padding:0 14px}
+.c-sv .c-btn.c-lg{height:38px;padding:0 20px;font-size:13.5px}
+
+.c-sv-slab{display:grid;grid-template-columns:minmax(0,1fr);border:1px solid var(--sv-line)}
+.c-sv-slab > .c-sv-blk + .c-sv-blk{border-top:1px solid var(--sv-line)}
+.c-sv-blk{display:grid;grid-template-rows:auto 1fr auto;min-width:0}
+.c-sv-bh{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);height:56px;
+       padding:0 20px;border-bottom:1px solid var(--sv-line)}
+.c-sv-bh > *{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.c-sv-bh .c-fig{font-size:19px}
+.c-sv-bm{padding:18px 20px;display:grid;align-content:start;gap:var(--s2);min-width:0}
+.c-sv-bf{border-top:1px solid var(--sv-line);padding:14px 20px;display:flex;justify-content:space-between;
+       align-items:center;gap:10px;font-size:var(--t-sec);line-height:1.4;color:var(--ink-70)}
+.c-sv-bf > :first-child{min-width:0}
+.c-sv-bf > :last-child{flex-shrink:0}
+.c-sv-bf b{color:var(--ink);font-weight:500}
+
+/* the ladder: five steps, a track over a threshold over a name */
+.c-sv-ladder{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:0;padding:0;list-style:none}
+.c-sv-ladder > li{display:grid;gap:var(--s1);align-content:start;min-width:0}
+.c-sv-ladder i{display:block;height:8px;background:var(--sv-track);position:relative;overflow:hidden}
+.c-sv-ladder i b{position:absolute;inset:0;background:var(--settled);transform-origin:0 50%}
+.c-sv-ladder .c-next i b{background:var(--live)}
+.c-sv-ladder .c-next.c-paused i b{background:var(--underway)}
+.c-sv-ladder em{font-style:normal;font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--ink-50)}
+.c-sv-ladder span{font-size:10.5px;line-height:1.3;color:var(--ink-50);overflow-wrap:anywhere}
+.c-sv-ladder .c-got span{color:var(--ink)}
+
+.c-sv-next{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;
+         background:var(--paper-2);font-size:13.5px;min-height:46px}
+.c-sv-next > :first-child{min-width:0}
+.c-sv-next b{font-weight:600}
+.c-sv-next > :last-child{flex-shrink:0}
+.c-sv-next .c-btn,.c-sv-next .c-btn-primary{height:30px}
+.c-sv-next.c-warn{background:color-mix(in srgb, var(--underway) 10%, transparent);box-shadow:inset 2px 0 0 var(--underway)}
+.c-sv-next.c-ok{background:color-mix(in srgb, var(--settled) 10%, transparent);box-shadow:inset 2px 0 0 var(--settled)}
+
+/* what you hold: a thin composition bar, then its rows in the same order */
+.c-sv-comp{display:flex;height:6px;background:var(--sv-track)}
+.c-sv-comp > i{display:block;height:100%}
+.c-sv-rows{display:grid;gap:7px;font-size:13.5px;color:var(--ink-70)}
+.c-sv-rows > div{display:flex;justify-content:space-between;gap:12px}
+.c-sv-rows .c-fg{color:var(--ink)}
+.c-sv-rows .c-ok{color:var(--settled)}
+.c-sv-rows .c-warn{color:var(--underway)}
+.c-sv-rows span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.c-sv-note{margin:0;font-size:var(--t-sec);color:var(--ink-50)}
+
+/* protections: a list on a phone, five columns from tablet up */
+.c-sv-prot{border:1px solid var(--sv-line)}
+.c-sv-prots{display:grid;grid-template-columns:minmax(0,1fr)}
+.c-sv-prots > button{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;row-gap:2px;
+                   padding:12px 16px;font-size:var(--t-sec);color:var(--ink-70);text-align:left;
+                   background:transparent;border:0;cursor:pointer;font-family:inherit;line-height:1.45}
+.c-sv-prots > button + button{border-top:1px solid var(--sv-line)}
+.c-sv-prots > button:hover b{text-decoration:underline;text-underline-offset:3px}
+.c-sv-prots b{color:var(--ink);font-weight:500;font-size:13.5px}
+.c-sv-chip{grid-column:2;grid-row:1/span 2;align-self:center;font-family:var(--font-mono);font-size:9.5px;
+         letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:var(--radius-pill);
+         border:1px solid var(--sv-line);color:var(--ink-50);line-height:1.45;white-space:nowrap}
+.c-sv-chip.c-on{color:var(--settled);border-color:color-mix(in srgb, var(--settled) 35%, transparent)}
+
+@media (min-width:768px){
+  .c-sv{gap:22px}
+  .c-sv-acts{display:flex}
+  .c-sv-count{gap:10px}
+  .c-sv-slab{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+  .c-sv-slab > .c-sv-blk + .c-sv-blk{border-top:0;border-left:1px solid var(--sv-line)}
+  .c-sv-ladder span{font-size:var(--t-detail)}
+  .c-sv-prots{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .c-sv-prots > button{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:6px;
+                     padding:14px 16px 16px}
+  .c-sv-prots > button + button{border-top:0;border-left:1px solid var(--sv-line)}
+  .c-sv-chip{grid-column:auto;grid-row:auto;justify-self:start}
+}
+@media (min-width:1024px){
+  .c-sv-count .c-fig{font-size:var(--t-hero-m)}
+}

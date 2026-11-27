@@ -1,0 +1,23 @@
+{
+  "name": "@clear/rewards-native",
+  "private": true,
+  "description": "One shop's store app: the rewards app in Capacitor, built from that shop's config. Not a workspace; installed only where a store build is made. Nothing here submits.",
+  "type": "module",
+  "scripts": {
+    "config": "node scripts/shop-config.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^7.0.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/push-notifications": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

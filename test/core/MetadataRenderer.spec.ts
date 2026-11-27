@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { deployDeedNFT } from "../helpers/deed";
 import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { MetadataRenderer } from "../../typechain-types/contracts/core/MetadataRenderer";
@@ -11,6 +12,18 @@ describe("MetadataRenderer", function() {
   let deedNFT: DeedNFT;
   let validator: Validator;
   let validatorRegistry: ValidatorRegistry;
+
+  // isValidated is a reserved trait: only an active validator writes it, through
+  // updateValidationStatus, as Validator.validateDeed does.
+  async function markValidated(tokenId: number) {
+    const validatorAddress = await validator.getAddress();
+    await deedNFT.grantRole(await deedNFT.VALIDATOR_ROLE(), validatorAddress);
+    await ethers.provider.send("hardhat_impersonateAccount", [validatorAddress]);
+    await ethers.provider.send("hardhat_setBalance", [validatorAddress, "0xDE0B6B3A7640000"]);
+    const asValidator = await ethers.getSigner(validatorAddress);
+    await deedNFT.connect(asValidator).updateValidationStatus(tokenId, true, validatorAddress);
+    await ethers.provider.send("hardhat_stopImpersonatingAccount", [validatorAddress]);
+  }
   let deployer: SignerWithAddress;
   let user1: SignerWithAddress;
   let user2: SignerWithAddress;
@@ -58,7 +71,7 @@ describe("MetadataRenderer", function() {
     
     // Deploy DeedNFT
     const DeedNFT = await ethers.getContractFactory("DeedNFT");
-    deedNFT = await upgrades.deployProxy(DeedNFT, [
+    deedNFT = await deployDeedNFT([
       await validator.getAddress(),
       await validatorRegistry.getAddress()
     ]);
@@ -88,7 +101,7 @@ describe("MetadataRenderer", function() {
     // Token 1: Land with full address
     await deedNFT.mintAsset(
       user1.address, 
-      0, // AssetType.Land
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata1",
       JSON.stringify({
         country: "USA",
@@ -144,7 +157,7 @@ describe("MetadataRenderer", function() {
     // Token 2: Land with only parcel number and state
     await deedNFT.mintAsset(
       user1.address, 
-      0, // AssetType.Land
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata2",
       JSON.stringify({
         parcelNumber: "P12345",
@@ -179,7 +192,7 @@ describe("MetadataRenderer", function() {
     // Token 3: Estate with full address
     await deedNFT.mintAsset(
       user1.address,
-      2, // AssetType.Estate
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata3",
       JSON.stringify({
         streetNumber: "456",
@@ -319,7 +332,7 @@ describe("MetadataRenderer", function() {
     // Token 6: Land with no traits
     await deedNFT.mintAsset(
       user1.address,
-      0, // AssetType.Land
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata6",
       "{}",
       "configuration6",
@@ -471,7 +484,7 @@ describe("MetadataRenderer", function() {
       // Add document
       await expect(
         metadataRenderer.manageTokenDocument(tokenId, docType, docUri, false)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       // Verify document was added
@@ -486,7 +499,7 @@ describe("MetadataRenderer", function() {
       // Remove document
       await expect(
         metadataRenderer.manageTokenDocument(tokenId, docType, "", true)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       // Verify document was removed
@@ -579,7 +592,7 @@ describe("MetadataRenderer", function() {
           tokenId,
           imageUrls
         )
-      ).to.emit(metadataRenderer, "TokenGalleryUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       const retrievedGallery = await metadataRenderer.getTokenGallery(tokenId);
@@ -632,7 +645,7 @@ describe("MetadataRenderer", function() {
 
       await expect(
         metadataRenderer.setTokenAnimationURL(tokenId, animationURL)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       const retrievedURL = await metadataRenderer.getTokenAnimationURL(tokenId);
@@ -645,7 +658,7 @@ describe("MetadataRenderer", function() {
 
       await expect(
         metadataRenderer.setTokenExternalLink(tokenId, externalLink)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       const retrievedLink = await metadataRenderer.getTokenExternalLink(tokenId);
@@ -692,7 +705,7 @@ describe("MetadataRenderer", function() {
       // Mint a new token first
       await deedNFT.mintAsset(
         user1.address,
-        0, // Land type
+        1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
         "ipfs://metadata1",
         "{}",
         "configuration1",
@@ -720,7 +733,7 @@ describe("MetadataRenderer", function() {
       expect(decodedStringValue).to.equal(stringTraitValue);
 
       // Set a boolean trait
-      const boolTraitName = "isValidated";
+      const boolTraitName = "hasLien";
       const boolTraitValue = true;
       await deedNFT.setTrait(
         tokenId,
@@ -835,7 +848,7 @@ describe("MetadataRenderer", function() {
       // Mint a new token first
       await deedNFT.mintAsset(
         user1.address, 
-        0, // Land type
+        1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
         "ipfs://metadata1",
         "{}",
         "configuration1",
@@ -851,12 +864,7 @@ describe("MetadataRenderer", function() {
         ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [0]),
         0 // bytes type
       );
-      await deedNFT.setTrait(
-        tokenId,
-        ethers.toUtf8Bytes("isValidated"),
-        ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]),
-        0 // bytes type
-      );
+      await markValidated(tokenId);
       await deedNFT.setTrait(
         tokenId,
         ethers.toUtf8Bytes("definition"),
@@ -960,12 +968,15 @@ describe("MetadataRenderer", function() {
         additional_info: "Additional legal info"
       });
 
-      // Verify attributes (traits)
+      // Verify attributes (traits). DeedNFT.setTrait auto-names a trait from its
+      // string key, so the rendered trait_type is the raw key, not the display
+      // name registered at initialization.
       const attributes = metadata.attributes;
       expect(attributes).to.deep.include({
-        trait_type: "Asset Type",
+        trait_type: "assetType",
         value: "Land"
       });
+      // Written by updateValidationStatus, so it keeps its display name from mint.
       expect(attributes).to.deep.include({
         trait_type: "Validation Status",
         value: "Valid"
@@ -979,7 +990,7 @@ describe("MetadataRenderer", function() {
       // Mint a new token first
       await deedNFT.mintAsset(
         user1.address,
-        0, // Land type
+        1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
         "ipfs://metadata7",
         "{}",
         "configuration7",
@@ -995,12 +1006,7 @@ describe("MetadataRenderer", function() {
         ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [0]),
         0 // bytes type
       );
-      await deedNFT.setTrait(
-        tokenId,
-        ethers.toUtf8Bytes("isValidated"),
-        ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]),
-        0 // bytes type
-      );
+      await markValidated(tokenId);
 
       // Get and decode token URI
       const tokenURI = await metadataRenderer.tokenURI(tokenId);

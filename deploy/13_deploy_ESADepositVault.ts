@@ -13,7 +13,13 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
 
   const admin = process.env.CLRUSD_ADMIN?.trim() || deployer.address;
-  const deployedClearUsd = getDeployment(network.name, "ClearUSD")?.address;
+  // The replacement token first. `ClearUSD` is the original, immutable one; a vault deployed
+  // fresh should back the token that carries the redemption lock, not the one being retired.
+  // Set VAULT_CLRUSD to override, and CLRUSD_ADDRESS still works when nothing is recorded.
+  const deployedClearUsd =
+    process.env.VAULT_CLRUSD?.trim() ||
+    getDeployment(network.name, "ClearUSDUpgradeable")?.address ||
+    getDeployment(network.name, "ClearUSD")?.address;
   const clearUsdAddress = deployedClearUsd || process.env.CLRUSD_ADDRESS?.trim();
 
   if (!clearUsdAddress) {
@@ -38,14 +44,22 @@ async function main() {
   const vaultAddress = await vault.getAddress();
   console.log("ESADepositVault (proxy) deployed at:", vaultAddress);
 
-  // Grant OPERATOR_ROLE to the savings relayer (submits gasless deposits/redeems).
-  const savingsRelayer = process.env.SAVINGS_RELAYER_ADDRESS?.trim();
+  // Grant RELAYER_ROLE to the savings relayer (submits gasless deposits/redeems). Not
+  // OPERATOR_ROLE: settings such as accepting a token are the admin's, never a server key's
+  // (audit H-3).
+  // Chain-scoped first, which is how .env actually names these (SAVINGS_RELAYER_ADDRESS_84532).
+  // Looking only at the unscoped name is why a vault deployed here once came up without a relayer
+  // and silently could not serve a gasless deposit.
+  const savingsRelayer = (
+    process.env[`SAVINGS_RELAYER_ADDRESS_${network.chainId}`] ??
+    process.env.SAVINGS_RELAYER_ADDRESS
+  )?.trim();
   if (savingsRelayer && hre.ethers.isAddress(savingsRelayer)) {
-    const operatorRole = await vault.OPERATOR_ROLE();
-    await (await vault.grantRole(operatorRole, savingsRelayer)).wait();
-    console.log("Granted OPERATOR_ROLE to savings relayer:", savingsRelayer);
+    const relayerRole = await vault.RELAYER_ROLE();
+    await (await vault.grantRole(relayerRole, savingsRelayer)).wait();
+    console.log("Granted RELAYER_ROLE to savings relayer:", savingsRelayer);
   } else {
-    console.warn("SAVINGS_RELAYER_ADDRESS not set — grant OPERATOR_ROLE to the relayer manually.");
+    console.warn("SAVINGS_RELAYER_ADDRESS not set — grant RELAYER_ROLE to the relayer manually.");
   }
 
   const clearUsd = await hre.ethers.getContractAt("ClearUSD", clearUsdAddress);
@@ -72,14 +86,18 @@ async function main() {
     console.warn("No default deposit token known for this chain. Skipping allowlist.");
   }
 
+  // Overridable so a replacement vault can be recorded without erasing the one still backing the
+  // token it replaces. A retired vault is not dead -- it holds the USDC behind whatever CLRUSD is
+  // still outstanding, and its holders need to be able to find it.
+  const recordName = process.env.VAULT_DEPLOYMENT_NAME?.trim() || "ESADepositVault";
   saveDeployment(
     network.name,
-    "ESADepositVault",
+    recordName,
     vaultAddress,
     JSON.parse(vault.interface.formatJson())
   );
   console.log(
-    "Saved deployment: deployments/" + network.name + "/ESADepositVault.json"
+    "Saved deployment: deployments/" + network.name + "/" + recordName + ".json"
   );
 }
 

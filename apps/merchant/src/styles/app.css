@@ -1,0 +1,866 @@
+/*
+ * Where the app departs from docs/merchant-reference/, and why.
+ *
+ * reference.css is generated from the reference files and is not edited by hand. Everything here
+ * is either the difference between a drawing of a screen and a screen, or a decision taken over
+ * the reference (docs/merchant-reference/DECISIONS.md). Keep the two apart, so regenerating
+ * reference.css never quietly undoes a decision.
+ */
+
+/* ---- The page ------------------------------------------------------------------------------ */
+
+/* The reference's own body rule, less the padding and gap of the document the frames sit on. */
+body {
+  margin: 0;
+  background: var(--paper);
+  font-family: var(--font-text);
+  font-size: var(--t-body);
+  line-height: 1.6;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Browser defaults, back inside the converted screens.
+ *
+ * The reference is drawn on an unstyled page: a <p> it does not zero keeps its 1em margin, an
+ * <svg> sits inline. Tailwind's reset removes both, and the screens not yet converted still need
+ * that reset. :where() keeps these at the specificity of a bare element, so any class in
+ * reference.css still wins, exactly as it does over the browser's own defaults.
+ */
+:where(.c-app) :where(p, ul, ol) {
+  margin-block: 1em;
+}
+:where(.c-app) :where(svg, img) {
+  display: inline;
+  vertical-align: baseline;
+}
+:where(.c-app) :where(b, strong) {
+  font-weight: bolder;
+}
+/* A button's text sits on the browser's own line height, not the page's 1.6. */
+:where(.c-app) :where(button) {
+  line-height: normal;
+}
+
+/* ---- Frames become the screen -------------------------------------------------------------- */
+
+/*
+ * The reference draws a tablet as a 1180:820 picture with a rounded outline. On a tablet the
+ * screen is the outline, so the frame's chrome goes and it fills the viewport.
+ *
+ * On anything wider than the reference's tablet (a desktop), it stops at the member app's width
+ * and sits in the middle (below).
+ */
+.c-mc-tablet {
+  background: var(--paper);
+  border: 0;
+  border-radius: 0;
+  max-width: none;
+  aspect-ratio: auto;
+  height: 100dvh;
+  padding: var(--s3);
+}
+/* Wider than the reference's 1180px tablet: 1120px of content, header included, inside the frame's
+   24px sides, centred, as the member app's header and pages are (1168px with their padding). */
+@media (min-width: 1181px) {
+  .c-mc-tablet {
+    max-width: calc(1120px + 2 * var(--s3));
+    margin-inline: auto;
+  }
+}
+/* The phone frame's padding: room at the bottom for the floating nav. */
+@media (max-width: 519.98px) {
+  .c-mc-tablet {
+    padding: var(--s2) var(--s2) calc(var(--s6) + env(safe-area-inset-bottom));
+  }
+  /* The reference's phone is a plain page, not the tablet's flex column, so margins collapse
+     between blocks as they do there. */
+  .c-mc-tablet.c-mc-page {
+    display: block;
+  }
+  .c-navwrap,
+  .c-ci-bar {
+    position: fixed;
+    bottom: calc(var(--s2) + env(safe-area-inset-bottom));
+    z-index: 10;
+  }
+}
+
+/* A drawn scrim covers its frame; a real one covers the screen. */
+.c-mc-scrim {
+  position: fixed;
+  z-index: 20;
+}
+.c-mc-scrim .c-sheet {
+  max-width: 100%;
+}
+/* The phone's + sheet: the reference pins it to its frame, the app to the screen. */
+.c-ps-scrim,
+.c-ps-sheet {
+  position: fixed;
+  z-index: 20;
+}
+.c-ps-sheet {
+  padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom));
+}
+
+/* ---- Decisions (DECISIONS.md) --------------------------------------------------------------- */
+
+/* Square corners everywhere, sheets included. Pill buttons and round dots stay as they are. */
+.c-sheet,
+.c-ch-sheet.c-wide,
+.c-ps-sheet,
+.c-ps-grab,
+.c-ck-scrim,
+.c-iv-scrim {
+  border-radius: 0;
+}
+
+/* Toggles are pill switches. Charges drew a smaller, rounded one; it takes the Settings pill. */
+.c-ch-toggle {
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-28);
+  background: var(--paper-2);
+}
+.c-ch-toggle::after {
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--ink-50);
+}
+.c-ch-toggle.c-on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.c-ch-toggle.c-on::after {
+  left: 19px;
+  background: var(--paper);
+}
+
+/*
+ * Only something live pulses: the reader waiting, someone on shift. A shop that has finished
+ * setting up, an owner who has signed in and a stock level are states, so their dots hold still.
+ * The glow stays, because every dot in the brand has it.
+ */
+.c-ob-live::after,
+.c-si-live::after,
+.c-iv-st i.c-ping::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* ---- Real controls where the reference drew divs --------------------------------------------- */
+
+/* The reference draws fields as divs that stretch to their row; a real input does not, so it is
+   told to. The one inline field (a tablet's name, in a row beside its label) keeps its own width. */
+input.c-field {
+  width: 100%;
+  color: var(--ink);
+}
+input.c-field.c-si-in {
+  width: auto;
+}
+
+/* The reference's `.c-field { flex: 1 }` shares a row between fields. Where a field sits in a
+   column instead (the phone sign-in, whose screen is a flex column), the same rule grows it down
+   into all the spare height, and the 0 basis overrides its 44px. A field is never taller than
+   it is drawn. */
+.c-field {
+  max-height: 44px;
+}
+/* The phone sign-in's screen keeps the tablet's shape, so its column has no spare height to grow
+   into, and a growing field collapsed to its text (about 20px). There it takes its drawn height. */
+.c-si-ph .c-field {
+  flex: none;
+  height: 44px;
+}
+
+/* The + sheet's options and the flow header's close are buttons, so they can be reached by
+   keyboard and heard by a screen reader. A button centres its text; the reference's divs did not. */
+.c-ps-opt {
+  width: 100%;
+  text-align: left;
+}
+
+/* The flow header's title can shrink, so a long one trims instead of pushing the shift pill off a
+   phone. The reference never draws a flow header at phone width; this is the least it needs. */
+.c-mc-flowtop .c-t {
+  min-width: 0;
+}
+
+/* Who's on the counter: each card a quarter of the row, as the reference draws four, but the row
+   centred, so one person or five sit in the middle rather than against the left edge. */
+.c-si-people {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.c-si-people > .c-si-p {
+  flex: 0 0 calc((100% - 3 * var(--s1)) / 4);
+  min-width: 0;
+}
+
+/* A sign-in screen whose last thing is its centred block sits a little above the middle: dead
+   centre under the header reads as low. The spacer gives way on a short screen. */
+.c-si-lock:has(> .c-si-center:last-child)::after {
+  content: '';
+  flex: 0 1 14vh;
+}
+
+/* Who's on the counter, on a phone: the reference draws four people across a tablet and never
+   narrower. Four across 390px crushes each card, so they go two by two. */
+@media (max-width: 519.98px) {
+  .c-si-people > .c-si-p {
+    flex-basis: calc((100% - var(--s1)) / 2);
+  }
+  /* The sign-in frame's 24px sides leave 342px, and six code boxes need 346. The phone's own
+     16px, as every phone frame in the reference has. */
+  .c-si-lock {
+    padding: var(--s2);
+  }
+}
+
+/* Close the day is a whole screen in the app; the reference's gap above it is document spacing. */
+.c-mc-tablet.c-dr-close {
+  margin-top: 0;
+}
+
+/* Inline links the reference draws as spans are buttons here; they sit on the text's own line. */
+:where(.c-app) :where(button.c-ci-link, button.c-si-link) {
+  line-height: inherit;
+}
+
+/* Card and cash on a phone, which the reference does not draw: a footer's note and its two
+   buttons do not fit one row at 390px, so the buttons take a row of their own. */
+@media (max-width: 519.98px) {
+  .c-ci .c-cfoot > .c-line {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .c-ci .c-cfoot > .c-line > .c-pair {
+    width: 100%;
+  }
+  .c-ci .c-cfoot > .c-line > .c-pair .c-btn {
+    flex: 1;
+  }
+}
+:where(.c-app) :where(button.c-iv-link) {
+  line-height: inherit;
+}
+
+/* Home in portrait: the reference makes New charge and Build cart full width but leaves them on
+   the figure's row, where they overflow (its frame clips it). They wrap onto their own row. */
+@media (min-width: 520px) and (max-width: 899.98px) {
+  .c-mc-hero {
+    flex-wrap: wrap;
+    row-gap: var(--s2);
+  }
+}
+
+/* Staff on a phone. The reference's slab footers are laid out for its tablet frame
+   (`.mc-tablet .slab .cell > .cfoot`), which the phone frame is not; here every frame is the
+   tablet, so on a phone the footers go back to the phone's own layout. */
+@media (max-width: 519.98px) {
+  :root:where(.c-page-staff) .c-mc-tablet .c-slab .c-cell > .c-cfoot {
+    display: block;
+    min-height: auto;
+  }
+  :root:where(.c-page-staff) .c-mc-tablet .c-slab .c-cell > .c-cfoot > * {
+    width: auto;
+  }
+  :root:where(.c-page-staff) .c-mc-tablet .c-slab .c-cell > .c-cfoot p.c-det {
+    line-height: 1.5;
+  }
+}
+
+/* Charges on a phone. The reference's phone rule for a row's chip comes before the list's own
+   chip rule, so the list's wins there; the generated stylesheet gathers phone rules at its end,
+   which reverses them. Restore the reference's order for the list. */
+@media (max-width: 519.98px) {
+  :root:where(.c-page-charges) .c-ch-list .c-rows .c-line .c-chip {
+    min-width: 84px;
+    height: 20px;
+    padding: 0 8px;
+  }
+}
+
+/* Settings' New discount code: the reference zeroes its first label's top margin with an inline
+   !important, which a React style can't carry. */
+.c-st-sheet .c-cmain > .c-st-fl:first-child {
+  margin-top: 0 !important;
+}
+
+/* Set up the till on Home keeps its own height; the page's slab below takes the rest. */
+.c-mc-tablet > .c-slab.c-ob-cell {
+  flex: none;
+}
+
+/* ---- Fixes over the reference's drawing ----------------------------------------------------- */
+
+/* A slab's two cells share one footer row, as tall as the taller footer. The shorter one's content
+   sat at the top of it ("Stock changes need an owner or a manager." beside Add to a charge); every
+   slab footer centres its content, as Home's already did. A column, so what stacked still stacks. */
+:where(.c-slab) .c-cell > .c-cfoot {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* New charge's category chips: the reference gives them a gap only on Inventory, which draws none,
+   so they touched. A gap wherever they are, and a new row when a shop has many categories. */
+.c-iv-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Home's time clock marks how far into the current hour they are, as Staff's tiles do (grey on a
+   break, as the bar is). */
+.c-mc-hours > span.c-now {
+  position: relative;
+}
+.c-mc-hours > span.c-now::after {
+  content: '';
+  position: absolute;
+  left: var(--p);
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+.c-mc-shiftcell.c-paused .c-mc-hours > span.c-now::after {
+  background: var(--ink-50);
+}
+
+/* Stacked on a phone, a footer pair's buttons keep flex:1 (a 0% basis), which sizes their HEIGHT
+   from nothing and squashed them to their text (18px). The floor keeps the 44px; a pair that stays
+   a row still splits evenly. */
+@media (max-width: 519.98px) {
+  :root .c-cfoot .c-pair .c-btn {
+    min-height: 44px;
+  }
+}
+
+/* ---- The public receipt page (/r/<token>) ---------------------------------------------------------
+   The printed slip at phone width. Not drawn in the reference; it follows the New Charge slip. */
+.c-rcpt-page{min-height:100dvh;background:var(--paper);padding:20px 16px 40px;display:flex;flex-direction:column;align-items:center;gap:24px}
+.c-rcpt-head{width:100%;max-width:420px}
+.c-rcpt-page .c-rcpt-slip{width:100%;max-width:420px;padding:24px 20px 18px;font-size:14px}
+.c-rcpt-page .c-rcpt-slip .c-shop{font-size:22px}
+.c-rcpt-page .c-rcpt-slip .c-det.c-c{font-size:13px}
+.c-rcpt-page .c-rcpt-slip .c-ln.c-sm{font-size:13px}
+.c-rcpt-page .c-rcpt-slip .c-ln.c-tot{font-size:16px}
+.c-rcpt-line small{display:block;color:var(--ink-50);font-size:12px;margin-top:1px}
+.c-rcpt-refund{color:var(--ink)}
+.c-rcpt-note{width:100%;max-width:420px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+
+/* ---- Accessibility (UI Phase 7) ---------------------------------------------------------------- */
+
+/* Read by a screen reader, never seen: the word a masked figure is heard as ("Hidden"). */
+.c-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Focus, where a keyboard (or a switch, or a Bluetooth keyboard on the counter tablet) has put it.
+ * The reference draws no focus state, so this is ours: an ink ring clear of the control, which
+ * reads on paper and around the ink buttons alike. :focus-visible, so a tap never leaves one.
+ */
+.c-app :focus-visible,
+.c-sheet :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+/* A sheet takes focus when it opens so the next Tab lands inside it; the sheet isn't a control. */
+.c-sheet:focus,
+.c-sheet:focus-visible {
+  outline: none;
+}
+
+/*
+ * Reduced motion, everywhere. The reference stills its pings; this stills the rest (the typing
+ * caret, the PIN dots growing, the reader's wave, the crew strip's marks) by letting each finish at
+ * once, so every one of them lands on its resting state rather than being cut mid-way.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Contrast on every text colour. Every token passes WCAG AA on paper except ink-28 (1.8:1), but the
+ * reference dims things with opacity, which takes even ink-50 (4.8:1) under 4.5:1. Where what is
+ * dimmed is still live (a step still to come, the next leg of a split, a line not yet ticked, a
+ * closed day that still opens, a nav item that opens the owner's sign-in) it keeps full opacity
+ * and reads in ink-50, which is as light as text goes and still passes. What is genuinely
+ * unavailable (an item out of stock, labour that can't come back) keeps the reference's dim and is
+ * marked aria-disabled, which WCAG exempts.
+ */
+.c-mstone.c-later,
+.c-ck-leg.c-dim,
+.c-ch-ret:not(.c-on):not([aria-disabled]) {
+  opacity: 1;
+}
+.c-mstone.c-later :is(p, span, b),
+.c-ck-leg.c-dim :is(.c-t, .c-v, .c-ic),
+.c-ch-ret:not(.c-on):not([aria-disabled]) :is(.c-t, .c-v) {
+  color: var(--ink-50);
+}
+.c-dv-days .c-btn.c-shut small,
+.c-dv-days .c-btn.c-shut .c-oh {
+  opacity: 1;
+}
+.c-mc-top nav .c-mc-lock,
+.c-mc-lockg {
+  color: var(--ink-50);
+}
+
+/* A row's name made a real button, because the row holds another button (Resend, a day's ×) and so
+   can't be one itself. It looks like the text it was; the row still opens on a click anywhere. */
+.c-mc-open {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Live hours: the times are the device's own pickers, drawn like the reference's time boxes. */
+input.c-mc-time,
+input.c-st-time {
+  text-align: center;
+  padding: 0 6px;
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* New charge, offline: a line above the flow, not a sheet over it. */
+.c-mc-offline {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 10px var(--s2);
+  margin-bottom: var(--s2);
+  border: 1px solid var(--underway);
+  background: var(--paper-2);
+}
+
+/* ---- Dusk and Dark ------------------------------------------------------------------------------
+ * Reference section 21: Light, Dusk, Dark, chosen per tablet (shell/appearance.ts). The reference
+ * draws Light only; these are the brand guide's on-ink and dusk columns, the same values the member
+ * app uses (apps/member/src/styles/clear-tokens.css), set on <html data-theme>. Light is no
+ * attribute at all, so it is always the reference's own :root. */
+:root[data-theme='dark'],
+:root[data-theme='dusk'] {
+  --live: #7c8cc5;
+  --settled: #6fcb9f;
+  --underway: #e3b667;
+  --absent: #e58c7f;
+  /* The guide has no land on ink: lightened from #6B7F5C to clear 4.5:1 on both grounds. */
+  --land: #9cae8b;
+  --land-ink: #9cae8b;
+  --tier-savings: var(--settled);
+  --tier-asset: var(--land);
+  --tier-asset-ink: var(--land-ink);
+  --tier-income: var(--underway);
+  --tier-boost: var(--absent);
+  --vest-cash: var(--ink);
+  --vest-vested: var(--settled);
+  --vest-vesting: var(--underway);
+  --seam: var(--ink-28);
+}
+/* Dark is the guide's ink ground, cool. */
+:root[data-theme='dark'] {
+  --paper: #16211d;
+  --paper-2: #1e2c27;
+  --ink: #dfe3de;
+  --ink-70: #abb1ac;
+  --ink-50: #939995;
+  --ink-28: #5a635f;
+  --ink-13: #3a4440;
+  color-scheme: dark;
+}
+/* Dusk is a tan page, not a dark one: light, so it keeps light's status colours and tier ramp. */
+:root[data-theme='dusk'] {
+  --paper: #e6dbc6;
+  --paper-2: #f1e9da;
+  --ink: #221c14;
+  --ink-70: #4e4739;
+  --ink-50: #5a5244;
+  --ink-28: #afa48d;
+  --ink-13: #ccc0a8;
+  --live: #24409e;
+  --settled: #0e6b4e;
+  --underway: #8a5512;
+  --absent: #9b2c22;
+  --land: #6b7f5c;
+  --land-ink: #55654a;
+  color-scheme: light;
+}
+
+/* A code stays dark on light in every theme: an inverted QR is one some phone cameras won't read. */
+:root {
+  --qr-ink: #16211d;
+  --qr-paper: #dfe3de;
+}
+
+/* Settings › Shop app draws the shop's own app (its phone preview, on the shop's paper) and the
+   join code's white card. Those keep their own light ground in every theme, so inside them the ink
+   stays light's: the dark and dusk inks are for the app's page, and turned this text pale on pale. */
+:root[data-theme='dark'] :is(.c-sa-ph, .c-sa-mini),
+:root[data-theme='dusk'] :is(.c-sa-ph, .c-sa-mini) {
+  --paper: #dfe3de;
+  --paper-2: #e9ece7;
+  --ink: #16211d;
+  --ink-70: #525b57;
+  --ink-50: #5a635f;
+  --ink-28: #a7ada8;
+  --ink-13: #c5cac5;
+  --live: #24409e;
+  --settled: #0e6b4e;
+  --underway: #8a5512;
+  --absent: #9b2c22;
+  --seam: var(--ink-28);
+  color-scheme: light;
+}
+
+/* Cash's sage chip keeps dark text on a dark ground (the ink there is light). */
+:root[data-theme='dark'] .c-ch-pm.c-cash {
+  color: #16211d;
+}
+
+/* Onboarding › Your team: Remove reads as a small link beside the role chips, at their text size. */
+.c-ob-roles {
+  align-items: center;
+}
+.c-ob-roles .c-ci-link {
+  font-size: var(--t-detail);
+  color: var(--ink-70);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--ink-28);
+  white-space: nowrap;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+/* On a phone, a person's role and Remove get their own row under the name, so the name keeps the
+   width it needs; Remove sits at the row's end. The owner's row and Add someone stay on one line. */
+.c-ob-ph .c-ob-person:has(.c-ob-roles) {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+.c-ob-ph .c-ob-person:has(.c-ob-roles) .c-nm {
+  flex-basis: calc(100% - 48px);
+}
+.c-ob-ph .c-ob-roles {
+  flex-basis: 100%;
+  padding-left: 48px;
+}
+.c-ob-ph .c-ob-roles .c-ci-link {
+  margin-left: auto;
+}
+
+/* Every bar has a border, so its whole length reads even when its figures are small or zero: How it
+   was paid, the month and releases bars, Where it sits, and the approval and spending bars. Inside
+   the bar's own height, so nothing around it moves. An empty one is the same outline, empty. */
+.c-bar,
+.c-mc-track,
+.c-ck-prog,
+.c-sa-bar,
+.c-ov-bar,
+.c-iv-level .c-tr {
+  border: 1px solid var(--ink-28);
+  box-sizing: border-box;
+}
+.c-sa-bar.c-empty {
+  border-style: solid;
+}
+
+/* Inventory before the first item: the words and the two ways in sit in the middle of the cell, and
+   the two ways are a boxed pair (a border all round, and between them), not two loose columns. */
+.c-cmain:has(> .c-iv-empty) {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.c-iv-empty {
+  margin: 0 auto;
+  text-align: center;
+}
+.c-iv-ways {
+  border: 1px solid var(--ink-13);
+}
+.c-iv-ways > div,
+.c-iv-ways > div + div {
+  padding: var(--s2);
+}
+/* The two ways' buttons are one size (the app's button size, below) and one width. */
+.c-iv-ways .c-btn {
+  min-width: 184px;
+}
+@media (max-width: 519.98px) {
+  .c-iv-ways {
+    grid-template-columns: 1fr;
+  }
+  .c-iv-ways > div + div {
+    border-left: 0;
+    border-top: 1px solid var(--ink-13);
+  }
+}
+
+/*
+ * One button size across the app, on a tablet or wider: the outlined button's, 36px with the
+ * secondary text size. The reference drew filled buttons, pairs, the close and charge footers at
+ * 40 to 44px and some row buttons at 30 to 32, so a footer's two buttons didn't match. Not
+ * buttons in this sense, and left as they are: chips, toggles and tabs, the week's day tiles, the
+ * Inventory header's Add item, Home's New charge and Build cart, full-width sheet buttons
+ * (.c-btn-lg), and onboarding's Back and Continue. A phone keeps its full-width 44px buttons.
+ */
+@media (min-width: 520px) {
+  :root :is(.c-cell, .c-panel, .c-sheet) .c-btn.c-btn-primary:not(.c-btn-lg),
+  :root .c-pair:not(.c-mc-hero .c-pair, .c-ob-acts .c-pair, .c-ob-hero .c-pair) .c-btn:not(.c-btn-lg),
+  :root .c-dr-close .c-cfoot .c-btn,
+  :root .c-dr-again .c-btn,
+  :root .c-mc-foot2 .c-btn,
+  :root .c-cc .c-cfoot .c-pair .c-btn,
+  :root .c-ch-pair .c-btn,
+  :root .c-rl-row .c-btn,
+  :root .c-ci-sugline .c-btn,
+  :root .c-btn.c-cc-print,
+  :root :is(.c-cmain, .c-cfoot) .c-btn.c-sm,
+  :root .c-iv-ways .c-btn {
+    height: 36px;
+    padding: 0 var(--s2);
+    font-size: var(--t-sec);
+  }
+}
+
+/* Staff › the day: before opening and after closing, when someone is booked then, the track is
+   hatched, so the shop's own hours still read on a widened timeline. */
+.c-trk i.c-out {
+  background: repeating-linear-gradient(135deg, var(--ink-28) 0 1px, transparent 1px 5px);
+}
+
+/* Clear Terminal's sheets: the reference sets each one's width inline (420, 440 or 460). */
+.c-sheet.c-tm-sheet {
+  max-width: 440px;
+}
+.c-sheet.c-tm-sheet.c-w420 {
+  max-width: 420px;
+}
+.c-sheet.c-tm-sheet.c-w460 {
+  max-width: 460px;
+}
+.c-sheet.c-tm-sheet.c-w440 {
+  max-width: 440px;
+}
+.c-sheet.c-tm-sheet.c-w520 {
+  max-width: 520px;
+}
+
+/* Tables v2: with Asking along the top the slab has two bands. Asking takes its own height and the
+   floor and wait list the rest; the reference's frame is a fixed height, so it never showed. */
+.c-mc-tablet > .c-slab.c-tm-tslab:has(> .c-tm-askcell) {
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+}
+
+/* Tables: a floor that is one row (an area with a few tables) takes half the floor, two rows a half
+   each, three a third; past what fits, the floor scrolls. The reference's frame always had full rows,
+   so its seam colour behind the grid showed in a short row's empty slots; each tile draws its own
+   right and bottom seams instead. A row that reaches the foot puts its bottom seam just outside the
+   scroll box, where it is clipped, so it never doubles the foot's top border. */
+/* The terminal pages grow as one page (c-mc-page); Tables instead fits the screen, so the floor and
+   the wait list each scroll inside their cell and the feet stay put. */
+.c-mc-tablet.c-mc-page:has(> .c-slab.c-tm-tslab) {
+  overflow: hidden;
+}
+.c-mc-tablet.c-mc-page > .c-slab.c-tm-tslab {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.c-mc-tablet.c-mc-page > .c-slab.c-tm-tslab > .c-cell {
+  min-height: 0;
+  overflow: hidden;
+}
+.c-mc-tablet.c-mc-page > .c-slab.c-tm-tslab > .c-cell > .c-cmain {
+  min-height: 0;
+  overflow-y: auto;
+}
+.c-tm-floorcell .c-tm-floor {
+  background: none;
+  align-content: start;
+  grid-auto-rows: minmax(132px, calc(50% - 0.5px));
+}
+.c-tm-floorcell .c-tm-floor > .c-tm-t {
+  box-shadow:
+    1px 0 0 var(--seam),
+    0 1px 0 var(--seam);
+}
+
+/* Edit tables' area is tapped to move the table to the next area (not drawn as a control). */
+.c-tm-area {
+  cursor: pointer;
+}
+
+/* Clear Terminal › Tables on a phone (section 8d) is its own list; the drawn phone frame's padding
+   is the page's here. */
+.c-tm-plist {
+  padding: 0;
+}
+
+/* Settings › Shop app: the spec's number boxes are inputs here. */
+input.c-sa-box {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: center;
+  width: 44px;
+  border-radius: 0;
+}
+input.c-sa-box:disabled {
+  color: var(--ink);
+  opacity: 1;
+}
+/* The camera's own line (Starting the camera…) on the scan sheet's dark viewfinder. */
+.c-sa-tvf > .c-det {
+  color: #c9cfca;
+}
+
+/* ---- Pay with Clear (pay DECISIONS, Phase 3) ---------------------------------------------------- */
+
+/* New charge › Send a link: the drawing's 480px sheet, its rows' inputs, the picker and the QR. */
+.c-pay-link {
+  width: 480px;
+  max-width: 100%;
+}
+.c-pay-pick,
+.c-pay-option {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.c-pay-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+}
+.c-pay-picker {
+  margin: var(--s1) 0 var(--s1) var(--s2);
+}
+input.c-pay-qty,
+input.c-pay-amount {
+  font: 600 var(--t-sec) var(--font-text);
+  color: var(--ink);
+  text-align: center;
+}
+input.c-pay-qty {
+  width: 56px;
+}
+input.c-pay-amount {
+  width: 112px;
+  text-align: right;
+}
+input.c-pay-note {
+  display: block;
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-text);
+}
+input.c-pay-note:focus-visible {
+  outline-offset: 4px;
+}
+.c-pay-qr {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--s2);
+}
+.c-pay-phonelink {
+  margin: var(--s2) 0 0;
+  text-align: center;
+}
+/* Settings › Developers (pay spec §6): a delivery's answer, as the spec's .pw-ok, and its undrawn sheets. */
+.c-pw-ok,
+.c-pw-bad {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--settled);
+}
+.c-pw-bad {
+  color: var(--absent);
+}
+.c-dev-sheet {
+  width: 480px;
+  max-width: 100%;
+}
+/* A sheet's action waits for a valid entry, as the reference greys a disabled button elsewhere. */
+.c-dev-sheet .c-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.c-dev-endpoint {
+  cursor: pointer;
+}
+.c-dev-endpoint .c-t {
+  overflow-wrap: anywhere;
+}
+/* A secret shown once: in full, in mono, beside its Copy. */
+.c-dev-secret {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding: 10px 12px;
+  border: 1px solid var(--ink-13);
+}
+.c-dev-secret code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Charges: where an online sale came from, in place of who raised it. */
+.c-pm-src {
+  color: var(--ink);
+}

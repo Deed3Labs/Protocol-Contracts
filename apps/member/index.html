@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- theme_color is static in the manifest, but browser chrome can follow the theme through
+         these. background_color cannot, which is why the splash is ink either way. -->
+    <meta name="theme-color" content="#DFE3DE" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16211D" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Clear" />
+    
+    <!-- Mobile web app support -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Clear" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Brand guide faces (useclear.org/style). The two above go once nothing uses them. -->
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=IBM+Plex+Mono:wght@400&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+    <!-- Stripe Crypto Onramp Scripts -->
+    <script src="https://js.stripe.com/clover/stripe.js"></script>
+    <script src="https://crypto-js.stripe.com/crypto-onramp-outer.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register service worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered: ', registration);
+            })
+            .catch((registrationError) => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>

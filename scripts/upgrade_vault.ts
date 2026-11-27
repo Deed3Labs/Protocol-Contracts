@@ -1,32 +1,47 @@
-import hre from "hardhat";
+import { liveNetworkOf, requireMainnetConfirmation } from "../deploy/helpers";
+import { KNOWN_USDC, upgradeCallLine, vaultProxyFor } from "./vaultUpgrade";
 
 /*
- * UUPS upgrade of the ESADepositVault (same proxy address) to the version with the autopay
- * recurring-deposit mandate (executeMandateDeposit / cancelMandate). Run testnet first:
- *   npx hardhat run scripts/upgrade_vault.ts --network base-sepolia
- *   npx hardhat run scripts/upgrade_vault.ts --network base
+ * The ESADepositVault's new implementation. THIS SCRIPT NEVER UPGRADES THE PROXY.
+ *
+ * It used to `upgradeProxy` the vault on its own, without `setAcceptedToken`, which the contract's
+ * note says stops every deposit and redemption (the accepted token lives in a slot the upgrade
+ * adds, which starts at zero), and it pointed Base Sepolia at the legacy vault. The upgrade is now
+ * one call only, `upgradeToAndCall(impl, setAcceptedToken(USDC, true))`, and only
+ * `scripts/migrate_vault_clrusd.ts` builds it, as a batch for whoever holds the vault's admin (the
+ * Clear Financial Co. Safe, through the vault timelock after the handover). A single path to the
+ * live vault's upgrade is the safer one.
+ *
+ * What this does: validates the implementation against the network's manifest and, with
+ * PREPARE_VAULT_IMPL=1, deploys it with `upgrades.prepareUpgrade` (a new contract; the proxy is not
+ * touched). It then prints the call and the command that builds the batch.
+ *
+ *   npx hardhat run scripts/upgrade_vault.ts --network base-sepolia                          # validate
+ *   PREPARE_VAULT_IMPL=1 npx hardhat run scripts/upgrade_vault.ts --network base-sepolia     # deploy the implementation
+ *   (on Base, CONFIRM_MAINNET=1 as well)
  */
-const { ethers, upgrades, network } = hre as typeof hre & {
-  upgrades: typeof import("@openzeppelin/hardhat-upgrades").upgrades;
-};
-
-const PROXY: Record<string, string> = {
-  "base-sepolia": "0x7bA87Eb0DC8ADF4a6CbE9f90d05A782De0F740cD",
-  base: "0x0CfE6aFB053474cE4Ff744a1fe864C82c173a1C1",
-};
-
 async function main() {
-  const proxy = PROXY[network.name];
-  if (!proxy) throw new Error(`No vault proxy configured for network ${network.name}`);
+  const { ethers, upgrades, network } = require("hardhat");
+  requireMainnetConfirmation(network.name, "scripts/upgrade_vault.ts");
+  const proxy = vaultProxyFor(network.name);
   const Vault = await ethers.getContractFactory("ESADepositVault");
-  console.log(`Upgrading ESADepositVault proxy ${proxy} on ${network.name}…`);
-  const v = await upgrades.upgradeProxy(proxy, Vault, { redeployImplementation: "onchange" });
-  await v.waitForDeployment();
-  const impl = await upgrades.erc1967.getImplementationAddress(proxy);
-  console.log(`✅ Upgraded. Proxy ${await v.getAddress()} → impl ${impl}`);
+  await upgrades.validateUpgrade(proxy, Vault, { kind: "uups" });
+  console.log(`ESADepositVault ${proxy} on ${network.name}: the new implementation validates against the manifest.`);
+  if (process.env.PREPARE_VAULT_IMPL !== "1") {
+    console.log("\nNothing deployed. PREPARE_VAULT_IMPL=1 deploys the implementation; the proxy is never upgraded here.");
+    return;
+  }
+  const impl = (await upgrades.prepareUpgrade(proxy, Vault, { kind: "uups" })) as string;
+  const usdc = process.env.USDC?.trim() || KNOWN_USDC[liveNetworkOf(network.name)];
+  console.log(`\nImplementation ${impl}. The proxy was not upgraded.`);
+  console.log(upgradeCallLine(Vault.interface, proxy, impl, usdc));
+  console.log(`Build the batch for the vault's admin (it checks who that is):\n` +
+    `  VAULT_IMPL=${impl} RELAYER=0x… CLEAR_FINANCIAL_SAFE=0x… npx hardhat run scripts/migrate_vault_clrusd.ts --network ${network.name}`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

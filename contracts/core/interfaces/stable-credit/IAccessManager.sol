@@ -8,6 +8,12 @@ interface IAccessManager {
     function isMember(address _member) external view returns (bool);
     /// @notice returns true if the given address has operator access
     function isOperator(address _operator) external view returns (bool);
+
+    /// @notice whether an address holds one of the credit roles, or is an admin.
+    /// @dev The credit operator's powers are split by job (audit H-4): opening lines and plans,
+    /// setting limits, and changing settings. A key that only opens lines cannot also raise a
+    /// limit or name a carry recipient.
+    function hasCreditRole(bytes32 role, address account) external view returns (bool);
     /// @notice grants member access to a given address
     /// @dev caller must have operator access or be the owner
     function grantMember(address _member) external;

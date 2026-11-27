@@ -1,0 +1,173 @@
+=== Step 4: deploy the SettlementForwarder (2026-11-18T08:44:28Z, dev 5898983b)
+$ npx hardhat run deploy/28_deploy_SettlementForwarder.ts --network base-sepolia
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:72:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                        ^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:82:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:98:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:272:84:
+    |
+272 |     function applyPledgePayment(address, address, bool, uint256) external returns (uint256 applied) {
+    |                                                                                    ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:277:79:
+    |
+277 |     function maturityToDebt(address, uint256, uint256) external view returns (uint256 toDebt) {
+    |                                                                               ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:292:76:
+    |
+292 |     function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+    |                                                                            ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:297:64:
+    |
+297 |     function defaultedAmountOf(address) external view returns (uint256 due) {
+    |                                                                ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:302:77:
+    |
+302 |     function applyPoolProceeds(address, uint256, uint256) external returns (uint256 applied) {
+    |                                                                             ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:307:57:
+    |
+307 |     function noticeShortfall(address) external returns (uint256 gap) {
+    |                                                         ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:58:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                          ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:71:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                                       ^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:62:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                              ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:75:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                                           ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:57:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                         ^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:69:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                                     ^^^^^^^^^^^^^^
+
+
+Compiled 272 Solidity files successfully (evm target: paris).
+network          base-sepolia (84532)
+CL Operating     0xfAFf1081F77bF528bA21eea590f251a755bCdf65
+USDC             0x036CbD53842c5426634e7929541eC2318f3dCF7e
+AllowanceModule  0xAA46724893dedD72658219405185Fb0Fc91e091C (Allowance Module 0.1.1)
++ SettlementForwarder deployed to 0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c
+
+left to do (nothing here is sent by this script):
+  - CL Operating's batch, signing plan stage SL (npx hardhat run scripts/signing_plan.ts --network base-sepolia):
+    addDelegate(0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c), setAllowance(…, SETTLEMENT_CAP_USDC per SETTLEMENT_PERIOD_DAYS),
+    setOffRamp(SETTLEMENT_OFFRAMP_ADDRESS), setDesk(SETTLEMENT_FUNDER)
+  - the API: SETTLEMENT_FORWARDER_84532=0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c
+[exit 0]
+
+=== Step 4 read-back (2026-11-18T08:45:51Z)
+SettlementForwarder 0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c: code bytes 1340
+  safe() = 0xfAFf1081F77bF528bA21eea590f251a755bCdf65 OK
+  allowanceModule() = 0xAA46724893dedD72658219405185Fb0Fc91e091C OK
+  token() = 0x036CbD53842c5426634e7929541eC2318f3dCF7e OK
+  offRamp() = 0x0000000000000000000000000000000000000000 OK
+  desk() = 0x0000000000000000000000000000000000000000 OK
+READ-BACK OK
+
+=== Step 5: preflight (2026-11-18T08:46:02Z)
+$ npx hardhat run scripts/check_rollout_inputs.ts --network base-sepolia
+Rollout inputs preflight on base-sepolia (chain 84532), from deploy/config/base-sepolia.rollout.env. Sends nothing.
+
+PASS  CLEAR_FINANCIAL_SAFE is set: 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+PASS  BOARD_SAFE is set: 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+PASS  COOP_TREASURY is set: 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+PASS  CLEAR_LENDING_SAFE is set: 0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d
+PASS  CLEAR_LENDING_ACCOUNT is set: 0xfAFf1081F77bF528bA21eea590f251a755bCdf65
+PASS  LENDER_OPERATING is set: 0xfAFf1081F77bF528bA21eea590f251a755bCdf65
+PASS  ASSURANCE_CL_FEES_PAYER is set: 0xB9ed7ea800c3a32a8F2cf7d2aB50AE2d4831cDFd
+PASS  ASSURANCE_DRAW_ADDRESS is set: 0xfAFf1081F77bF528bA21eea590f251a755bCdf65
+PASS  ASSURANCE_LOSS_RESERVE is set: 0xb42561F3FE68B6719628C0eAC398eA097DD56bAa
+PASS  ASSURANCE_DISBURSEMENT is set: 0x510cDFa8e647C3f1fe0c431fe903fA60aA4F926B
+PASS  LENDER_OPERATING is CL Operating (CLEAR_LENDING_ACCOUNT)
+PASS  ASSURANCE_DRAW_ADDRESS is CL Operating (CLEAR_LENDING_ACCOUNT)
+PASS  CLEAR_LENDING_SAFE is its own Safe, not the Clear Financial (Treasury) Safe
+PASS  the Clear Lending Safe 0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d (Safe 1.5.0) needs 2 of 2 (0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA, 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a): two or more wanted
+PASS  CL Operating (CLEAR_LENDING_ACCOUNT) 0xfAFf1081F77bF528bA21eea590f251a755bCdf65 (Safe 1.5.0): 1 of 1, owners 0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d; wanted 1 of 1, owned by the Clear Lending Safe
+PASS  CL Loss Reserve (ASSURANCE_LOSS_RESERVE) 0xb42561F3FE68B6719628C0eAC398eA097DD56bAa (Safe 1.5.0): 1 of 1, owners 0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d; wanted 1 of 1, owned by the Clear Lending Safe
+PASS  CL fees payer (ASSURANCE_CL_FEES_PAYER) 0xB9ed7ea800c3a32a8F2cf7d2aB50AE2d4831cDFd is a plain account (a CDP wallet)
+PASS  Assurance disbursement (ASSURANCE_DISBURSEMENT) 0x510cDFa8e647C3f1fe0c431fe903fA60aA4F926B is a plain account (a CDP wallet)
+PASS  Assurance Pool: no input the pool would refuse, and the five addresses differ
+PASS  the payout top-up wallet 0xC0C4EC7875D1838C0AE610accC16AAdCDb475068 is a plain account (a CDP wallet)
+PASS  the payout top-up wallet is no other job's wallet
+PASS  0xAA46724893dedD72658219405185Fb0Fc91e091C is Safe's AllowanceModule (Allowance Module 0.1.1)
+PASS  the AllowanceModule is enabled on CL Operating 0xfAFf…df65
+PASS  the top-up wallet is CL Operating's spending-limit delegate
+PASS  the allowance is $5,000.00 every 10080 minutes in 0x036C…CF7e ($0.00 spent this period), as the rollout says
+PASS  the top-up wallet holds the PayoutPool's FUNDER_ROLE
+PASS  the top-up wallet holds no other PayoutPool role
+WARN  SETTLEMENT_FUNDER is empty: the Settlement Funding steps (SL-) wait; owner to create the funding desk's CDP wallet and fill it in
+WARN  SETTLEMENT_OFFRAMP_ADDRESS is empty: the forwarder's off-ramp step (SL-cl-operating-offramp) waits; owner to fill it in
+PASS  the SettlementForwarder 0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c serves CL Operating
+PASS  the SettlementForwarder calls Safe's AllowanceModule 0xAA46724893dedD72658219405185Fb0Fc91e091C
+PASS  the SettlementForwarder forwards USDC (RESERVE_TOKEN)
+WARN  the SettlementForwarder has no off-ramp yet (SL-cl-operating-offramp)
+WARN  the SettlementForwarder has no desk wallet yet (SL-cl-operating-desk)
+WARN  the SettlementForwarder is CL Operating's spending-limit delegate: not yet (SL-cl-operating-delegate)
+WARN  the SettlementForwarder has no allowance on CL Operating yet (SL-cl-operating-allowance)
+
+30 PASS, 0 FAIL, 6 WARN.
+[exit 0]

@@ -65,11 +65,30 @@ contract FundManager is
     ITokenRegistry public tokenRegistry;
 
     /**
+     * @notice The most `payer` agrees to pay per service fee in `token` (audit D-16). A validator fee
+     *         manager could otherwise raise its fee between the payer's approval and the mint and drain a
+     *         standing allowance. Zero (the default) refuses every fee.
+     */
+    mapping(address => mapping(address => uint256)) public maxFeeOf;
+
+    /// @dev Emitted when a payer sets its fee cap.
+    event MaxFeeSet(address indexed payer, address indexed token, uint256 maxFee);
+
+    /// @dev The fee read at execution exceeds the payer's cap.
+    error FeeAboveMax(uint256 fee, uint256 maxFee);
+
+    /**
      * @dev Initializes the contract.
      * @param _validatorRegistry Address of the validator registry.
      * @param initialCommissionPercentage Initial commission percentage in basis points.
      * @param _feeReceiver Address that receives commission fees.
      */
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        // Audit D-20: nobody can initialize the bare implementation.
+        _disableInitializers();
+    }
+
     function initialize(
         address _validatorRegistry,
         uint256 initialCommissionPercentage,
@@ -81,7 +100,8 @@ contract FundManager is
         
         require(_validatorRegistry != address(0), "FundManager: Invalid ValidatorRegistry address");
         require(_feeReceiver != address(0), "FundManager: Invalid fee receiver address");
-        require(initialCommissionPercentage <= 10000, "FundManager: Commission percentage exceeds 100%");
+        // Same 10% cap as setCommissionPercentage (audit D-23: the initializer allowed 100%).
+        require(initialCommissionPercentage <= 1000, "FundManager: Commission percentage exceeds 10%");
         
         validatorRegistry = _validatorRegistry;
         _commissionPercentage = initialCommissionPercentage;
@@ -221,6 +241,14 @@ contract FundManager is
     }
 
     // ============ Payment Processing Functions ============
+
+    /**
+     * @notice Sets the caller's cap on any single service fee paid in `token` (audit D-16).
+     */
+    function setMaxFee(address token, uint256 maxFee) external {
+        maxFeeOf[msg.sender][token] = maxFee;
+        emit MaxFeeSet(msg.sender, token, maxFee);
+    }
     
     /**
      * @dev Processes a payment for a deed minting
@@ -250,13 +278,21 @@ contract FundManager is
         // Verify service fee matches validator's requirement
         uint256 requiredFee = IValidator(validatorAddress).getServiceFee(token);
         require(serviceFee == requiredFee, "FundManager: Service fee mismatch");
+        // ...and stays within what the payer agreed to (audit D-16)
+        if (serviceFee > maxFeeOf[payer][token]) revert FeeAboveMax(serviceFee, maxFeeOf[payer][token]);
         
         // Calculate commission amount
         commissionAmount = (serviceFee * _commissionPercentage) / 10000;
         validatorAmount = serviceFee - commissionAmount;
         
-        // Transfer tokens from payer to this contract
+        // Transfer tokens from payer to this contract. Fee-on-transfer tokens would credit the validator
+        // more than arrived and leave this contract insolvent (audit D-23), so they are refused.
+        uint256 balanceBefore = IERC20Upgradeable(token).balanceOf(address(this));
         IERC20Upgradeable(token).safeTransferFrom(payer, address(this), serviceFee);
+        require(
+            IERC20Upgradeable(token).balanceOf(address(this)) - balanceBefore == serviceFee,
+            "FundManager: Fee-on-transfer token"
+        );
             
         // Update validator balance
         validatorBalances[validatorAddress][token] += validatorAmount;

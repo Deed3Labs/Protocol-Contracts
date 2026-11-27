@@ -1,0 +1,101 @@
+import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { readsMustBeFresh, wantFreshReads } from './lib/freshReads';
+
+const sw = readFileSync(join(import.meta.dirname, '..', 'public', 'sw.js'), 'utf8');
+const api = readFileSync(join(import.meta.dirname, 'utils', 'apiClient.ts'), 'utf8');
+const stale = readFileSync(join(import.meta.dirname, 'lib', 'chainStale.ts'), 'utf8');
+
+describe('a page switch draws the last answer at once', () => {
+  test('API reads answer from cache and refresh behind, unless the app asks for the network', () => {
+    expect(sw).toMatch(
+      /if \(request\.cache === 'no-cache' \|\| request\.cache === 'no-store' \|\| request\.cache === 'reload'\) \{\s*event\.respondWith\(networkFirst\(request, API_CACHE\)\);\s*return;\s*\}\s*event\.respondWith\(staleWhileRevalidate\(request, API_CACHE\)\);/,
+    );
+  });
+
+  test('the cache version moved, so installed apps pick up the new strategy', () => {
+    expect(sw).toContain("const CACHE_VERSION = 'v6';");
+  });
+});
+
+describe('after an action, the screen shows the state after it', () => {
+  test('reads ask for the network while the window is open', () => {
+    expect(api).toContain("...(method === 'GET' && readsMustBeFresh() ? { cache: 'no-cache' as RequestCache } : {}),");
+  });
+
+  test('any request that is not a read opens the window, and so does every chain move', () => {
+    expect(api).toContain("if (method !== 'GET') wantFreshReads();");
+    expect(stale.match(/wantFreshReads\(\);/g)).toHaveLength(2);
+  });
+
+  test('the window opens, and a later shorter call never shortens it', () => {
+    expect(readsMustBeFresh()).toBe(false);
+    wantFreshReads();
+    expect(readsMustBeFresh()).toBe(true);
+    wantFreshReads(-1);
+    expect(readsMustBeFresh()).toBe(true);
+  });
+});
+
+describe('the service worker stays installed, and forgets what it should', () => {
+  const html = readFileSync(join(import.meta.dirname, '..', 'index.html'), 'utf8');
+  const logout = readFileSync(join(import.meta.dirname, 'hooks', 'useLogout.ts'), 'utf8');
+
+  test('no AppKit check unregisters it -- there has been no appkit-button since Privy', () => {
+    expect(html).toContain("navigator.serviceWorker.register('/sw.js')");
+    expect(html).not.toContain('registration.unregister()');
+  });
+
+  test('only our own hashed files are cached forever, never another origin\'s scripts', () => {
+    expect(sw).toContain('if (url.origin === self.location.origin && isStaticAsset(url)) {');
+    expect(sw).toContain('if (url.origin === self.location.origin && isImage(url)) {');
+  });
+
+  test('signing out drops the cached API answers', () => {
+    expect(logout).toMatch(/forgetRemembered\(\);[\s\S]{0,260}await clearApiCache\(\);/);
+    expect(logout).toContain("n.startsWith('protocol-api-')");
+  });
+
+  test('activating deletes our old cache versions, and leaves other caches alone', () => {
+    expect(sw).toMatch(/cacheName\.startsWith\('protocol-'\) &&\s*cacheName !== STATIC_CACHE &&\s*cacheName !== API_CACHE &&\s*cacheName !== IMAGE_CACHE/);
+  });
+
+  test('no AppKit leftovers: nothing preloads Reown icons, which answer 403 without a project id', () => {
+    expect(html).not.toContain('api.web3modal.com');
+    expect(html).not.toContain('appKitModal');
+  });
+});
+
+describe('the opening screen', () => {
+  const css = readFileSync(join(import.meta.dirname, '..', '..', '..', 'packages', 'member-kit', 'src', 'styles', 'clear-components.css'), 'utf8');
+  test('the slow-connection note sits above "Opening", not on top of it', () => {
+    expect(css).toContain('.c-splash .c-waiting{position:absolute;bottom:var(--s5);');
+    expect(css).toContain('.c-splash .c-slow{position:absolute;bottom:calc(var(--s5) + var(--s4));');
+  });
+});
+
+describe('the reserve cover bar', () => {
+  const panel = readFileSync(join(import.meta.dirname, 'components', 'clear', 'ReservePanel.tsx'), 'utf8');
+  const css = readFileSync(join(import.meta.dirname, '..', '..', '..', 'packages', 'member-kit', 'src', 'styles', 'clear-components.css'), 'utf8');
+  test('its legend sits above the bar, as the credits line does on Home', () => {
+    expect(panel.indexOf('Policy floor')).toBeLessThan(panel.indexOf('<Bar'));
+    expect(panel).toContain('<Line className="mb-s1">');
+  });
+  test('the separator keeps its spacing outside the old keyline', () => {
+    expect(css).toContain('.c-keyline .c-sep,.c-sub .c-sep{color:var(--ink-50);margin:0 4px}');
+  });
+});
+
+describe('the app lock survives a refresh', () => {
+  const login = readFileSync(join(import.meta.dirname, 'pages', 'auth', 'LoginRoute.tsx'), 'utf8');
+  test('arriving authenticated only restarts the lock clock after a sign-in made on the login screen', () => {
+    expect(login).toContain('if (consumeSigningIn()) markActive();');
+    expect(login).not.toMatch(/navigated\.current = true;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*markActive\(\);/);
+  });
+  test('every way of signing in there sets the mark first: code, Google, passkey', () => {
+    expect(login).toMatch(/markSigningIn\(\);\s*if \(channel\.current === 'sms'\) await sms\.loginWithCode/);
+    expect(login).toMatch(/markSigningIn\(\);\s*await oauth\.initOAuth/);
+    expect(login).toMatch(/markSigningIn\(\);\s*await passkey\.loginWithPasskey/);
+  });
+});

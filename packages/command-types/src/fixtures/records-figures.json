@@ -1,0 +1,100 @@
+{
+ "records.doc_counts": {
+  "agreement": 41,
+  "minutes": 12,
+  "filing": 7,
+  "policy": 9,
+  "bond": 6,
+  "report": 14
+ },
+ "records.doc_states": {
+  "agreement": [
+   40,
+   0,
+   1
+  ],
+  "minutes": [
+   11,
+   1,
+   0
+  ],
+  "filing": [
+   5,
+   2,
+   0
+  ],
+  "policy": [
+   7,
+   2,
+   0
+  ],
+  "bond": [
+   6,
+   0,
+   0
+  ],
+  "report": [
+   14,
+   0,
+   0
+  ]
+ },
+ "records.coverage": {
+  "coop": [
+   "f",
+   "f",
+   "f",
+   "d",
+   "n",
+   "f"
+  ],
+  "fin": [
+   "f",
+   "f",
+   "f",
+   "n",
+   "f",
+   "f"
+  ],
+  "dt": [
+   "d",
+   "f",
+   "m",
+   "n",
+   "n",
+   "m"
+  ],
+  "hold": [
+   "f",
+   "f",
+   "f",
+   "f",
+   "n",
+   "f"
+  ],
+  "labs": [
+   "f",
+   "f",
+   "f",
+   "f",
+   "d",
+   "f"
+  ],
+  "mgr": [
+   "f",
+   "d",
+   "m",
+   "n",
+   "n",
+   "m"
+  ],
+  "fdn": [
+   "d",
+   "n",
+   "n",
+   "n",
+   "n",
+   "n"
+  ]
+ }
+}

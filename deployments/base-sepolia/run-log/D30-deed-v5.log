@@ -1,0 +1,53 @@
+validator URI https://api.example.com/validator/, default agreement URI https://api.example.com/agreements/default.pdf
+DeedNFT 0x1a4e89225015200f70e5a06f766399a3de6e21E6: the v5 implementation validates as an upgrade of what the manifest records
++ DeedNFTMintExtension       0xd714E31e5C38588E83BC960F432f4aD5663a3Af8
++ DeedTrustExtension         0xfE483320FbC73eDE3aB5a6EeC4050bc02BbB386A
++ DeedRolesExtension         0x37FeD369Eb5b46Bd89665fE90868C1e81F62D249
++ DeedNFT upgraded: implementation 0x6941FFD47e6ad0667BeE5A2560f8582fc7fF9D1F
++ ValidatorRegistry          0x9E5c7D64bF3EB1fa3B7338608bbBD30ae64717ec
++ MetadataRenderer           0xC565a69A41b98482B437eB4182051196278EC240
++ Validator                  0x5036ca87256f7526Fc2374dD2Bf8697e4Cd98f9A
+  + registry -> DeedNFT
+  + validator -> DeedNFT
+  + renderer -> DeedNFT
+  + DeedNFT -> registry
+  + DeedNFT -> renderer
+  + image Land
+  + image Vehicle
+  + image Estate
+  + image Equipment
+  + image invalidated
++ FundManager                0xe5E038A44DaAfE88fA20902489E4308ADD72e453
+  + registry -> FundManager
+  + FundManager accepts DeedNFT
+  + validator -> FundManager
+  + criteria for asset type 0
+  + criteria for asset type 1
+  + criteria for asset type 2
+  + criteria for asset type 3
+  + register default agreement
+  + register validator
+  + activate validator
+  + DeedNFT default validator
++ Subdivide                  0xfB54f5F05d63FF80Bc94d5810321355c4Ee30f60
+  + Subdivide VALIDATOR_ROLE -> validator
+  + validator accepts Subdivide units
+  + DeedNFT approves Subdivide (custody)
++ FractionTokenFactory       0xc7E3234E058cc7793Ac68F471c09693f14cb166E
++ Fractionalize              0x6C896EeE9D3c6984a6B0225B0c17c9Df914Fbd76
+  + factory -> Fractionalize
+  + DeedNFT approves Fractionalize (custody)
+  + Subdivide approves Fractionalize (custody)
+  + old validator loses VALIDATOR_ROLE
++ FunctionalContractRegistry 0xAAb503A7ccd33CBD1FC7e669D6FAAdfF3a923c5C
++ CoopTransferAgent          0x8803f70f83D624D26935B03CfcAfbeAAf66a766A
++ RedemptionAgent            0xBbBdf1302ED3Ef7861D757eAC28AcEEa019FAB84
+  + Subdivide registered (1)
+  + Fractionalize registered (1)
+  + CoopTransferAgent registered (3)
+  + RedemptionAgent registered (3)
+  + DeedNFT.setTrustRegistries(FunctionalContractRegistry, MembershipRegistry)
+  + HousingAllowanceRecord.setDeedContract(RedemptionAgent)
+
+left to do: adopt the trust agreement version for Land and Estate (scripts/adopt_trust_agreement.ts),
+then deed_admin_handover.ts (the Deed track to the Deed timelock), when Kai chooses.

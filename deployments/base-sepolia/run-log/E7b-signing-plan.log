@@ -1,0 +1,90 @@
+Signing plan for base-sepolia (chain 84532) at block 60082935, 2026-11-17T18:00:55.000Z. Sends nothing.
+
+DONE    C1d-1                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).upgradeToAndCall
+DONE    C1d-2                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).grantRole
+DONE    C1d-3                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).revokeRole
+READY   D4-settings-1              the deployer -> AccessManager.grantRole
+READY   D4-settings-2              the deployer -> AccessManager.grantRole
+READY   D4-attester-1              the deployer -> AccessManager.grantRole
+READY   D4-attester-2              the deployer -> AccessManager.grantRole
+READY   D4-operator                the deployer -> AccessManager.grantOperator
+READY   E8-vault-propose           treasury signer 1 -> CollateralAgent.proposeChange
+WAITING E8-vault-confirm           treasury signer 2 -> CollateralAgent.confirmChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+WAITING E8-vault-approve           the Agent Key -> CollateralAgent.approveChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+READY   E8-bondbook-propose        treasury signer 1 -> CollateralAgent.proposeChange
+WAITING E8-bondbook-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+WAITING E8-bondbook-approve        the Agent Key -> CollateralAgent.approveChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+READY   E8-holderdirections-propose treasury signer 1 -> CollateralAgent.proposeChange
+WAITING E8-holderdirections-confirm treasury signer 2 -> CollateralAgent.confirmChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+WAITING E8-holderdirections-approve the Agent Key -> CollateralAgent.approveChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+READY   E8-pledgemodule-propose    treasury signer 1 -> CollateralAgent.proposeChange
+WAITING E8-pledgemodule-confirm    treasury signer 2 -> CollateralAgent.confirmChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+WAITING E8-pledgemodule-approve    the Agent Key -> CollateralAgent.approveChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+READY   E8-backstop-propose        treasury signer 1 -> CollateralAgent.proposeChange
+WAITING E8-backstop-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+WAITING E8-backstop-approve        the Agent Key -> CollateralAgent.approveChange
+        Its change number is known once the change is proposed: re-run the plan after the proposal.
+READY   E8-hold-1                  the deployer -> Liquidator.grantRole
+READY   E8-hold-2                  the deployer -> Liquidator.grantRole
+WAITING E8-earn-schedule           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.scheduleBatch
+        Waits for E8-vault-confirm, E8-vault-approve, E8-bondbook-confirm, E8-bondbook-approve, E8-holderdirections-confirm, E8-holderdirections-approve, E8-pledgemodule-confirm, E8-pledgemodule-approve, E8-backstop-confirm, E8-backstop-approve first.
+WAITING E8x-earn-execute           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.executeBatch
+        Waits for the schedule step, then 7 days.
+WAITING F2-fee-approve             credit settings signer 2 -> TermIssuer.approveFeeRecipient
+        Deploy 25 (F2) proposes 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50 as the fee recipient first.
+READY   G1-tier-1                  valuation signer 1 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+READY   G1-tier-2                  valuation signer 2 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+READY   safe-owner                 [Safe] the Clear Treasury Safe 0x52e6…cf50 (its owners sign in the Safe app) -> the Safe itself.addOwnerWithThreshold
+WAITING I3-vault-schedule          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.scheduleBatch
+        Waits for the vault handover (I3: VAULT_HANDOVER=1 deploy/vault_timelock_handover.ts), which deploys the vault timelock and begins both transfers.
+WAITING I3x-vault-execute          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.executeBatch
+        Waits for the vault handover (I3: VAULT_HANDOVER=1 deploy/vault_timelock_handover.ts), which deploys the vault timelock and begins both transfers.
+WAITING AS-payer-clfees-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-payer-clfees-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-payer-treasury-approve-1 Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-payer-treasury-approve-2 Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-lendingco-approve-1     Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-lendingco-approve-2     Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-disbursement-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-disbursement-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-exposure-approve-1      Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-exposure-approve-2      Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-assurance-schedule      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.scheduleBatch
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING ASx-assurance-execute      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.executeBatch
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-floor-1                 Assurance signer 1 -> AssurancePool.setFloorInputs
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-floor-2                 Assurance signer 2 -> AssurancePool.setFloorInputs
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+READY   TU-funder                  the deployer -> PayoutPool.grantRole
+READY   TU-safe-module             [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> CL Operating itself.enableModule
+READY   TU-safe-delegate           [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.addDelegate
+WAITING TU-safe-allowance          [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.setAllowance
+        Waits for TU-safe-delegate first.
+
+NOTE CL Operating's payout top-up setup (TU-safe-module, TU-safe-delegate, TU-safe-allowance) is one batch: safe-batches/signing-TU-cl-operating-setup.json.
+
+18 ready, 30 waiting, 3 done. steps sha256 724ea8c7d0bd56ae4bd7823927a69873445de50c8f0bf2f41ddf9f2ce8e75182
+
+Wrote deployments/base-sepolia/signing-plan.json and 4 Safe batch(es): deployments/base-sepolia/safe-batches/signing-safe-owner.json, deployments/base-sepolia/safe-batches/signing-TU-safe-module.json, deployments/base-sepolia/safe-batches/signing-TU-safe-delegate.json, deployments/base-sepolia/safe-batches/signing-TU-cl-operating-setup.json.
+Open it in tools/signing-page/index.html (see tools/signing-page/README.md). Re-run this after each stage. Live network: base-sepolia.

@@ -1,0 +1,215 @@
+{
+  "address": "0x0343a5C0eD485B82487DDCFdE0021133B5d5f46c",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "safe_"
+        },
+        {
+          "type": "address",
+          "name": "allowanceModule_"
+        },
+        {
+          "type": "address",
+          "name": "token_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "SettlementForwarderInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "SettlementForwarderInvalidAmount",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "SettlementForwarderNoOffRamp",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "SettlementForwarderNotDesk",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "SettlementForwarderNotSafe",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DeskSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "desk",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Forwarded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "offRamp",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "desk",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OffRampSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "offRamp",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "allowanceModule",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "desk",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "forward",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "offRamp",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "safe",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "setDesk",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "desk_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setOffRamp",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "offRamp_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "token",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}
