@@ -1,14 +1,12 @@
 {
   "format": "clear-signing-plan/1",
-  "generatedAt": "2026-11-26T21:05:11.060Z",
+  "generatedAt": "2026-11-28T15:34:29.086Z",
   "network": "base-sepolia",
   "chainId": 84532,
-  "block": 64026056,
-  "blockTime": "2026-11-26T21:04:40.000Z",
-  "stepsSha256": "558dd1cfcbc850a839cc8cb9be31c5078a3e809106838801e79319e016a21064",
-  "notes": [
-    "Deployment signer 1 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA (deploy/config/earn-roles.json) does not hold the pool's DEPLOYER_ROLE on chain: SL-deployer-1-schedule and SLx-deployer-1-execute grant it through the Earn timelock, before the SL-funder and SL-headroom pairs."
-  ],
+  "block": 64790903,
+  "blockTime": "2026-11-28T15:34:09.000Z",
+  "stepsSha256": "710c3230ec892d82a2d1bcd196c0a6ef0815d9f6f9812eb0cafd8dbd249197ab",
+  "notes": [],
   "steps": [
     {
       "id": "C1d-1",
@@ -291,7 +289,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-vault-confirm",
@@ -305,20 +304,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xbeda2483287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
+      "data": null,
       "functionSignature": "confirmChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0x287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-vault-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-vault-approve",
@@ -332,20 +331,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xf8dae3d3287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
+      "data": null,
       "functionSignature": "approveChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0x287f21c6e54b68e2ca55e1d411930dde7fce958ad221ba410f22b446c1a5a007",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-vault-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-bondbook-propose",
@@ -382,7 +381,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-bondbook-confirm",
@@ -396,20 +396,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xbeda2483d891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
+      "data": null,
       "functionSignature": "confirmChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0xd891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-bondbook-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-bondbook-approve",
@@ -423,20 +423,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xf8dae3d3d891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
+      "data": null,
       "functionSignature": "approveChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0xd891077594b73ba83aaefc5710f8a4c1566a16465359474f4c593d4661cdf719",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-bondbook-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-holderdirections-propose",
@@ -473,7 +473,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-holderdirections-confirm",
@@ -487,20 +488,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xbeda2483789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
+      "data": null,
       "functionSignature": "confirmChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0x789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-holderdirections-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-holderdirections-approve",
@@ -514,20 +515,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xf8dae3d3789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
+      "data": null,
       "functionSignature": "approveChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0x789b9ead0a59169757d7dce3077c22ce650e73d8683b31855590afbd648d7205",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-holderdirections-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-pledgemodule-propose",
@@ -564,7 +565,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-pledgemodule-confirm",
@@ -578,20 +580,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xbeda2483c0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
+      "data": null,
       "functionSignature": "confirmChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0xc0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-pledgemodule-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-pledgemodule-approve",
@@ -605,20 +607,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xf8dae3d3c0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
+      "data": null,
       "functionSignature": "approveChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0xc0a39e4668d8d55424fa164068701a0745c6c761b8cc72bcc17d2dbed114298d",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-pledgemodule-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-backstop-propose",
@@ -632,30 +634,12 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0x41d098f20000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba8550ce40418a644765ffdd08f94a6a92515941b0178ab7f1ad4cf7e3e7d8d0d7caf50e476bdb9a136118769d4ce896e7bf911a033271e93106a537a0406b7293027",
+      "data": null,
       "functionSignature": "proposeChange(address,bytes32,bytes32)",
-      "args": [
-        {
-          "name": "target",
-          "type": "address",
-          "value": "0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855",
-          "note": "BondVault"
-        },
-        {
-          "name": "callHash",
-          "type": "bytes32",
-          "value": "0x0ce40418a644765ffdd08f94a6a92515941b0178ab7f1ad4cf7e3e7d8d0d7caf",
-          "note": "keccak256 of the BondVault call: BondVault.setBackstops(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0)"
-        },
-        {
-          "name": "descriptionHash",
-          "type": "bytes32",
-          "value": "0x50e476bdb9a136118769d4ce896e7bf911a033271e93106a537a0406b7293027",
-          "note": "keccak256 of \"BondVault.setBackstops(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0): keep the treasury, clear the retired payout pool 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66 (decision 48)\""
-        }
-      ],
+      "args": [],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-backstop-confirm",
@@ -669,20 +653,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xbeda248352722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
+      "data": null,
       "functionSignature": "confirmChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0x52722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-backstop-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-backstop-approve",
@@ -696,20 +680,20 @@
       "to": "0x48840620F9F4780e7d5986F6365A4acdD7D82825",
       "toLabel": "CollateralAgent",
       "value": "0",
-      "data": "0xf8dae3d352722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
+      "data": null,
       "functionSignature": "approveChange(bytes32)",
       "args": [
         {
           "name": "changeId",
           "type": "bytes32",
-          "value": "0x52722784343f9b5dc2c36efe45e08542eeb45eb2efb483ec1b446eec8efaeb3d",
-          "note": "the change's number (read from the CollateralAgent)"
+          "value": "(known once the change is proposed)"
         }
       ],
       "dependsOn": [
         "E8-backstop-propose"
       ],
-      "status": "done"
+      "status": "done",
+      "reason": "The change is already made."
     },
     {
       "id": "E8-hold-1",
@@ -777,7 +761,7 @@
       "id": "E8-earn-schedule",
       "stage": "E8",
       "title": "Clear Lending Safe: schedule the Collateral Agent changes on the Earn timelock",
-      "explanation": "Queues the co-signed changes (CollateralAgent: point the Collateral Agent at the BondVault, where bond money is held; CollateralAgent: tell the Collateral Agent that the BondVault keeps the bond register; CollateralAgent: name HolderDirections as where bond holders' directions are counted; CollateralAgent: name the Liquidator as the Collateral Agent's pledge module; BondVault: clear the BondVault's backstop link to the retired PayoutPool (the treasury is kept)). They can run 7 days later. Sign it in the Safe app: Transaction Builder, load the batch file.",
+      "explanation": "Queues the co-signed changes (none left). They can run 7 days later. Sign it in the Safe app: Transaction Builder, load the batch file.",
       "kind": "safe",
       "signer": "0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d",
       "signerLabel": "Clear Lending Safe (its owners sign in the Safe app)",
@@ -785,24 +769,23 @@
       "to": "0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911",
       "toLabel": "Earn timelock",
       "value": "0",
-      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000002400000000000000000000000000000000000000000000000000000000000000000723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d0000000000000000000000000000000000000000000000000000000000093a80000000000000000000000000000000000000000000000000000000000000000500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d828250000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001c0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000000246817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024b7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba85500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002485cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024e37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f30000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000441eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d0000000000000000000000000000000000000000000000000000000000093a80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
       "functionSignature": "scheduleBatch(address[],uint256[],bytes[],bytes32,bytes32,uint256)",
       "args": [
         {
           "name": "targets",
           "type": "address[]",
-          "value": "[\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855\"]",
-          "note": "CollateralAgent, CollateralAgent, CollateralAgent, CollateralAgent, BondVault"
+          "value": "[]"
         },
         {
           "name": "values",
           "type": "uint256[]",
-          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+          "value": "[]"
         },
         {
           "name": "payloads",
           "type": "bytes[]",
-          "value": "[\"0x6817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0xb7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0x85cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda\",\"0xe37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f3\",\"0x1eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf500000000000000000000000000000000000000000000000000000000000000000\"]",
+          "value": "[]",
           "note": "the co-signed calls"
         },
         {
@@ -824,19 +807,9 @@
           "note": "7 days"
         }
       ],
-      "dependsOn": [
-        "E8-vault-confirm",
-        "E8-vault-approve",
-        "E8-bondbook-confirm",
-        "E8-bondbook-approve",
-        "E8-holderdirections-confirm",
-        "E8-holderdirections-approve",
-        "E8-pledgemodule-confirm",
-        "E8-pledgemodule-approve",
-        "E8-backstop-confirm",
-        "E8-backstop-approve"
-      ],
-      "status": "done"
+      "dependsOn": [],
+      "status": "done",
+      "reason": "Every change is made."
     },
     {
       "id": "E8x-earn-execute",
@@ -850,24 +823,23 @@
       "to": "0xB3788Bca237F5FFDf1BCB6698066AB6Ff82C7911",
       "toLabel": "Earn timelock",
       "value": "0",
-      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000002200000000000000000000000000000000000000000000000000000000000000000723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d000000000000000000000000000000000000000000000000000000000000000500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d8282500000000000000000000000048840620f9f4780e7d5986f6365a4acdd7d828250000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001c0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000000246817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024b7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba85500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002485cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024e37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f30000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000441eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000000723317913062ad6a8da0e8ef590f804d5ae7f66f5cd5b7bcd8ae4edb803c252d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
       "functionSignature": "executeBatch(address[],uint256[],bytes[],bytes32,bytes32)",
       "args": [
         {
           "name": "targets",
           "type": "address[]",
-          "value": "[\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x48840620F9F4780e7d5986F6365A4acdD7D82825\",\"0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855\"]",
-          "note": "CollateralAgent, CollateralAgent, CollateralAgent, CollateralAgent, BondVault"
+          "value": "[]"
         },
         {
           "name": "values",
           "type": "uint256[]",
-          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+          "value": "[]"
         },
         {
           "name": "payloads",
           "type": "bytes[]",
-          "value": "[\"0x6817031b0000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0xb7f800760000000000000000000000009f311fd8f05ed517130dc044cddbb159d02ba855\",\"0x85cdd9cc0000000000000000000000008ec35b88ccb59576957917a4f4b937b491815cda\",\"0xe37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f3\",\"0x1eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf500000000000000000000000000000000000000000000000000000000000000000\"]",
+          "value": "[]",
           "note": "the co-signed calls"
         },
         {
@@ -886,8 +858,8 @@
       "dependsOn": [
         "E8-earn-schedule"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-E8x-earn-execute.json"
+      "status": "done",
+      "reason": "Every change is made."
     },
     {
       "id": "F2-fee-approve",
@@ -1071,7 +1043,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "RevolvingIssuer runs the implementation with the card credit fee."
     },
     {
       "id": "CFx-upgrade-execute",
@@ -1121,8 +1094,8 @@
       "dependsOn": [
         "CF-upgrade-schedule"
       ],
-      "status": "waiting",
-      "reason": "Not yet: the credit timelock's 7 days end at 2026-11-28T00:22:06.000Z."
+      "status": "done",
+      "reason": "RevolvingIssuer runs the implementation with the card credit fee."
     },
     {
       "id": "G1-tier-1",
@@ -1218,7 +1191,7 @@
       "id": "I3-vault-schedule",
       "stage": "I3",
       "title": "Clear Financial Safe: schedule the vault timelock's acceptances",
-      "explanation": "The vault handover began moving CLRUSD's admin role and the CCIP token pool's ownership to the vault timelock; the timelock must accept them (CLRUSD: the vault timelock accepts DEFAULT_ADMIN_ROLE; the CCIP token pool: the vault timelock accepts ownership). This queues the acceptance; it can run 7 days later. Sign it in the Safe app.",
+      "explanation": "The vault handover began moving CLRUSD's admin role and the CCIP token pool's ownership to the vault timelock; the timelock must accept them (nothing pending). This queues the acceptance; it can run 7 days later. Sign it in the Safe app.",
       "kind": "safe",
       "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
       "signerLabel": "Clear Financial Safe (its owners sign in the Safe app)",
@@ -1226,24 +1199,23 @@
       "to": "0xb49c85E8E7eFB4401aaAb2745C9198a239071994",
       "toLabel": "vault timelock",
       "value": "0",
-      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000180000000000000000000000000000000000000000000000000000000000000000085b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b0000000000000000000000000000000000000000000000000000000000093a8000000000000000000000000000000000000000000000000000000000000000020000000000000000000000002a116bead17dd96dc5c560a0d76b02eb2d7ad6d1000000000000000000000000d8a171c293969e8b97efe1a9da7742205e23ccc10000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000004cefc142900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000479ba509700000000000000000000000000000000000000000000000000000000",
+      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000085b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b0000000000000000000000000000000000000000000000000000000000093a80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
       "functionSignature": "scheduleBatch(address[],uint256[],bytes[],bytes32,bytes32,uint256)",
       "args": [
         {
           "name": "targets",
           "type": "address[]",
-          "value": "[\"0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1\",\"0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1\"]",
-          "note": "CLRUSD, CLRUSD token pool"
+          "value": "[]"
         },
         {
           "name": "values",
           "type": "uint256[]",
-          "value": "[\"0\",\"0\"]"
+          "value": "[]"
         },
         {
           "name": "payloads",
           "type": "bytes[]",
-          "value": "[\"0xcefc1429\",\"0x79ba5097\"]",
+          "value": "[]",
           "note": "the acceptance calls"
         },
         {
@@ -1266,7 +1238,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Accepted: CLRUSD and the token pool."
     },
     {
       "id": "I3x-vault-execute",
@@ -1280,24 +1253,23 @@
       "to": "0xb49c85E8E7eFB4401aaAb2745C9198a239071994",
       "toLabel": "vault timelock",
       "value": "0",
-      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000000085b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b00000000000000000000000000000000000000000000000000000000000000020000000000000000000000002a116bead17dd96dc5c560a0d76b02eb2d7ad6d1000000000000000000000000d8a171c293969e8b97efe1a9da7742205e23ccc10000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000004cefc142900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000479ba509700000000000000000000000000000000000000000000000000000000",
+      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000085b5729a48fc9e74dd12416178e66132613357b25fa32a3d712a6cddbeca188b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
       "functionSignature": "executeBatch(address[],uint256[],bytes[],bytes32,bytes32)",
       "args": [
         {
           "name": "targets",
           "type": "address[]",
-          "value": "[\"0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1\",\"0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1\"]",
-          "note": "CLRUSD, CLRUSD token pool"
+          "value": "[]"
         },
         {
           "name": "values",
           "type": "uint256[]",
-          "value": "[\"0\",\"0\"]"
+          "value": "[]"
         },
         {
           "name": "payloads",
           "type": "bytes[]",
-          "value": "[\"0xcefc1429\",\"0x79ba5097\"]",
+          "value": "[]",
           "note": "the acceptance calls"
         },
         {
@@ -1316,8 +1288,8 @@
       "dependsOn": [
         "I3-vault-schedule"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-I3x-vault-execute.json"
+      "status": "done",
+      "reason": "Accepted: CLRUSD and the token pool."
     },
     {
       "id": "AS-payer-clfees-approve-1",
@@ -1343,7 +1315,7 @@
       ],
       "dependsOn": [],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-payer-clfees-approve-2",
@@ -1371,7 +1343,7 @@
         "AS-payer-clfees-approve-1"
       ],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-payer-treasury-approve-1",
@@ -1397,7 +1369,7 @@
       ],
       "dependsOn": [],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-payer-treasury-approve-2",
@@ -1425,7 +1397,7 @@
         "AS-payer-treasury-approve-1"
       ],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-lendingco-approve-1",
@@ -1451,7 +1423,7 @@
       ],
       "dependsOn": [],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-lendingco-approve-2",
@@ -1479,7 +1451,7 @@
         "AS-lendingco-approve-1"
       ],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-disbursement-approve-1",
@@ -1505,7 +1477,7 @@
       ],
       "dependsOn": [],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-disbursement-approve-2",
@@ -1533,7 +1505,7 @@
         "AS-disbursement-approve-1"
       ],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-exposure-approve-1",
@@ -1559,7 +1531,7 @@
       ],
       "dependsOn": [],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-exposure-approve-2",
@@ -1587,13 +1559,13 @@
         "AS-exposure-approve-1"
       ],
       "status": "done",
-      "reason": "Both signers approved this exact call."
+      "reason": "The pool already shows it."
     },
     {
       "id": "AS-assurance-schedule",
       "stage": "Assurance",
       "title": "Clear Treasury (board) Safe: schedule the Assurance Pool's setup on the Assurance timelock",
-      "explanation": "Queues the approved calls (payer-clfees, payer-treasury, lendingco, disbursement, exposure): the payers, Clear Lending's draw and loss-reserve addresses, the disbursement address and the exposure source. They can run 7 days later. Sign it in the Safe app: Transaction Builder, load the batch file.",
+      "explanation": "Queues the approved calls (none left): the payers, Clear Lending's draw and loss-reserve addresses, the disbursement address and the exposure source. They can run 7 days later. Sign it in the Safe app: Transaction Builder, load the batch file.",
       "kind": "safe",
       "signer": "0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50",
       "signerLabel": "Clear Treasury (board) Safe (its owners sign in the Safe app)",
@@ -1601,24 +1573,23 @@
       "to": "0xE77F3C4B94Fa25A021f3Ef8d0E5D06F4Ea057C6b",
       "toLabel": "Assurance timelock",
       "value": "0",
-      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000240000000000000000000000000000000000000000000000000000000000000000002cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf5640000000000000000000000000000000000000000000000000000000000093a8000000000000000000000000000000000000000000000000000000000000000050000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb15000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000002800000000000000000000000000000000000000000000000000000000000000044c5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044c5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044a04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024d6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000064c988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a00000000000000000000000000000000000000000000000000000000",
+      "data": "0x8f2a0bb000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000002cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf5640000000000000000000000000000000000000000000000000000000000093a80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
       "functionSignature": "scheduleBatch(address[],uint256[],bytes[],bytes32,bytes32,uint256)",
       "args": [
         {
           "name": "targets",
           "type": "address[]",
-          "value": "[\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\"]",
-          "note": "AssurancePool"
+          "value": "[]"
         },
         {
           "name": "values",
           "type": "uint256[]",
-          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+          "value": "[]"
         },
         {
           "name": "payloads",
           "type": "bytes[]",
-          "value": "[\"0xc5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003\",\"0xc5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c\",\"0xa04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa\",\"0xd6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b\",\"0xc988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a\"]",
+          "value": "[]",
           "note": "the approved calls"
         },
         {
@@ -1640,19 +1611,9 @@
           "note": "7 days"
         }
       ],
-      "dependsOn": [
-        "AS-payer-clfees-approve-1",
-        "AS-payer-clfees-approve-2",
-        "AS-payer-treasury-approve-1",
-        "AS-payer-treasury-approve-2",
-        "AS-lendingco-approve-1",
-        "AS-lendingco-approve-2",
-        "AS-disbursement-approve-1",
-        "AS-disbursement-approve-2",
-        "AS-exposure-approve-1",
-        "AS-exposure-approve-2"
-      ],
-      "status": "done"
+      "dependsOn": [],
+      "status": "done",
+      "reason": "The pool shows every setting."
     },
     {
       "id": "ASx-assurance-execute",
@@ -1666,24 +1627,23 @@
       "to": "0xE77F3C4B94Fa25A021f3Ef8d0E5D06F4Ea057C6b",
       "toLabel": "Assurance timelock",
       "value": "0",
-      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000001600000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000000002cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf56400000000000000000000000000000000000000000000000000000000000000050000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb150000000000000000000000003c334d3aed134191b7ad0744a23978d71357bb15000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000002800000000000000000000000000000000000000000000000000000000000000044c5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044c5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044a04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024d6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000064c988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a00000000000000000000000000000000000000000000000000000000",
+      "data": "0xe38335e500000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000002cefa0be8aa5f8373cb5617df6bea80dc10eee7fd60eda5068f7903d8bbf564000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
       "functionSignature": "executeBatch(address[],uint256[],bytes[],bytes32,bytes32)",
       "args": [
         {
           "name": "targets",
           "type": "address[]",
-          "value": "[\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\",\"0x3c334D3AeD134191B7Ad0744a23978D71357BB15\"]",
-          "note": "AssurancePool"
+          "value": "[]"
         },
         {
           "name": "values",
           "type": "uint256[]",
-          "value": "[\"0\",\"0\",\"0\",\"0\",\"0\"]"
+          "value": "[]"
         },
         {
           "name": "payloads",
           "type": "bytes[]",
-          "value": "[\"0xc5329ddb000000000000000000000000b9ed7ea800c3a32a8f2cf7d2ab50ae2d4831cdfd0000000000000000000000000000000000000000000000000000000000000003\",\"0xc5329ddb00000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf50000000000000000000000000000000000000000000000000000000000000000c\",\"0xa04bc9f0000000000000000000000000faff1081f77bf528ba21eea590f251a755bcdf65000000000000000000000000b42561f3fe68b6719628c0eac398ea097dd56baa\",\"0xd6f064f0000000000000000000000000510cdfa8e647c3f1fe0c431fe903fa60aa4f926b\",\"0xc988358900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fedb873e6e1ec1c3bfc8cd561f66bd64d51c446a\"]",
+          "value": "[]",
           "note": "the approved calls"
         },
         {
@@ -1702,8 +1662,8 @@
       "dependsOn": [
         "AS-assurance-schedule"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-ASx-assurance-execute.json"
+      "status": "done",
+      "reason": "The pool shows every setting."
     },
     {
       "id": "AS-floor-1",
@@ -1982,8 +1942,7 @@
       "dependsOn": [
         "E8x-earn-execute"
       ],
-      "status": "waiting",
-      "reason": "Waits for E8x-earn-execute first."
+      "status": "done"
     },
     {
       "id": "SLx-upgrade-execute",
@@ -2035,7 +1994,7 @@
         "E8x-earn-execute"
       ],
       "status": "waiting",
-      "reason": "Waits for SL-upgrade-schedule, then 7 days."
+      "reason": "Not yet: the Earn timelock's 7 days end at 2026-12-04T18:08:25.000Z."
     },
     {
       "id": "SL-deployer-1-schedule",
@@ -2089,7 +2048,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Deployment signer 1 holds the pool's DEPLOYER_ROLE."
     },
     {
       "id": "SLx-deployer-1-execute",
@@ -2139,8 +2099,8 @@
       "dependsOn": [
         "SL-deployer-1-schedule"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SLx-deployer-1-execute.json"
+      "status": "done",
+      "reason": "Deployment signer 1 holds the pool's DEPLOYER_ROLE."
     },
     {
       "id": "SL-deployer-2-schedule",
@@ -2462,8 +2422,8 @@
       "dependsOn": [
         "SL-cl-operating-delegate"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SL-cl-operating-allowance.json"
+      "status": "done",
+      "reason": "$5,000.00 every 7 days; $0.00 spent this period."
     },
     {
       "id": "SL-cl-operating-offramp",
@@ -2611,8 +2571,8 @@
       "dependsOn": [
         "SA-attester-schedule"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SAx-attester-execute.json"
+      "status": "done",
+      "reason": "0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd already holds STATE_ATTESTER_ROLE."
     },
     {
       "id": "SR-rates-schedule-1",
@@ -2666,7 +2626,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Products set for AL, AK, AZ, AR, CO, CT, DE, DC."
     },
     {
       "id": "SRx-rates-execute-1",
@@ -2716,8 +2677,8 @@
       "dependsOn": [
         "SR-rates-schedule-1"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-1.json"
+      "status": "done",
+      "reason": "Products set for AL, AK, AZ, AR, CO, CT, DE, DC."
     },
     {
       "id": "SR-rates-schedule-2",
@@ -2771,7 +2732,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Products set for FL, GA, HI, ID, IL, IN, IA, KS."
     },
     {
       "id": "SRx-rates-execute-2",
@@ -2821,8 +2783,8 @@
       "dependsOn": [
         "SR-rates-schedule-2"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-2.json"
+      "status": "done",
+      "reason": "Products set for FL, GA, HI, ID, IL, IN, IA, KS."
     },
     {
       "id": "SR-rates-schedule-3",
@@ -2876,7 +2838,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Products set for KY, LA, ME, MD, MA, MI, MN, MS."
     },
     {
       "id": "SRx-rates-execute-3",
@@ -2926,8 +2889,8 @@
       "dependsOn": [
         "SR-rates-schedule-3"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-3.json"
+      "status": "done",
+      "reason": "Products set for KY, LA, ME, MD, MA, MI, MN, MS."
     },
     {
       "id": "SR-rates-schedule-4",
@@ -2981,7 +2944,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Products set for MO, MT, NE, NV, NH, NJ, NM, NY."
     },
     {
       "id": "SRx-rates-execute-4",
@@ -3031,8 +2995,8 @@
       "dependsOn": [
         "SR-rates-schedule-4"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-4.json"
+      "status": "done",
+      "reason": "Products set for MO, MT, NE, NV, NH, NJ, NM, NY."
     },
     {
       "id": "SR-rates-schedule-5",
@@ -3086,7 +3050,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Products set for NC, ND, OH, OK, OR, PA, RI, SC."
     },
     {
       "id": "SRx-rates-execute-5",
@@ -3136,8 +3101,8 @@
       "dependsOn": [
         "SR-rates-schedule-5"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-5.json"
+      "status": "done",
+      "reason": "Products set for NC, ND, OH, OK, OR, PA, RI, SC."
     },
     {
       "id": "SR-rates-schedule-6",
@@ -3191,7 +3156,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Products set for SD, TN, TX, UT, VT, VA, WA, WV."
     },
     {
       "id": "SRx-rates-execute-6",
@@ -3241,8 +3207,8 @@
       "dependsOn": [
         "SR-rates-schedule-6"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-6.json"
+      "status": "done",
+      "reason": "Products set for SD, TN, TX, UT, VT, VA, WA, WV."
     },
     {
       "id": "SR-rates-schedule-7",
@@ -3296,7 +3262,8 @@
         }
       ],
       "dependsOn": [],
-      "status": "done"
+      "status": "done",
+      "reason": "Products set for WI, WY."
     },
     {
       "id": "SRx-rates-execute-7",
@@ -3346,8 +3313,8 @@
       "dependsOn": [
         "SR-rates-schedule-7"
       ],
-      "status": "ready",
-      "safeBatchFile": "safe-batches/signing-SRx-rates-execute-7.json"
+      "status": "done",
+      "reason": "Products set for WI, WY."
     }
   ]
 }
